@@ -1,5 +1,5 @@
-import { LoginScreen } from "@/widgets/login/LoginScreen";
+import { CollectorLoginScreen } from "@/widgets/login/CollectorLoginScreen";
 
 export default function CollectorLoginPage() {
-  return <LoginScreen surface="cobrador" />;
+  return <CollectorLoginScreen />;
 }

@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useRouter } from "next/navigation";
+import { toast } from "sonner";
 import { loginRequestSchema, type LoginRequest } from "@repo/types";
 
 import { useSessionStore } from "@/entities/session";
@@ -12,6 +13,11 @@ import { Input } from "@/shared/ui/input";
 import { Label } from "@/shared/ui/label";
 
 import { mockAuthService } from "../api/auth-service";
+
+// Campo relleno (bg-muted) de 44px como en el prototipo #1b/#14c. Los tokens
+// resuelven a los valores dark (Admin) o light (Cobrador) según la superficie
+// del layout que lo envuelve — el mismo formulario sirve a las dos pantallas.
+const FIELD_CLASS = "h-11 bg-muted";
 
 export function LoginForm() {
   const router = useRouter();
@@ -32,6 +38,7 @@ export function LoginForm() {
     try {
       const session = await mockAuthService.login(credentials);
       setSession(session);
+      // Redirección por el rol de la respuesta, no por la ruta de origen.
       router.push(session.usuario.rol === "ADMIN" ? "/admin" : "/collector");
     } catch (error) {
       setAuthError(error instanceof Error ? error.message : "No se pudo iniciar sesión.");
@@ -41,15 +48,18 @@ export function LoginForm() {
   return (
     <form onSubmit={handleSubmit(onSubmit)} noValidate className="flex flex-col gap-4">
       <div className="flex flex-col gap-1.5">
-        <Label htmlFor="telefono">Teléfono</Label>
+        <Label htmlFor="telefono" className="text-muted-foreground">
+          Teléfono
+        </Label>
         <Input
           id="telefono"
           type="tel"
           inputMode="tel"
           autoComplete="tel"
-          placeholder="3001234567"
+          placeholder="300 123 4567"
           aria-invalid={!!errors.telefono || undefined}
           aria-describedby={errors.telefono ? "telefono-error" : undefined}
+          className={FIELD_CLASS}
           {...register("telefono")}
         />
         {errors.telefono && (
@@ -60,13 +70,17 @@ export function LoginForm() {
       </div>
 
       <div className="flex flex-col gap-1.5">
-        <Label htmlFor="password">Contraseña</Label>
+        <Label htmlFor="password" className="text-muted-foreground">
+          Contraseña
+        </Label>
         <Input
           id="password"
           type="password"
           autoComplete="current-password"
+          placeholder="Tu contraseña"
           aria-invalid={!!errors.password || undefined}
           aria-describedby={errors.password ? "password-error" : undefined}
+          className={FIELD_CLASS}
           {...register("password")}
         />
         {errors.password && (
@@ -82,9 +96,17 @@ export function LoginForm() {
         </p>
       )}
 
-      <Button type="submit" className="w-full" loading={isSubmitting}>
+      <Button type="submit" size="lg" className="mt-1 w-full" loading={isSubmitting}>
         Iniciar sesión
       </Button>
+
+      <button
+        type="button"
+        onClick={() => toast("Pronto podrás restablecer tu contraseña.")}
+        className="text-center text-[13px] font-medium text-accent hover:underline"
+      >
+        ¿Olvidaste tu contraseña?
+      </button>
     </form>
   );
 }

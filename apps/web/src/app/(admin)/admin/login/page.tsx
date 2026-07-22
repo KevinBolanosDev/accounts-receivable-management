@@ -1,5 +1,5 @@
-import { LoginScreen } from "@/widgets/login/LoginScreen";
+import { AdminLoginScreen } from "@/widgets/login/AdminLoginScreen";
 
 export default function AdminLoginPage() {
-  return <LoginScreen surface="admin" />;
+  return <AdminLoginScreen />;
 }
