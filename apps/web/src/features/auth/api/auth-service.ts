@@ -7,16 +7,16 @@ export interface AuthService {
 // Usuarios de prueba para desarrollar el frontend sin backend.
 // Se reemplaza por httpAuthService en la sub-fase 1.8 (cableado).
 const MOCK_USERS: Record<string, { password: string; usuario: LoginResponse["usuario"] }> = {
-  "3000000001": {
+  "1000000001": {
     password: "admin123",
-    usuario: { id: "mock-admin-1", nombre: "Admin Demo", telefono: "3000000001", rol: "ADMIN" },
+    usuario: { id: "mock-admin-1", nombre: "Admin Demo", documento: "1000000001", rol: "ADMIN" },
   },
-  "3000000002": {
+  "1000000002": {
     password: "cobrador123",
     usuario: {
       id: "mock-cobrador-1",
       nombre: "Cobrador Demo",
-      telefono: "3000000002",
+      documento: "1000000002",
       rol: "COBRADOR",
     },
   },
@@ -27,12 +27,12 @@ function simulateNetworkDelay(ms = 400): Promise<void> {
 }
 
 export const mockAuthService: AuthService = {
-  async login({ telefono, password }) {
+  async login({ documento, password }) {
     await simulateNetworkDelay();
 
-    const entry = MOCK_USERS[telefono];
+    const entry = MOCK_USERS[documento];
     if (!entry || entry.password !== password) {
-      throw new Error("Teléfono o contraseña incorrectos.");
+      throw new Error("Documento o contraseña incorrectos.");
     }
 
     return loginResponseSchema.parse({

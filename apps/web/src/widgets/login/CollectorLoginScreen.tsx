@@ -16,7 +16,7 @@ export function CollectorLoginScreen() {
     <main className="flex min-h-dvh flex-col bg-muted items-center justify-center p-6">
       <div
         ref={cardRef}
-        className="flex flex-1 flex-col overflow-hidden min-h-160 w-full max-w-110 rounded-[28px] border border-border shadow-xl"
+        className="flex flex-1 flex-col overflow-hidden h-full max-h-200 w-full max-w-110 rounded-[28px] border border-border shadow-xl"
       >
         {/* Hero de marca con gradiente primary → accent */}
         <div className="relative flex flex-none flex-col gap-6 overflow-hidden bg-[linear-gradient(155deg,var(--color-primary),var(--color-accent))] px-7 pt-14 pb-14">

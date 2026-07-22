@@ -1,3 +1,5 @@
+import { LogoutButton } from "@/features/auth";
+
 export default function AdminPage() {
   return (
     <main className="flex min-h-screen flex-col items-start justify-center gap-3 px-8">
@@ -7,6 +9,7 @@ export default function AdminPage() {
         Las pantallas de Admin llegan en las próximas fases. Esta ruta solo confirma que la
         superficie abre en modo oscuro por defecto.
       </p>
+      <LogoutButton loginPath="/admin/login" />
     </main>
   );
 }

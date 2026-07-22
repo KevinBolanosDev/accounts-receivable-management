@@ -6,7 +6,7 @@ export type Rol = z.infer<typeof rolSchema>;
 
 // Credenciales que envía el formulario de login.
 export const loginRequestSchema = z.object({
-  telefono: z.string().min(1, "Ingresa tu teléfono."),
+  documento: z.string().min(1, "Ingresa tu documento de identidad."),
   password: z.string().min(1, "Ingresa tu contraseña."),
 });
 export type LoginRequest = z.infer<typeof loginRequestSchema>;
@@ -15,7 +15,7 @@ export type LoginRequest = z.infer<typeof loginRequestSchema>;
 export const usuarioSchema = z.object({
   id: z.string(),
   nombre: z.string(),
-  telefono: z.string(),
+  documento: z.string(),
   rol: rolSchema,
 });
 export type Usuario = z.infer<typeof usuarioSchema>;

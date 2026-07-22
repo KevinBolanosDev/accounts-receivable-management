@@ -48,23 +48,23 @@ export function LoginForm() {
   return (
     <form onSubmit={handleSubmit(onSubmit)} noValidate className="flex flex-col gap-4">
       <div className="flex flex-col gap-1.5">
-        <Label htmlFor="telefono" className="text-muted-foreground">
-          Teléfono
+        <Label htmlFor="documento" className="text-muted-foreground">
+          Documento de identidad
         </Label>
         <Input
-          id="telefono"
-          type="tel"
-          inputMode="tel"
-          autoComplete="tel"
-          placeholder="300 123 4567"
-          aria-invalid={!!errors.telefono || undefined}
-          aria-describedby={errors.telefono ? "telefono-error" : undefined}
+          id="documento"
+          type="text"
+          inputMode="numeric"
+          autoComplete="username"
+          placeholder="1234567890"
+          aria-invalid={!!errors.documento || undefined}
+          aria-describedby={errors.documento ? "documento-error" : undefined}
           className={FIELD_CLASS}
-          {...register("telefono")}
+          {...register("documento")}
         />
-        {errors.telefono && (
-          <p id="telefono-error" className="text-xs text-destructive">
-            {errors.telefono.message}
+        {errors.documento && (
+          <p id="documento-error" className="text-xs text-destructive">
+            {errors.documento.message}
           </p>
         )}
       </div>
