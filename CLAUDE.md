@@ -6,7 +6,14 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Accounts receivable / daily-installment collection system (see `specs/PLAN_DESARROLLO.md`, in Spanish, for the full product spec and phase-by-phase roadmap). Three user profiles: **Admin** (full access), **Cobrador** (collector, scoped to their assigned route(s)), **Cliente final** (read-only, token-based access, no login).
 
-`specs/PLAN_DESARROLLO.md` is the authoritative source for architecture decisions and the phase plan (Fase 0 through Fase 6). `specs/FASE_0_SUBFASES.md` breaks down the current phase (monorepo foundation) into sub-steps. `specs/DESIGN_SYSTEM.md` has the design tokens (colors, radii, dark/light-mode-per-surface rules) for when frontend UI work begins — none of it is applied yet (`apps/web` still has the stock `create-next-app` theme).
+`specs/PLAN_DESARROLLO.md` is the authoritative source for architecture decisions and the phase plan (Fase 0 through Fase 6). Each phase is broken into sub-steps in its own `specs/FASE_<N>_SUBFASES.md`. `specs/DESIGN_SYSTEM.md` has the design tokens (colors, radii, dark/light-mode-per-surface rules); the design system is now built and applied in `apps/web` (Fase 0.5 — shadcn primitives, tokens, GSAP motion, route-group scaffolding).
+
+## Working conventions
+
+Two project-wide conventions (also in `specs/PLAN_DESARROLLO.md` §5):
+
+- **Per-phase order: frontend → backend → wiring.** From Fase 1 on, each phase ships in three sub-phase blocks: (A) frontend first, built against mocked services (the design system is already done); (B) backend next (Nest modules, Prisma, guards); (C) wiring last, swapping the mock for the real API and verifying end-to-end. The service that talks to the backend hides behind an interface from the first frontend sub-phase, so the mock→real swap is a single change point. Shared contracts (Zod schema + inferred type in `@repo/types`) are defined in the first frontend sub-phase and **reused** by the backend, never duplicated.
+- **Language: code in English, prose in Spanish.** Project names, routes, folders, and code identifiers are in English; documentation (`specs/*`), user-facing answers, and code comments are in Spanish (comments only where they add clarity).
 
 ## Commands
 
