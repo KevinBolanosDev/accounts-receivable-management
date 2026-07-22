@@ -1,4 +1,4 @@
-import { CollectorsScreen } from "@/features/cobradores";
+import { CollectorsScreen } from "@/features/collectors";
 
 export default function AdminCollectorsPage() {
   return <CollectorsScreen />;

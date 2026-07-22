@@ -22,6 +22,10 @@ export const RUTA_OPTIONS: RutaOption[] = [
   { id: "r6", nombre: "Ruta 6 · Kennedy" },
 ];
 
+// Ruta activa del cobrador en sesión (mock, bloque A). El backend real la
+// deriva del usuario autenticado y su asignación de ruta.
+export const COBRADOR_RUTA_ACTIVA: RutaOption = { id: "r3", nombre: "Ruta 3 · Centro" };
+
 export const COBRADOR_OPTIONS: CobradorOption[] = [
   { id: "c1", nombre: "Carlos Ramírez", telefono: "301 445 6789" },
   { id: "c2", nombre: "Ana Torres", telefono: "302 118 4420" },

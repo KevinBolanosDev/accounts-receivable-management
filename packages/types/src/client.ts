@@ -12,7 +12,10 @@ export const clienteSchema = z.object({
   telefono: z.string(),
   documento: z.string(),
   direccion: z.string(),
-  fotoDocumentoUrl: z.string().url().nullable(),
+  // El documento se guarda por ambos lados (frente y reverso). Cada uno es la
+  // URL en Supabase Storage; se suben por separado (ver uploadFotoDocumento).
+  fotoDocumentoFrenteUrl: z.string().url().nullable(),
+  fotoDocumentoReversoUrl: z.string().url().nullable(),
   rutaId: z.string(),
 });
 export type Cliente = z.infer<typeof clienteSchema>;
@@ -75,7 +78,8 @@ export const createClienteRequestSchema = z.object({
   documento: z.string().min(1, "El documento es obligatorio."),
   direccion: z.string().min(1, "La dirección es obligatoria."),
   rutaId: z.string().min(1, "Selecciona una ruta."),
-  fotoDocumentoUrl: z.string().url().nullable().optional(),
+  fotoDocumentoFrenteUrl: z.string().url().nullable().optional(),
+  fotoDocumentoReversoUrl: z.string().url().nullable().optional(),
 });
 export type CreateClienteRequest = z.infer<typeof createClienteRequestSchema>;
 

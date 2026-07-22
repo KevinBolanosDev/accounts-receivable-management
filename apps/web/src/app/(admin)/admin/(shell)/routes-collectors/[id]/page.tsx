@@ -1,4 +1,4 @@
-import { RouteDetailScreen } from "@/features/rutas";
+import { RouteDetailScreen } from "@/features/routes-collectors";
 
 export default async function AdminRouteDetailPage({
   params,

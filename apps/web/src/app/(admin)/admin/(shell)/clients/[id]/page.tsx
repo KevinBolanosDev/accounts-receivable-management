@@ -1,4 +1,4 @@
-import { ClientDetailScreen } from "@/features/clientes";
+import { ClientDetailScreen } from "@/features/clients";
 
 export default async function AdminClientDetailPage({
   params,

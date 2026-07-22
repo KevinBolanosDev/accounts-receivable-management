@@ -1,4 +1,4 @@
-import { RoutesListScreen } from "@/features/rutas";
+import { RoutesListScreen } from "@/features/routes-collectors";
 
 export default function AdminRoutesPage() {
   return <RoutesListScreen />;
