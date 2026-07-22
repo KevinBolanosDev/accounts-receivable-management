@@ -40,9 +40,10 @@ Backend (`apps/api`, run from that directory or via `--filter api`):
 ```bash
 pnpm test              # jest unit tests (rootDir: src, pattern: *.spec.ts) — none exist yet
 pnpm test -- health.service.spec.ts   # run a single unit test file
-pnpm test:e2e           # jest --config ./test/jest-e2e.json (test/app.e2e-spec.ts)
-pnpm test:e2e -- -t "health"          # run a single e2e test by name
+pnpm test:e2e           # jest --config ./test/jest-e2e.json (test/app.e2e-spec.ts, test/auth.e2e-spec.ts)
+pnpm test:e2e -- -t "auth"            # run a single e2e test file/suite by name
 pnpm db:generate         # prisma generate (also runs automatically on postinstall)
+pnpm db:seed             # ts-node prisma/seed.ts — seeds the demo Admin/Cobrador (needed before auth e2e tests or manual login)
 npx prisma generate      # same, direct CLI
 npx prisma studio         # inspect the DB (needs a reachable DATABASE_URL)
 ```
@@ -94,7 +95,7 @@ modules/<feature>/             one module per feature: <feature>.module.ts, .con
 
 - `PrismaClient` now **requires** an explicit driver adapter (`@prisma/adapter-pg`'s `PrismaPg`, constructed with `connectionString`). The old plain `datasource db { url = env(...) }` + bare `new PrismaClient()` pattern no longer works — Prisma 7 hard-rejects a `url` field inside the `datasource` block in `schema.prisma` (`P1012` validation error). The connection string for the CLI (migrate/studio) lives in `prisma.config.ts`; the connection string for the runtime client is passed explicitly to `PrismaPg` in `PrismaService`.
 - The generator is pinned to `provider = "prisma-client-js"` (the classic generator), not the newer `"prisma-client"` generator. The new one emits TS using `import.meta.url`, which is ESM-only syntax that crashes (`ReferenceError: exports is not defined in ES module scope`) once compiled to CJS and actually loaded by a running Nest app — it only _looks_ fine until something triggers a real (non-type-only) import.
-- `prisma/schema.prisma` has no models yet — Fase 2 of the plan owns the data model.
+- `prisma/schema.prisma` has one model so far: `Usuario` (Fase 1, auth only — `id`, `nombre`, `documento` unique, `passwordHash`, `rol` enum, `activo`). The rest of the data model (Cliente, Ruta, Crédito...) is Fase 2's. **`prisma.config.ts` (CLI datasource + migration config) must live at the `apps/api` package root, never inside `src/`** — Prisma's CLI only looks for it there; if it ends up elsewhere, `migrate`/`db seed`/`studio` fail with a misleading "datasource.url is required" instead of "config not found."
 
 ### Next.js structure (`apps/web/src`)
 

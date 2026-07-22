@@ -6,6 +6,8 @@ import type { Rol } from "@repo/types";
 
 import { useSessionStore } from "@/entities/session";
 
+import { useValidateSession } from "../api/use-validate-session";
+
 interface RouteGuardProps {
   allowedRoles: Rol[];
   loginPath: string;
@@ -16,11 +18,11 @@ function dashboardPathFor(rol: Rol): string {
   return rol === "ADMIN" ? "/admin" : "/collector";
 }
 
-// Protege un route-group completo por rol, leyendo el store de sesión (aún
-// mock, ver 1.8). Se monta en el layout del grupo, así que también envuelve
-// su propia pantalla de login — por eso compara el pathname contra
-// `loginPath`: ahí no bloquea (y si ya hay sesión con el rol correcto,
-// redirige al panel en vez de mostrar el login de nuevo).
+// Protege un route-group completo por rol, leyendo el store de sesión y
+// validándolo contra el backend (useValidateSession). Se monta en el layout
+// del grupo, así que también envuelve su propia pantalla de login — por eso
+// compara el pathname contra `loginPath`: ahí no bloquea (y si ya hay sesión
+// con el rol correcto, redirige al panel en vez de mostrar el login de nuevo).
 export function RouteGuard({ allowedRoles, loginPath, children }: RouteGuardProps) {
   const router = useRouter();
   const pathname = usePathname();
@@ -30,6 +32,11 @@ export function RouteGuard({ allowedRoles, loginPath, children }: RouteGuardProp
 
   const isOnLoginPath = pathname === loginPath;
   const hasAllowedRole = !!usuario && allowedRoles.includes(usuario.rol);
+
+  // Valida el token guardado contra el backend (GET /auth/me) una vez
+  // hidratado, solo en páginas protegidas (no en el login, donde no hay
+  // nada que rehidratar todavía).
+  useValidateSession(hasHydrated && isAuthenticated && !isOnLoginPath);
 
   useEffect(() => {
     if (!hasHydrated) return;

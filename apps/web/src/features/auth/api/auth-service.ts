@@ -1,4 +1,5 @@
-import { loginResponseSchema, type LoginRequest, type LoginResponse } from "@repo/types";
+import { loginResponseSchema, usuarioSchema, type LoginRequest, type LoginResponse } from "@repo/types";
+import { apiFetch } from "@/shared/api/client";
 
 export interface AuthService {
   login(credentials: LoginRequest): Promise<LoginResponse>;
@@ -41,3 +42,24 @@ export const mockAuthService: AuthService = {
     });
   },
 };
+
+// Variante real: llama al backend de Nest (módulo auth, sub-fases 1.6/1.7).
+export const httpAuthService: AuthService = {
+  login(credentials) {
+    return apiFetch("/auth/login", loginResponseSchema, {
+      method: "POST",
+      body: credentials,
+    });
+  },
+};
+
+// Único punto de inyección (ver 1.2): cambiar esta constante es todo el
+// "swap" de la sub-fase 1.8. El resto del código importa `authService`,
+// nunca `mockAuthService`/`httpAuthService` directamente.
+export const authService: AuthService = httpAuthService;
+
+// Confirma contra el backend que un token guardado sigue siendo válido
+// (usado por useValidateSession al cargar la app).
+export function fetchCurrentUser(token: string) {
+  return apiFetch("/auth/me", usuarioSchema, { token });
+}

@@ -12,7 +12,7 @@ import { Button } from "@/shared/ui/button";
 import { Input } from "@/shared/ui/input";
 import { Label } from "@/shared/ui/label";
 
-import { mockAuthService } from "../api/auth-service";
+import { authService } from "../api/auth-service";
 
 // Campo relleno (bg-muted) de 44px como en el prototipo #1b/#14c. Los tokens
 // resuelven a los valores dark (Admin) o light (Cobrador) según la superficie
@@ -36,7 +36,7 @@ export function LoginForm() {
   async function onSubmit(credentials: LoginRequest) {
     setAuthError(null);
     try {
-      const session = await mockAuthService.login(credentials);
+      const session = await authService.login(credentials);
       setSession(session);
       // Redirección por el rol de la respuesta, no por la ruta de origen.
       router.push(session.usuario.rol === "ADMIN" ? "/admin" : "/collector");

@@ -5,6 +5,8 @@ export const envSchema = z.object({
   PORT: z.coerce.number().int().positive().default(3001),
   WEB_ORIGIN: z.string().default("http://localhost:3000"),
   DATABASE_URL: z.string().min(1, "DATABASE_URL es requerida"),
+  JWT_SECRET: z.string().min(1, "JWT_SECRET es requerida"),
+  JWT_EXPIRES_IN: z.string().default("1d"),
 });
 
 export type Env = z.infer<typeof envSchema>;

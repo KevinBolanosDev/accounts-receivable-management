@@ -10,3 +10,21 @@ generator client {
 datasource db {
   provider = "postgresql"
 }
+
+enum Rol {
+  ADMIN
+  COBRADOR
+}
+
+// Solo el modelo mínimo que el login necesita (Fase 1). El resto del modelo
+// de datos (Cliente, Ruta, Crédito...) es de Fase 2.
+model Usuario {
+  id           String   @id @default(uuid())
+  nombre       String
+  documento    String   @unique
+  passwordHash String
+  rol          Rol
+  activo       Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+}
