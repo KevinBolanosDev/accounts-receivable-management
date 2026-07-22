@@ -2,9 +2,21 @@
 
 import { useEffect, useRef, useState } from "react";
 import { notFound } from "next/navigation";
-import { PlusIcon, SendIcon } from "lucide-react";
+import { useForm } from "react-hook-form";
+import {
+  CheckIcon,
+  ChevronsUpDownIcon,
+  LogOutIcon,
+  MoreHorizontalIcon,
+  PencilIcon,
+  PlusIcon,
+  SendIcon,
+  Trash2Icon,
+  UserIcon,
+} from "lucide-react";
 import { toast } from "sonner";
 
+import { ClientCard } from "@/entities/client";
 import { formatCurrency } from "@/shared/lib/format-currency";
 import {
   animateProgressRing,
@@ -14,9 +26,18 @@ import {
   useReveal,
   useStagger,
 } from "@/shared/lib/motion";
+import { Avatar, AvatarFallback } from "@/shared/ui/avatar";
 import { Badge } from "@/shared/ui/badge";
 import { Button } from "@/shared/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/shared/ui/card";
+import {
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+} from "@/shared/ui/command";
 import {
   Dialog,
   DialogClose,
@@ -27,11 +48,30 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/shared/ui/dialog";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/shared/ui/dropdown-menu";
+import {
+  Form,
+  FormControl,
+  FormDescription,
+  FormField,
+  FormItem,
+  FormLabel,
+  FormMessage,
+} from "@/shared/ui/form";
 import { WhatsAppIcon } from "@/shared/ui/icons/whatsapp-icon";
 import { Input } from "@/shared/ui/input";
 import { Label } from "@/shared/ui/label";
+import { Popover, PopoverContent, PopoverTrigger } from "@/shared/ui/popover";
 import { ProgressRing } from "@/shared/ui/progress-ring";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/shared/ui/select";
+import { Switch } from "@/shared/ui/switch";
 import {
   Sheet,
   SheetClose,
@@ -112,6 +152,136 @@ function RevealDemo() {
     >
       <p className="text-h3">Entrada del hero móvil</p>
       <p className="text-body-sm opacity-80">useReveal con token “hero”.</p>
+    </div>
+  );
+}
+
+function FormDemo() {
+  const form = useForm<{ nombre: string }>({ defaultValues: { nombre: "" }, mode: "onBlur" });
+
+  return (
+    <Form {...form}>
+      <form
+        className="flex max-w-sm flex-col gap-4"
+        onSubmit={form.handleSubmit(() => toast.success("Formulario válido"))}
+      >
+        <FormField
+          control={form.control}
+          name="nombre"
+          rules={{ required: "El nombre es obligatorio." }}
+          render={({ field }) => (
+            <FormItem>
+              <FormLabel>Nombre del cliente</FormLabel>
+              <FormControl>
+                <Input placeholder="María Fernández" {...field} />
+              </FormControl>
+              <FormDescription>Se muestra en la ficha y en los recibos.</FormDescription>
+              <FormMessage />
+            </FormItem>
+          )}
+        />
+        <Button type="submit" variant="secondary" className="w-fit">
+          Validar
+        </Button>
+      </form>
+    </Form>
+  );
+}
+
+const COBRADORES_DEMO = ["Carlos Ramírez", "Ana Torres", "Luis Pardo", "Diana Gómez"];
+
+function ComboboxDemo() {
+  const [open, setOpen] = useState(false);
+  const [value, setValue] = useState<string | null>(null);
+
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <Button variant="secondary" role="combobox" aria-expanded={open} className="w-64 justify-between">
+          {value ?? "Selecciona un cobrador"}
+          <ChevronsUpDownIcon className="opacity-50" />
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent className="w-64 p-0" align="start">
+        <Command>
+          <CommandInput placeholder="Buscar cobrador..." />
+          <CommandList>
+            <CommandEmpty>Sin resultados.</CommandEmpty>
+            <CommandGroup>
+              {COBRADORES_DEMO.map((nombre) => (
+                <CommandItem
+                  key={nombre}
+                  value={nombre}
+                  onSelect={(current) => {
+                    setValue(current === value ? null : current);
+                    setOpen(false);
+                  }}
+                >
+                  <CheckIcon className={value === nombre ? "opacity-100" : "opacity-0"} />
+                  {nombre}
+                </CommandItem>
+              ))}
+            </CommandGroup>
+          </CommandList>
+        </Command>
+      </PopoverContent>
+    </Popover>
+  );
+}
+
+function UserMenuDemo() {
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button variant="secondary">
+          <UserIcon />
+          Admin Demo
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" className="w-48">
+        <DropdownMenuLabel>Mi cuenta</DropdownMenuLabel>
+        <DropdownMenuSeparator />
+        <DropdownMenuItem>
+          <UserIcon />
+          Perfil
+        </DropdownMenuItem>
+        <DropdownMenuItem variant="destructive">
+          <LogOutIcon />
+          Cerrar sesión
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
+
+function RowActionsDemo() {
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button variant="ghost" size="icon" aria-label="Acciones">
+          <MoreHorizontalIcon />
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" className="w-40">
+        <DropdownMenuItem>
+          <PencilIcon />
+          Editar
+        </DropdownMenuItem>
+        <DropdownMenuItem variant="destructive">
+          <Trash2Icon />
+          Eliminar
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
+
+function SwitchDemo() {
+  const [checked, setChecked] = useState(true);
+  return (
+    <div className="flex items-center gap-3">
+      <Switch id="gallery-activa" checked={checked} onCheckedChange={setChecked} />
+      <Label htmlFor="gallery-activa">Ruta {checked ? "activa" : "inactiva"}</Label>
     </div>
   );
 }
@@ -295,6 +465,63 @@ export default function UiGalleryPage() {
         <div className="flex flex-col gap-1">
           <span className="text-caption text-muted-foreground uppercase">Count-up de monto</span>
           <CountUpDemo />
+        </div>
+      </Section>
+
+      <Section
+        title="Form (react-hook-form)"
+        description="Wrapper con Label + control + descripción + error a11y — Fase 2"
+      >
+        <FormDemo />
+      </Section>
+
+      <Section title="Avatar" description="Iniciales de la Client card — DESIGN_SYSTEM.md §2.4">
+        <div className="flex items-center gap-3">
+          <Avatar>
+            <AvatarFallback>MF</AvatarFallback>
+          </Avatar>
+          <Avatar>
+            <AvatarFallback>LP</AvatarFallback>
+          </Avatar>
+          <Avatar className="size-12">
+            <AvatarFallback>AT</AvatarFallback>
+          </Avatar>
+        </div>
+      </Section>
+
+      <Section
+        title="Client card"
+        description="entities/client — saldo/estado/anillo son stub hasta la Fase 3"
+      >
+        <div className="grid max-w-md gap-3">
+          <ClientCard
+            cliente={{ nombre: "María Fernández", ruta: { id: "r1", nombre: "Ruta 3 · Centro" } }}
+            interactive
+          />
+          <ClientCard
+            cliente={{ nombre: "Luis Pardo", ruta: { id: "r2", nombre: "Ruta 6 · Kennedy" } }}
+            saldoPendiente={180000}
+            estado="proximo-a-vencer"
+            porcentajePagado={62}
+          />
+        </div>
+      </Section>
+
+      <Section title="Switch" description="Toggle activa/inactiva (pantalla 7b)">
+        <SwitchDemo />
+      </Section>
+
+      <Section
+        title="Combobox (Popover + Command)"
+        description="Selector de cobrador con búsqueda (pantalla 7b)"
+      >
+        <ComboboxDemo />
+      </Section>
+
+      <Section title="Dropdown menu" description="Menú de usuario del topbar y acciones de fila">
+        <div className="flex flex-wrap items-center gap-3">
+          <UserMenuDemo />
+          <RowActionsDemo />
         </div>
       </Section>
 

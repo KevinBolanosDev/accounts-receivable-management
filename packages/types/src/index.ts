@@ -1,2 +1,5 @@
 export * from "./health";
 export * from "./auth";
+export * from "./route";
+export * from "./client";
+export * from "./cobrador";

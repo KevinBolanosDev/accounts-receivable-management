@@ -1,0 +1,59 @@
+import { z } from "zod";
+
+// Cliente expuesto al frontend. NUNCA incluye `tokenAcceso` (se genera en el
+// servidor con cripto y es del acceso público del cliente final, Fase 4).
+export const clienteSchema = z.object({
+  id: z.string(),
+  nombre: z.string(),
+  telefono: z.string(),
+  documento: z.string(),
+  direccion: z.string(),
+  fotoDocumentoUrl: z.string().url().nullable(),
+  rutaId: z.string(),
+});
+export type Cliente = z.infer<typeof clienteSchema>;
+
+// Fila de la tabla (pantalla 3c) y forma que consume la Client card.
+// NO incluye saldo/estado/porcentaje: son datos de Crédito → se agregan al
+// contrato en la Fase 3. Por eso la Client card los toma como props opcionales.
+export const clienteListItemSchema = clienteSchema.extend({
+  ruta: z.object({ id: z.string(), nombre: z.string() }).nullable(),
+});
+export type ClienteListItem = z.infer<typeof clienteListItemSchema>;
+
+// Detalle de cliente (pantalla 5c). La Credit card + historial de pagos se
+// enriquecen en la Fase 3; aquí solo la ficha base.
+export const clienteDetailSchema = clienteSchema.extend({
+  ruta: z.object({ id: z.string(), nombre: z.string() }).nullable(),
+});
+export type ClienteDetail = z.infer<typeof clienteDetailSchema>;
+
+// Body del alta de cliente (pantalla 4c / 17c). Sin `tokenAcceso` (server) y
+// con la foto opcional (se sube aparte, ver `uploadFotoDocumentoResponseSchema`).
+export const createClienteRequestSchema = z.object({
+  nombre: z.string().min(1, "El nombre es obligatorio."),
+  telefono: z.string().min(1, "El teléfono es obligatorio."),
+  documento: z.string().min(1, "El documento es obligatorio."),
+  direccion: z.string().min(1, "La dirección es obligatoria."),
+  rutaId: z.string().min(1, "Selecciona una ruta."),
+  fotoDocumentoUrl: z.string().url().nullable().optional(),
+});
+export type CreateClienteRequest = z.infer<typeof createClienteRequestSchema>;
+
+export const updateClienteRequestSchema = createClienteRequestSchema.partial();
+export type UpdateClienteRequest = z.infer<typeof updateClienteRequestSchema>;
+
+// Filtros de la lista (pantalla 3c). El filtro por `estado` se difiere a la
+// Fase 3 (depende de Crédito); aquí solo buscador y filtro por ruta.
+export const clientesQuerySchema = z.object({
+  search: z.string().optional(),
+  rutaId: z.string().optional(),
+});
+export type ClientesQuery = z.infer<typeof clientesQuerySchema>;
+
+// Respuesta del endpoint de subida de foto. El request es multipart (lo valida
+// Multer + un file-pipe en el backend), no un schema Zod de body.
+export const uploadFotoDocumentoResponseSchema = z.object({
+  fotoDocumentoUrl: z.string().url(),
+});
+export type UploadFotoDocumentoResponse = z.infer<typeof uploadFotoDocumentoResponseSchema>;
