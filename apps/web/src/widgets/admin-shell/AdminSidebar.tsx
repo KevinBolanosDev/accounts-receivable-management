@@ -6,6 +6,7 @@ import { LogOutIcon } from "lucide-react";
 import type { Rol } from "@repo/types";
 
 import { useSessionStore } from "@/entities/session";
+import { getInitials } from "@/shared/lib/initials";
 import { cn } from "@/shared/lib/utils";
 import {
   DropdownMenu,
@@ -27,15 +28,6 @@ const ROL_LABEL: Record<Rol, string> = {
   ADMIN: "Administrador",
   COBRADOR: "Cobrador",
 };
-
-function initials(nombre: string): string {
-  const parts = nombre.trim().split(/\s+/).filter(Boolean);
-  const first = parts[0];
-  if (!first) return "?";
-  const last = parts[parts.length - 1];
-  if (parts.length === 1 || !last) return first.slice(0, 2).toUpperCase();
-  return `${first[0] ?? ""}${last[0] ?? ""}`.toUpperCase();
-}
 
 // Marca "anillo + CobroDiario" (DESIGN_SYSTEM.md §1.7, elemento de firma).
 function SidebarBrand() {
@@ -84,7 +76,7 @@ function SidebarUser() {
             className="flex w-full items-center gap-3 rounded-md p-2 text-left transition-colors hover:bg-muted focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none"
           >
             <span className="flex size-9 shrink-0 items-center justify-center rounded-full bg-primary text-sm font-semibold text-primary-foreground">
-              {initials(nombre)}
+              {getInitials(nombre)}
             </span>
             <span className="flex min-w-0 flex-1 flex-col">
               <span className="truncate text-sm font-semibold">{nombre}</span>
