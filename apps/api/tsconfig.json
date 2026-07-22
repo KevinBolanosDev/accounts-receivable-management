@@ -16,5 +16,5 @@
     "noFallthroughCasesInSwitch": false,
     "noUnusedParameters": false
   },
-  "include": ["src/**/*.ts", "test/**/*.ts", "prisma.config.ts"]
+  "include": ["src/**/*.ts", "test/**/*.ts"]
 }

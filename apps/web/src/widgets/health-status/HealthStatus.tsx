@@ -36,15 +36,11 @@ export function HealthStatus() {
   }, []);
 
   if (state.step === "loading") {
-    return <p className="text-zinc-600 dark:text-zinc-400">Consultando la API...</p>;
+    return <p className="text-muted-foreground">Consultando la API...</p>;
   }
 
   if (state.step === "error") {
-    return (
-      <p className="text-red-600 dark:text-red-400">
-        No se pudo conectar con la API: {state.message}
-      </p>
-    );
+    return <p className="text-destructive">No se pudo conectar con la API: {state.message}</p>;
   }
 
   return (
@@ -64,7 +60,7 @@ export function HealthStatus() {
       {state.data.database && (
         <div className="flex gap-2">
           <dt className="font-semibold">Base de datos:</dt>
-          <dd className={state.data.database === "up" ? "text-green-600" : "text-amber-600"}>
+          <dd className={state.data.database === "up" ? "text-success" : "text-warning"}>
             {state.data.database}
           </dd>
         </div>

@@ -84,8 +84,9 @@ modules/<feature>/             one module per feature: <feature>.module.ts, .con
 `HealthModule` (`modules/health/`) is the reference implementation of the module/controller/service pattern — copy its shape for new feature modules. `GET /health` reports `{ status, uptime, timestamp, database }`, where `database` is checked via a live query and never throws (returns `"down"` instead of crashing the app if Postgres is unreachable).
 
 **Prisma is on v7**, which changed significantly from earlier versions used in most existing tutorials/training data:
+
 - `PrismaClient` now **requires** an explicit driver adapter (`@prisma/adapter-pg`'s `PrismaPg`, constructed with `connectionString`). The old plain `datasource db { url = env(...) }` + bare `new PrismaClient()` pattern no longer works — Prisma 7 hard-rejects a `url` field inside the `datasource` block in `schema.prisma` (`P1012` validation error). The connection string for the CLI (migrate/studio) lives in `prisma.config.ts`; the connection string for the runtime client is passed explicitly to `PrismaPg` in `PrismaService`.
-- The generator is pinned to `provider = "prisma-client-js"` (the classic generator), not the newer `"prisma-client"` generator. The new one emits TS using `import.meta.url`, which is ESM-only syntax that crashes (`ReferenceError: exports is not defined in ES module scope`) once compiled to CJS and actually loaded by a running Nest app — it only *looks* fine until something triggers a real (non-type-only) import.
+- The generator is pinned to `provider = "prisma-client-js"` (the classic generator), not the newer `"prisma-client"` generator. The new one emits TS using `import.meta.url`, which is ESM-only syntax that crashes (`ReferenceError: exports is not defined in ES module scope`) once compiled to CJS and actually loaded by a running Nest app — it only _looks_ fine until something triggers a real (non-type-only) import.
 - `prisma/schema.prisma` has no models yet — Fase 2 of the plan owns the data model.
 
 ### Next.js structure (`apps/web/src`)

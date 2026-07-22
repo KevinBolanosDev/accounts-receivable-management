@@ -1,0 +1,383 @@
+"use client";
+
+import { useEffect, useRef, useState } from "react";
+import { notFound } from "next/navigation";
+import { PlusIcon, SendIcon } from "lucide-react";
+import { toast } from "sonner";
+
+import { formatCurrency } from "@/shared/lib/format-currency";
+import {
+  animateProgressRing,
+  useCountUp,
+  useGSAP,
+  useReducedMotion,
+  useReveal,
+  useStagger,
+} from "@/shared/lib/motion";
+import { Badge } from "@/shared/ui/badge";
+import { Button } from "@/shared/ui/button";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/shared/ui/card";
+import {
+  Dialog,
+  DialogClose,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/shared/ui/dialog";
+import { WhatsAppIcon } from "@/shared/ui/icons/whatsapp-icon";
+import { Input } from "@/shared/ui/input";
+import { Label } from "@/shared/ui/label";
+import { ProgressRing } from "@/shared/ui/progress-ring";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/shared/ui/select";
+import {
+  Sheet,
+  SheetClose,
+  SheetContent,
+  SheetDescription,
+  SheetFooter,
+  SheetHeader,
+  SheetTitle,
+  SheetTrigger,
+} from "@/shared/ui/sheet";
+import { Skeleton } from "@/shared/ui/skeleton";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/shared/ui/table";
+import { Textarea } from "@/shared/ui/textarea";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/shared/ui/tooltip";
+
+function Section({
+  title,
+  description,
+  children,
+}: {
+  title: string;
+  description?: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <section className="border-border flex flex-col gap-4 border-b pb-10">
+      <div className="flex flex-col gap-1">
+        <h2 className="text-h2">{title}</h2>
+        {description && <p className="text-body-sm text-muted-foreground">{description}</p>}
+      </div>
+      {children}
+    </section>
+  );
+}
+
+function AnimatedRing({ value }: { value: number }) {
+  const ref = useRef<HTMLDivElement>(null);
+  const reduced = useReducedMotion();
+
+  useGSAP(() => animateProgressRing(ref.current, { reduced }), {
+    scope: ref,
+    dependencies: [value, reduced],
+  });
+
+  return <ProgressRing ref={ref} value={value} size="hero" />;
+}
+
+function StaggerDemo() {
+  const ref = useStagger<HTMLUListElement>("[data-stagger-item]");
+  const clientes = ["María Fernández", "Luis Pardo", "Ana Torres", "Carlos Ramírez"];
+
+  return (
+    <ul ref={ref} className="flex flex-col gap-2">
+      {clientes.map((nombre) => (
+        <li
+          key={nombre}
+          data-stagger-item
+          className="border-border bg-card rounded-lg border px-4 py-3 text-sm"
+        >
+          {nombre}
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+function CountUpDemo() {
+  const ref = useCountUp(320000, { format: formatCurrency });
+  return <span ref={ref} className="text-display tabular-nums" />;
+}
+
+function RevealDemo() {
+  const ref = useReveal({ token: "hero" });
+  return (
+    <div
+      ref={ref}
+      className="from-primary to-accent text-primary-foreground rounded-xl bg-linear-to-br p-6"
+    >
+      <p className="text-h3">Entrada del hero móvil</p>
+      <p className="text-body-sm opacity-80">useReveal con token “hero”.</p>
+    </div>
+  );
+}
+
+export default function UiGalleryPage() {
+  if (process.env.NODE_ENV === "production") {
+    notFound();
+  }
+
+  const [mode, setMode] = useState<"light" | "dark">("light");
+
+  useEffect(() => {
+    const root = document.documentElement;
+    const hadDark = root.classList.contains("dark");
+    root.classList.toggle("dark", mode === "dark");
+    return () => {
+      root.classList.toggle("dark", hadDark);
+    };
+  }, [mode]);
+
+  return (
+    <div className="bg-background text-foreground mx-auto flex max-w-4xl flex-col gap-10 px-6 py-10">
+      <header className="flex items-center justify-between gap-4">
+        <div>
+          <h1 className="text-h1">/dev/ui — Galería del design system</h1>
+          <p className="text-body-sm text-muted-foreground">
+            Fase 0.5 · CobroDiario. Solo disponible en desarrollo.
+          </p>
+        </div>
+        <Button
+          variant="secondary"
+          onClick={() => setMode((current) => (current === "light" ? "dark" : "light"))}
+        >
+          Ver en modo {mode === "light" ? "oscuro" : "claro"}
+        </Button>
+      </header>
+
+      <Section title="Botones" description="Variantes × tamaños — DESIGN_SYSTEM.md §2.1">
+        <div className="flex flex-wrap items-center gap-3">
+          <Button variant="primary">Primary</Button>
+          <Button variant="secondary">Secondary</Button>
+          <Button variant="destructive">Destructive</Button>
+          <Button variant="ghost">Ghost</Button>
+          <Button variant="primary" loading>
+            Guardando
+          </Button>
+          <Button variant="primary" size="icon" aria-label="Agregar">
+            <PlusIcon />
+          </Button>
+        </div>
+        <div className="flex flex-wrap items-center gap-3">
+          <Button size="sm">sm · 32px</Button>
+          <Button size="md">md · 40px</Button>
+          <Button size="lg">lg · 48px</Button>
+        </div>
+      </Section>
+
+      <Section title="Badges de estado" description="DESIGN_SYSTEM.md §2.3">
+        <div className="flex flex-wrap gap-2">
+          <Badge status="activo">Activo</Badge>
+          <Badge status="proximo-a-vencer">Próximo a vencer</Badge>
+          <Badge status="mora">Mora</Badge>
+          <Badge status="pagado">Pagado</Badge>
+          <Badge status="ruta-abierta">Ruta abierta</Badge>
+          <Badge status="ruta-cerrada">Ruta cerrada</Badge>
+        </div>
+      </Section>
+
+      <Section title="Formularios" description="Input, Select, Textarea — radius sm, foco con ring">
+        <div className="grid gap-4 sm:grid-cols-2">
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="gallery-nombre">Nombre</Label>
+            <Input id="gallery-nombre" placeholder="María Fernández" />
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="gallery-ruta">Ruta</Label>
+            <Select>
+              <SelectTrigger id="gallery-ruta" className="w-full">
+                <SelectValue placeholder="Selecciona una ruta" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="centro">Ruta 3 · Centro</SelectItem>
+                <SelectItem value="sur">Ruta 2 · Sur</SelectItem>
+                <SelectItem value="occidente">Ruta 4 · Occidente</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="flex flex-col gap-1.5 sm:col-span-2">
+            <Label htmlFor="gallery-notas">Notas</Label>
+            <Textarea id="gallery-notas" placeholder="Observaciones del cliente..." />
+          </div>
+        </div>
+      </Section>
+
+      <Section
+        title="Card"
+        description="DESIGN_SYSTEM.md §2.4 — radius lg, borde 1px, padding 16–24px"
+      >
+        <Card className="max-w-sm">
+          <CardHeader>
+            <CardTitle>María Fernández</CardTitle>
+            <CardDescription>Ruta 3 · Centro</CardDescription>
+          </CardHeader>
+          <CardContent className="flex items-center justify-between">
+            <span className="text-amount tabular-nums">{formatCurrency(320000)}</span>
+            <Badge status="activo">Activo</Badge>
+          </CardContent>
+        </Card>
+      </Section>
+
+      <Section title="Tabla" description="Sin cebra, hover resalta la fila — DESIGN_SYSTEM.md §2.5">
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>Cliente</TableHead>
+              <TableHead>Ruta</TableHead>
+              <TableHead className="text-right">Saldo</TableHead>
+              <TableHead>Estado</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            <TableRow>
+              <TableCell>Jorge Salcedo</TableCell>
+              <TableCell>Ruta 3 · Centro</TableCell>
+              <TableCell className="text-right tabular-nums">{formatCurrency(180000)}</TableCell>
+              <TableCell>
+                <Badge status="proximo-a-vencer">Próximo a vencer</Badge>
+              </TableCell>
+            </TableRow>
+            <TableRow>
+              <TableCell>Laura Pérez</TableCell>
+              <TableCell>Ruta 6 · Kennedy</TableCell>
+              <TableCell className="text-right tabular-nums">{formatCurrency(540000)}</TableCell>
+              <TableCell>
+                <Badge status="mora">Mora</Badge>
+              </TableCell>
+            </TableRow>
+          </TableBody>
+        </Table>
+      </Section>
+
+      <Section
+        title="Anillo de progreso"
+        description="32 / 64 / 120px, viraje a --success sobre ~90% — DESIGN_SYSTEM.md §1.7"
+      >
+        <div className="flex flex-wrap items-end gap-8">
+          <div className="flex flex-col items-center gap-2">
+            <ProgressRing value={45} size="mini" />
+            <span className="text-caption text-muted-foreground uppercase">mini · 32</span>
+          </div>
+          <div className="flex flex-col items-center gap-2">
+            <ProgressRing value={68} size="md" />
+            <span className="text-caption text-muted-foreground uppercase">md · 64</span>
+          </div>
+          <div className="flex flex-col items-center gap-2">
+            <ProgressRing value={95} size="md" />
+            <span className="text-caption text-muted-foreground uppercase">md · 64 (≥90%)</span>
+          </div>
+          <div className="flex flex-col items-center gap-2">
+            <AnimatedRing value={68} />
+            <span className="text-caption text-muted-foreground uppercase">
+              hero · 120 (animado)
+            </span>
+          </div>
+        </div>
+      </Section>
+
+      <Section
+        title="Movimiento"
+        description="useReveal, useStagger, useCountUp — GSAP, con gate de prefers-reduced-motion"
+      >
+        <div className="grid gap-6 sm:grid-cols-2">
+          <RevealDemo />
+          <div className="flex flex-col gap-2">
+            <span className="text-caption text-muted-foreground uppercase">
+              Mi ruta de hoy (stagger)
+            </span>
+            <StaggerDemo />
+          </div>
+        </div>
+        <div className="flex flex-col gap-1">
+          <span className="text-caption text-muted-foreground uppercase">Count-up de monto</span>
+          <CountUpDemo />
+        </div>
+      </Section>
+
+      <Section
+        title="Overlays"
+        description="Dialog, Sheet (bottom sheet móvil), Toast/Sonner, Tooltip"
+      >
+        <div className="flex flex-wrap items-center gap-3">
+          <Dialog>
+            <DialogTrigger asChild>
+              <Button variant="secondary">Abrir modal</Button>
+            </DialogTrigger>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>Cerrar ruta</DialogTitle>
+                <DialogDescription>
+                  Esta acción congela los totales del día. No se puede deshacer.
+                </DialogDescription>
+              </DialogHeader>
+              <DialogFooter>
+                <DialogClose asChild>
+                  <Button variant="secondary">Cancelar</Button>
+                </DialogClose>
+                <Button variant="destructive">Cerrar ruta</Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
+
+          <Sheet>
+            <SheetTrigger asChild>
+              <Button variant="secondary">Abrir bottom sheet</Button>
+            </SheetTrigger>
+            <SheetContent side="bottom">
+              <SheetHeader>
+                <SheetTitle>Registrar cobro</SheetTitle>
+                <SheetDescription>Monto prellenado con la cuota diaria.</SheetDescription>
+              </SheetHeader>
+              <div className="px-4">
+                <Input defaultValue={formatCurrency(20000)} />
+              </div>
+              <SheetFooter>
+                <SheetClose asChild>
+                  <Button variant="primary" size="lg">
+                    Confirmar cobro
+                  </Button>
+                </SheetClose>
+              </SheetFooter>
+            </SheetContent>
+          </Sheet>
+
+          <Button variant="secondary" onClick={() => toast.success("Cobro registrado")}>
+            Toast de éxito
+          </Button>
+          <Button variant="secondary" onClick={() => toast.error("No se pudo registrar el cobro")}>
+            Toast de error
+          </Button>
+
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button variant="ghost" size="icon" aria-label="Enviar recibo">
+                <SendIcon />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>Compartir por WhatsApp</TooltipContent>
+          </Tooltip>
+
+          <Button variant="secondary">
+            <WhatsAppIcon className="size-4" />
+            Compartir
+          </Button>
+        </div>
+      </Section>
+
+      <Section
+        title="Skeleton"
+        description="Imita la forma real del contenido — DESIGN_SYSTEM.md §2.9"
+      >
+        <div className="flex flex-col gap-2">
+          <Skeleton className="h-4 w-48" />
+          <Skeleton className="h-4 w-64" />
+          <Skeleton className="h-10 w-full" />
+        </div>
+      </Section>
+    </div>
+  );
+}

@@ -32,3 +32,7 @@ coverage/
 
 # Docs
 /specs
+
+# Agents
+.agents
+.claude

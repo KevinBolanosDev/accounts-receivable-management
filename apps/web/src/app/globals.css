@@ -1,26 +1,139 @@
 @import "tailwindcss";
+@import "tw-animate-css";
+
+/* Class-based dark mode: `dark:` variants key off an ancestor `.dark` class
+   (set per surface by route-group layouts) instead of `prefers-color-scheme`. */
+@custom-variant dark (&:where(.dark, .dark *));
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --background: 0 0% 98%;
+  --foreground: 240 10% 10%;
+  --card: 0 0% 100%;
+  --card-foreground: 240 10% 10%;
+  --popover: var(--card);
+  --popover-foreground: var(--card-foreground);
+  --primary: 243 75% 59%;
+  --primary-foreground: 0 0% 100%;
+  --secondary: 240 5% 96%;
+  --secondary-foreground: 240 10% 10%;
+  --muted: 240 5% 96%;
+  --muted-foreground: 240 4% 46%;
+  --accent: 189 94% 43%;
+  --accent-foreground: 0 0% 100%;
+  --destructive: 0 84% 60%;
+  --destructive-foreground: 0 0% 100%;
+  --success: 160 84% 39%;
+  --success-foreground: 0 0% 100%;
+  --warning: 38 92% 50%;
+  --warning-foreground: 240 10% 10%;
+  --border: 240 6% 90%;
+  --input: 240 6% 90%;
+  --ring: 243 75% 59%;
+  --radius: 0.875rem;
+}
+
+.dark {
+  --background: 240 14% 7%;
+  --foreground: 240 5% 96%;
+  --card: 240 8% 11%;
+  --card-foreground: 240 5% 96%;
+  --popover: var(--card);
+  --popover-foreground: var(--card-foreground);
+  --primary: 239 84% 67%;
+  --primary-foreground: 0 0% 100%;
+  --secondary: 240 6% 16%;
+  --secondary-foreground: 240 5% 96%;
+  --muted: 240 6% 16%;
+  --muted-foreground: 240 5% 65%;
+  --accent: 189 94% 55%;
+  --accent-foreground: 240 10% 10%;
+  --destructive: 0 84% 65%;
+  --destructive-foreground: 0 0% 100%;
+  --success: 160 84% 45%;
+  --success-foreground: 0 0% 100%;
+  --warning: 38 92% 55%;
+  --warning-foreground: 240 10% 10%;
+  --border: 240 6% 18%;
+  --input: 240 6% 18%;
+  --ring: 239 84% 67%;
 }
 
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --color-background: hsl(var(--background));
+  --color-foreground: hsl(var(--foreground));
+  --color-card: hsl(var(--card));
+  --color-card-foreground: hsl(var(--card-foreground));
+  --color-popover: hsl(var(--popover));
+  --color-popover-foreground: hsl(var(--popover-foreground));
+  --color-primary: hsl(var(--primary));
+  --color-primary-foreground: hsl(var(--primary-foreground));
+  --color-secondary: hsl(var(--secondary));
+  --color-secondary-foreground: hsl(var(--secondary-foreground));
+  --color-muted: hsl(var(--muted));
+  --color-muted-foreground: hsl(var(--muted-foreground));
+  --color-accent: hsl(var(--accent));
+  --color-accent-foreground: hsl(var(--accent-foreground));
+  --color-destructive: hsl(var(--destructive));
+  --color-destructive-foreground: hsl(var(--destructive-foreground));
+  --color-success: hsl(var(--success));
+  --color-success-foreground: hsl(var(--success-foreground));
+  --color-warning: hsl(var(--warning));
+  --color-warning-foreground: hsl(var(--warning-foreground));
+  --color-border: hsl(var(--border));
+  --color-input: hsl(var(--input));
+  --color-ring: hsl(var(--ring));
+
+  /* DESIGN_SYSTEM.md §1.4 — sm 8px · md 12px · lg (base) 14px · xl 20px · full is Tailwind's built-in rounded-full */
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: var(--radius);
+  --radius-xl: 20px;
+
+  --font-sans: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
+
+  /* DESIGN_SYSTEM.md §1.2 — escala tipográfica, expuesta como utilidades text-* */
+  --text-display: 36px;
+  --text-display--line-height: 1.15;
+  --text-display--font-weight: 700;
+  --text-display--letter-spacing: -0.02em;
+
+  --text-h1: 28px;
+  --text-h1--line-height: 1.25;
+  --text-h1--font-weight: 600;
+
+  --text-h2: 22px;
+  --text-h2--line-height: 1.3;
+  --text-h2--font-weight: 600;
+
+  --text-h3: 18px;
+  --text-h3--line-height: 1.4;
+  --text-h3--font-weight: 600;
+
+  --text-body: 15px;
+  --text-body--line-height: 1.6;
+  --text-body--font-weight: 400;
+
+  --text-body-sm: 13px;
+  --text-body-sm--line-height: 1.5;
+  --text-body-sm--font-weight: 400;
+
+  --text-caption: 12px;
+  --text-caption--line-height: 1.4;
+  --text-caption--font-weight: 500;
+  --text-caption--letter-spacing: 0.04em;
+
+  /* Monto destacado — combinar con la utilidad tabular-nums */
+  --text-amount: 22px;
+  --text-amount--line-height: 1.2;
+  --text-amount--font-weight: 600;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+@layer base {
+  * {
+    @apply border-border;
   }
-}
 
-body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  body {
+    @apply bg-background text-foreground;
+  }
 }
