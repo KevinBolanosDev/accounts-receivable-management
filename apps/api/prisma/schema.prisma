@@ -16,15 +16,52 @@ enum Rol {
   COBRADOR
 }
 
-// Solo el modelo mínimo que el login necesita (Fase 1). El resto del modelo
-// de datos (Cliente, Ruta, Crédito...) es de Fase 2.
+// Modelo base de la Fase 1 (login), extendido en la Fase 2 con el resto del
+// dominio (Cliente, Ruta). Crédito llega en la Fase 3.
 model Usuario {
   id           String   @id @default(uuid())
   nombre       String
   documento    String   @unique
   passwordHash String
   rol          Rol
+  // Nullable: el Admin sembrado en la Fase 1 no tiene teléfono. Lo usan
+  // cobradorListItemSchema (Fase 2.11) y RutaDetail.cobradorTelefono (2.10).
+  telefono     String?
   activo       Boolean  @default(true)
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
+  rutas        Ruta[] // back-relation: un cobrador tiene 0..N rutas
+}
+
+model Ruta {
+  id         String    @id @default(uuid())
+  nombre     String    @unique // unique → upsert idempotente del seed
+  activa     Boolean   @default(true)
+  cobradorId String?
+  cobrador   Usuario?  @relation(fields: [cobradorId], references: [id], onDelete: SetNull)
+  clientes   Cliente[]
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+
+  @@index([cobradorId])
+}
+
+model Cliente {
+  id                      String   @id @default(uuid())
+  nombre                  String
+  telefono                String
+  documento               String   @unique
+  direccion               String
+  // Documento de identidad por ambos lados; cada uno sube por separado
+  // (ver uploadFotoDocumentoResponseSchema en @repo/types).
+  fotoDocumentoFrenteUrl  String?
+  fotoDocumentoReversoUrl String?
+  rutaId                  String // requerido: un cliente siempre vive en una ruta
+  ruta                    Ruta     @relation(fields: [rutaId], references: [id], onDelete: Restrict)
+  tokenAcceso             String   @unique // generado en el service (crypto), NO @default
+  activo                  Boolean  @default(true) // soft-delete
+  createdAt               DateTime @default(now())
+  updatedAt               DateTime @updatedAt
+
+  @@index([rutaId])
 }
