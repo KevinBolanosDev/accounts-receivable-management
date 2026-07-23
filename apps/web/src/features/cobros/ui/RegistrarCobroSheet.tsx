@@ -9,6 +9,7 @@ import {
   type CreateCobroRequest,
   type CreditoListItem,
 } from "@repo/types";
+import { toast } from "sonner";
 
 import { formatCurrency } from "@/shared/lib/format-currency";
 import { cn } from "@/shared/lib/utils";
@@ -36,30 +37,33 @@ import {
 import { useRegistrarCobro } from "../api/use-cobros";
 
 interface RegistrarCobroSheetProps {
-  /** Lista de créditos activos del cliente (puede venir de `useRutaHoy` o del detalle). */
+  /** Lista de créditos activos del cliente. */
   creditos: CreditoListItem[];
-  /** Crédito preseleccionado cuando solo hay uno activo (15c). */
+  /** Crédito preseleccionado cuando solo hay uno activo. */
   creditoPreseleccionado?: CreditoListItem;
+  /** Nombre del cliente para el subtítulo ("Cuota diaria de …"). */
+  clienteNombre?: string;
   /** Trigger personalizado (botón "Registrar cobro" en #16c). */
   children: React.ReactNode;
-  /** Callback tras un cobro exitoso (para invalidar queries externas si hace falta). */
+  /** Callback tras un cobro exitoso. */
   onCobrado?: (resp: CobroResponse) => void;
 }
 
-// DESIGN_SYSTEM.md §3.5 — bottom sheet de cobro (#16c móvil). Si hay varios
-// créditos activos se obliga a elegir uno (selector); si hay uno solo, se
-// pre-selecciona. El monto se pre-rellena con la cuota diaria del crédito
-// elegido y es editable. La validación es `createCobroRequestSchema` (Zod on-blur).
-// La actualización es optimista (definida en `use-cobros.ts`); al confirmar,
-// `registrarCobro.mutateAsync` ya reconcilia con el `CobroResponse` del server.
+// DESIGN_SYSTEM.md §3.5 / #16c — bottom sheet de cobro. El monto llega
+// prellenado con la cuota diaria en MODO LECTURA (tarjeta con "Editar"); al
+// editar se vuelve input. Muestra la vista previa del "Nuevo saldo pendiente"
+// y confirma con el botón en degradado de marca. Si hay varios créditos
+// activos se obliga a elegir uno. La actualización es optimista (use-cobros).
 
 export function RegistrarCobroSheet({
   creditos,
   creditoPreseleccionado,
+  clienteNombre,
   children,
   onCobrado,
 }: RegistrarCobroSheetProps) {
   const [open, setOpen] = React.useState(false);
+  const [editandoMonto, setEditandoMonto] = React.useState(false);
   const initialCreditoId =
     creditoPreseleccionado?.id ?? (creditos.length === 1 ? creditos[0]?.id ?? "" : "");
 
@@ -68,7 +72,7 @@ export function RegistrarCobroSheet({
     mode: "onBlur",
     defaultValues: {
       creditoId: initialCreditoId,
-      monto: creditoPreseleccionado?.cuotaDiaria ?? 0,
+      monto: creditoPreseleccionado?.cuotaDiaria ?? creditos[0]?.cuotaDiaria ?? 0,
     },
   });
 
@@ -76,14 +80,14 @@ export function RegistrarCobroSheet({
   const monto = form.watch("monto");
   const creditoElegido = creditos.find((c) => c.id === creditoId) ?? null;
   const saldo = creditoElegido?.saldoPendiente ?? 0;
+  const montoNum = Number.isFinite(monto) ? monto : 0;
+  const nuevoSaldo = Math.max(0, saldo - montoNum);
 
   // Cuando el cobrador cambia el crédito del selector, re-rellenamos el monto
-  // con la cuota diaria del nuevo crédito (UX del diseño).
+  // con la cuota diaria del nuevo crédito (sin pisar un valor editado a mano).
   React.useEffect(() => {
     if (creditoElegido && Number.isFinite(monto)) {
       const current = form.getValues("monto");
-      // Sólo re-rellenar si el monto coincide con el de OTRO crédito, no pisar
-      // el valor que el cobrador pueda haber editado a mano.
       const matchesOther = creditos.some(
         (c) => c.id !== creditoElegido.id && c.cuotaDiaria === current,
       );
@@ -102,26 +106,40 @@ export function RegistrarCobroSheet({
         type: "manual",
         message: `El monto no puede superar el saldo pendiente (${formatCurrency(saldo)}).`,
       });
+      setEditandoMonto(true);
       return;
     }
     try {
       const result = await registrar.mutateAsync(values);
       onCobrado?.(result);
+      toast.success("Cobro registrado");
       setOpen(false);
-    } catch {
-      // El rollback optimista ya se ejecutó en onError; dejamos el sheet abierto
-      // para que el cobrador vea el saldo real y pueda reintentar.
+      setEditandoMonto(false);
+    } catch (error) {
+      // El backend puede rechazar por carrera de saldo (409), scoping (403) o
+      // validación (400/404) — dejamos el sheet abierto para que el cobrador
+      // vea el error y pueda ajustar el monto o reintentar.
+      const message = error instanceof Error ? error.message : "No se pudo registrar el cobro.";
+      toast.error(message);
     }
   }
 
   return (
-    <Sheet open={open} onOpenChange={setOpen}>
+    <Sheet
+      open={open}
+      onOpenChange={(value) => {
+        setOpen(value);
+        if (!value) setEditandoMonto(false);
+      }}
+    >
       <SheetTrigger asChild>{children}</SheetTrigger>
-      <SheetContent side="bottom" className="max-h-[90dvh] overflow-y-auto">
+      <SheetContent side="bottom" className="max-h-[90dvh] overflow-y-auto rounded-t-2xl">
         <SheetHeader>
-          <SheetTitle>Registrar cobro</SheetTitle>
+          <SheetTitle className="text-h3">Registrar cobro</SheetTitle>
           <SheetDescription>
-            El saldo se actualiza al instante al confirmar.
+            {clienteNombre
+              ? `Cuota diaria de ${clienteNombre}`
+              : "El saldo se actualiza al instante al confirmar."}
           </SheetDescription>
         </SheetHeader>
 
@@ -158,41 +176,61 @@ export function RegistrarCobroSheet({
 
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="monto">Monto</Label>
-            <Input
-              id="monto"
-              type="number"
-              min={0}
-              inputMode="numeric"
-              className="h-12 text-h3 font-semibold tabular-nums"
-              {...form.register("monto", { valueAsNumber: true })}
-            />
+            {editandoMonto ? (
+              <Input
+                id="monto"
+                type="number"
+                min={0}
+                inputMode="numeric"
+                autoFocus
+                className="h-12 text-h3 font-semibold tabular-nums"
+                {...form.register("monto", { valueAsNumber: true })}
+              />
+            ) : (
+              <div className="flex h-12 items-center justify-between rounded-md bg-muted/50 px-4">
+                <span className="text-h3 font-semibold tabular-nums">
+                  {formatCurrency(montoNum)}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setEditandoMonto(true)}
+                  className="text-sm font-medium text-primary hover:underline"
+                >
+                  Editar
+                </button>
+              </div>
+            )}
             {form.formState.errors.monto ? (
               <p className="text-body-sm text-destructive" role="alert">
                 {form.formState.errors.monto.message}
               </p>
             ) : null}
-            <p className="text-caption text-muted-foreground">
-              Cuota sugerida: {formatCurrency(creditoElegido?.cuotaDiaria ?? 0)}
-              {" · "}Saldo pendiente:{" "}
-              <span className={cn("font-semibold tabular-nums")}>
-                {formatCurrency(saldo)}
-              </span>
-            </p>
+          </div>
+
+          <div className="flex items-center justify-between text-sm">
+            <span className="text-muted-foreground">Nuevo saldo pendiente</span>
+            <span className="font-bold tabular-nums">{formatCurrency(nuevoSaldo)}</span>
           </div>
         </form>
 
-        <SheetFooter className="gap-3">
-          <SheetClose asChild>
-            <Button variant="secondary">Cancelar</Button>
-          </SheetClose>
+        <SheetFooter className="flex-col gap-2">
           <Button
             type="submit"
             form="registrar-cobro"
             size="lg"
             loading={registrar.isPending}
+            className={cn(
+              "w-full bg-gradient-to-r from-primary to-accent text-primary-foreground",
+              "hover:opacity-95",
+            )}
           >
             Confirmar cobro
           </Button>
+          <SheetClose asChild>
+            <Button type="button" variant="ghost" className="w-full">
+              Cancelar
+            </Button>
+          </SheetClose>
         </SheetFooter>
       </SheetContent>
     </Sheet>

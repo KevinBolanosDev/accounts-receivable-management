@@ -5,10 +5,18 @@ import {
   NotFoundException,
 } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
-import type { CreateRutaRequest, RutaDetail, RutaListItem, UpdateRutaRequest } from "@repo/types";
+import type {
+  CreateRutaRequest,
+  CreditoListItem,
+  RutaCliente,
+  RutaDetail,
+  RutaListItem,
+  UpdateRutaRequest,
+} from "@repo/types";
 
 import type { AuthenticatedUser } from "../../core/auth/auth-request";
-import { RutasRepository, type RutaWithCount, type RutaWithDetail } from "./rutas.repository";
+import { mapCreditoListItem, rollupEstadoCliente } from "../../core/domain/credito-cliente.util";
+import { RutasRepository, type RutaWithClientesHoy, type RutaWithCount } from "./rutas.repository";
 
 // El scoping vive aquí, no en el repository: lee el rol/sub de @CurrentUser()
 // y decide qué `where` le pasa al repo. El repo nunca ve al usuario autenticado.
@@ -18,13 +26,13 @@ export class RutasService {
 
   async findAll(user: AuthenticatedUser): Promise<RutaListItem[]> {
     const where = this.scopeWhere(user);
-    const rutas = await this.rutasRepository.findMany(where);
+    const rutas = await this.rutasRepository.findMany(where, hoyRange());
     return rutas.map((ruta) => this.toListItem(ruta));
   }
 
   async findOne(id: string, user: AuthenticatedUser): Promise<RutaDetail> {
     const where = this.scopeWhere(user);
-    const ruta = await this.rutasRepository.findById(id, where);
+    const ruta = await this.rutasRepository.findById(id, where, hoyRange());
 
     if (!ruta) {
       throw new NotFoundException("Ruta no encontrada.");
@@ -40,7 +48,7 @@ export class RutasService {
         activa: body.activa,
         cobrador: body.cobradorId ? { connect: { id: body.cobradorId } } : undefined,
       });
-      return this.toListItem(ruta);
+      return this.toListItemFromWrite(ruta);
     } catch (error) {
       throw this.mapWriteError(error, { cobradorConnect: Boolean(body.cobradorId) });
     }
@@ -55,7 +63,7 @@ export class RutasService {
         activa: body.activa,
         cobrador: this.cobradorUpdate(body.cobradorId),
       });
-      return this.toListItem(ruta);
+      return this.toListItemFromWrite(ruta);
     } catch (error) {
       // Solo un `connect` a cobradorId puede fallar con "record not found" aquí;
       // si no se tocó cobrador, un P2025 solo puede ser la propia ruta (carrera
@@ -94,7 +102,7 @@ export class RutasService {
   }
 
   private async assertExists(id: string): Promise<void> {
-    const ruta = await this.rutasRepository.findById(id);
+    const ruta = await this.rutasRepository.findById(id, undefined, hoyRange());
     if (!ruta) {
       throw new NotFoundException("Ruta no encontrada.");
     }
@@ -132,7 +140,9 @@ export class RutasService {
     return error as Error;
   }
 
-  private toListItem(ruta: RutaWithCount): RutaListItem {
+  // Ruta recién creada/actualizada: sin clientes que agregar todavía en el
+  // mismo request, así que el resumen del día es 0 (no hace falta re-leer).
+  private toListItemFromWrite(ruta: RutaWithCount): RutaListItem {
     return {
       id: ruta.id,
       nombre: ruta.nombre,
@@ -140,33 +150,138 @@ export class RutasService {
       cobradorId: ruta.cobradorId,
       cobrador: ruta.cobrador ? { id: ruta.cobrador.id, nombre: ruta.cobrador.nombre } : null,
       clientesCount: ruta._count.clientes,
-      // Stub Fase 3/5: no hay Cobro/Cierre todavía.
       totalCobradoHoy: 0,
       avanceDelDia: 0,
       estadoDia: "abierta",
     };
   }
 
-  private toDetail(ruta: RutaWithDetail): RutaDetail {
+  private toListItem(ruta: RutaWithClientesHoy): RutaListItem {
+    const resumen = summarizeRuta(ruta);
     return {
-      ...this.toListItem(ruta),
-      cobradorTelefono: ruta.cobrador?.telefono ?? null,
-      // Stub Fase 3/5: no hay Cobro/Cierre todavía.
-      cobradoHoy: 0,
-      enMora: 0,
-      saldoTotal: 0,
-      cierres: [],
-      clientes: ruta.clientes.map((cliente) => ({
-        id: cliente.id,
-        nombre: cliente.nombre,
-        telefono: cliente.telefono,
-        documento: cliente.documento,
-        direccion: cliente.direccion,
-        fotoDocumentoFrenteUrl: cliente.fotoDocumentoFrenteUrl,
-        fotoDocumentoReversoUrl: cliente.fotoDocumentoReversoUrl,
-        rutaId: cliente.rutaId,
-        ruta: cliente.ruta ? { id: cliente.ruta.id, nombre: cliente.ruta.nombre } : null,
-      })),
+      id: ruta.id,
+      nombre: ruta.nombre,
+      activa: ruta.activa,
+      cobradorId: ruta.cobradorId,
+      cobrador: ruta.cobrador ? { id: ruta.cobrador.id, nombre: ruta.cobrador.nombre } : null,
+      clientesCount: ruta.clientes.length,
+      totalCobradoHoy: resumen.totalCobradoHoy,
+      avanceDelDia: resumen.avanceDelDia,
+      // Stub Fase 5: el cierre diario es lo que abre/cierra el día de una ruta.
+      estadoDia: "abierta",
     };
   }
+
+  private toDetail(ruta: RutaWithClientesHoy): RutaDetail {
+    const resumen = summarizeRuta(ruta);
+    return {
+      id: ruta.id,
+      nombre: ruta.nombre,
+      activa: ruta.activa,
+      cobradorId: ruta.cobradorId,
+      cobrador: ruta.cobrador ? { id: ruta.cobrador.id, nombre: ruta.cobrador.nombre } : null,
+      cobradorTelefono: ruta.cobrador?.telefono ?? null,
+      estadoDia: "abierta",
+      avanceDelDia: resumen.avanceDelDia,
+      clientesCount: ruta.clientes.length,
+      cobradoHoy: resumen.totalCobradoHoy,
+      // Stub Fase 5: MORA se persiste a nivel de Crédito con el cierre diario;
+      // hoy ningún crédito llega a ese estado, así que el rollup nunca lo marca.
+      enMora: resumen.clientes.filter((c) => c.estado === "mora").length,
+      saldoTotal: resumen.saldoTotal,
+      cierres: [],
+      clientes: resumen.clientes,
+    };
+  }
+}
+
+function hoyRange(): { desde: Date; hasta: Date } {
+  const desde = new Date();
+  desde.setHours(0, 0, 0, 0);
+  const hasta = new Date(desde);
+  hasta.setDate(hasta.getDate() + 1);
+  return { desde, hasta };
+}
+
+function summarizeRuta(ruta: RutaWithClientesHoy): {
+  clientes: RutaCliente[];
+  totalCobradoHoy: number;
+  avanceDelDia: number;
+  saldoTotal: number;
+} {
+  const hoy = new Date();
+  let totalCobradoHoy = 0;
+  let elegibles = 0;
+  let cobrados = 0;
+  let saldoTotal = 0;
+
+  const clientes: RutaCliente[] = ruta.clientes.map((cliente) => {
+    const creditosActivos: CreditoListItem[] = [];
+    const creditosHistorial: CreditoListItem[] = [];
+    let cobroHoy: RutaCliente["cobroHoy"] = null;
+
+    for (const c of cliente.creditos) {
+      const item = mapCreditoListItem(c);
+      if (item.estado === "ACTIVO" || item.estado === "MORA") {
+        creditosActivos.push(item);
+      } else {
+        creditosHistorial.push(item);
+      }
+      // `c.pagos` ya viene filtrado al rango de HOY desde el repository.
+      const pagoHoy = c.pagos[0];
+      if (pagoHoy && (!cobroHoy || pagoHoy.fecha > new Date(cobroHoy.fecha))) {
+        cobroHoy = {
+          creditoId: c.id,
+          monto: Number(pagoHoy.monto.toString()),
+          fecha: pagoHoy.fecha.toISOString(),
+        };
+      }
+    }
+
+    const saldoActivos = creditosActivos.reduce((sum, c) => sum + c.saldoPendiente, 0);
+    const totalPagadoActivos = creditosActivos.reduce((sum, c) => sum + c.totalPagado, 0);
+    const montoTotalActivos = creditosActivos.reduce((sum, c) => sum + c.montoTotal, 0);
+    const porcentajePagado =
+      montoTotalActivos > 0
+        ? Number(((totalPagadoActivos / montoTotalActivos) * 100).toFixed(2))
+        : 0;
+    const estado = rollupEstadoCliente({
+      creditosActivos,
+      creditosHistorial,
+      hoy,
+      cuotaSugerida: creditosActivos[0]?.cuotaDiaria ?? 0,
+    });
+
+    saldoTotal += saldoActivos;
+    // Elegible para el resumen del día: tiene algo activo para cobrar, o ya se
+    // le cobró hoy (incluye el caso "pagó su última cuota justo hoy").
+    if (creditosActivos.length > 0 || cobroHoy) {
+      elegibles += 1;
+      if (cobroHoy) cobrados += 1;
+    }
+    if (cobroHoy) totalCobradoHoy += cobroHoy.monto;
+
+    return {
+      id: cliente.id,
+      nombre: cliente.nombre,
+      telefono: cliente.telefono,
+      documento: cliente.documento,
+      direccion: cliente.direccion,
+      fotoDocumentoFrenteUrl: cliente.fotoDocumentoFrenteUrl,
+      fotoDocumentoReversoUrl: cliente.fotoDocumentoReversoUrl,
+      rutaId: cliente.rutaId,
+      ruta: cliente.ruta ? { id: cliente.ruta.id, nombre: cliente.ruta.nombre } : null,
+      saldoPendiente: Number(saldoActivos.toFixed(2)),
+      porcentajePagado,
+      estado,
+      cobroHoy,
+    };
+  });
+
+  return {
+    clientes,
+    totalCobradoHoy: Number(totalCobradoHoy.toFixed(2)),
+    avanceDelDia: elegibles > 0 ? Math.round((cobrados / elegibles) * 100) : 0,
+    saldoTotal: Number(saldoTotal.toFixed(2)),
+  };
 }

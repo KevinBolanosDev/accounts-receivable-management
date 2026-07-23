@@ -17,9 +17,10 @@ export const rutaSchema = z.object({
 });
 export type Ruta = z.infer<typeof rutaSchema>;
 
-// Fila de la tabla (pantalla 6c). `totalCobradoHoy`, `avanceDelDia` y
-// `estadoDia` son datos de cobros/cierres (Fase 3/5): el backend real los da
-// en 0/"cerrada" en la Fase 2; el mock los llena para fidelidad del diseño.
+// Fila de la tabla (pantalla 6c) y tarjeta de "Mis rutas" (#cobrador). El
+// backend calcula `totalCobradoHoy`/`avanceDelDia` en tiempo real a partir de
+// los Pagos del día (Fase 3); `estadoDia` sigue en "abierta" fijo hasta el
+// cierre diario (Fase 5).
 export const rutaListItemSchema = rutaSchema.extend({
   cobrador: z.object({ id: z.string(), nombre: z.string() }).nullable(),
   clientesCount: z.number().int(),
@@ -36,8 +37,22 @@ export const cierreResumenSchema = z.object({
 });
 export type CierreResumen = z.infer<typeof cierreResumenSchema>;
 
-// Detalle de ruta (pantalla 8c): cabecera + KPIs + Client cards + histórico de
-// cierres. Los KPIs de dinero/mora y los cierres son stub (Fase 3/5).
+// Cliente dentro del detalle de ruta: el `ClienteListItem` base (ya con
+// saldo/estado/porcentaje reales) + `cobroHoy` — el pago más reciente de HOY
+// entre sus créditos activos, o `null` si aún no se le cobró. Es lo que
+// separa "Pendientes" de "Cobrados hoy" en #15c (cobrador) y colorea las
+// tarjetas de #8c (admin).
+export const rutaClienteSchema = clienteListItemSchema.extend({
+  cobroHoy: z
+    .object({ creditoId: z.string(), monto: z.number(), fecha: z.string() })
+    .nullable(),
+});
+export type RutaCliente = z.infer<typeof rutaClienteSchema>;
+
+// Detalle de ruta (pantalla 8c / #15c cobrador): cabecera + KPIs + Client
+// cards + histórico de cierres. `cobradoHoy`/`saldoTotal` son reales (Fase 3);
+// `enMora`/`cierres` siguen en stub — la detección de MORA a nivel de Crédito
+// y el cierre diario son Fase 5.
 export const rutaDetailSchema = rutaSchema.extend({
   cobrador: z.object({ id: z.string(), nombre: z.string() }).nullable(),
   cobradorTelefono: z.string().nullable(),
@@ -48,7 +63,7 @@ export const rutaDetailSchema = rutaSchema.extend({
   enMora: z.number().int(),
   saldoTotal: z.number(),
   cierres: z.array(cierreResumenSchema),
-  clientes: z.array(clienteListItemSchema),
+  clientes: z.array(rutaClienteSchema),
 });
 export type RutaDetail = z.infer<typeof rutaDetailSchema>;
 

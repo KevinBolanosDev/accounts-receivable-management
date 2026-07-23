@@ -75,6 +75,7 @@ function sampleClientes(rutaId: string, rutaNombre: string): RutaDetail["cliente
     saldoPendiente: c.saldoPendiente,
     estado: c.estado,
     porcentajePagado: c.porcentajePagado,
+    cobroHoy: null,
   }));
 }
 

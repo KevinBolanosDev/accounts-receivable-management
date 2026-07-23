@@ -1,0 +1,99 @@
+import { Prisma } from "@prisma/client";
+import type { CreditoListItem, EstadoCliente, EstadoCredito } from "@repo/types";
+
+// Compartido entre los módulos `clientes` y `rutas` — ambos necesitan mapear
+// filas de Credito a `CreditoListItem` y derivar el rollup de estado del
+// cliente (mora/próximo a vencer/pagado/activo). Vive en `core/` (no en
+// ninguno de los dos módulos) para no crear un import feature→feature: ambos
+// dependen de este helper, nunca uno del `.service.ts` del otro.
+
+export interface CreditoRowForMapping {
+  id: string;
+  codigo: string;
+  clienteId: string;
+  monto: Prisma.Decimal;
+  interes: Prisma.Decimal;
+  dias: number;
+  montoTotal: Prisma.Decimal;
+  cuotaDiaria: Prisma.Decimal;
+  saldoPendiente: Prisma.Decimal;
+  estado: EstadoCredito;
+  fechaInicio: Date;
+  producto: { nombre: string };
+}
+
+export function mapCreditoListItem(c: CreditoRowForMapping): CreditoListItem {
+  const monto = Number(c.monto.toString());
+  const interes = Number(c.interes.toString());
+  const montoTotal = Number(c.montoTotal.toString());
+  const saldoPendiente = Number(c.saldoPendiente.toString());
+  const totalPagado = Number((montoTotal - saldoPendiente).toFixed(2));
+  const porcentajePagado =
+    montoTotal > 0 ? Number(((totalPagado / montoTotal) * 100).toFixed(2)) : 0;
+  const cuotaDiaria = Number(c.cuotaDiaria.toString());
+  const cuotasTotal = c.dias;
+  const cuotasPagadas =
+    cuotaDiaria > 0 ? Math.min(c.dias, Math.round(totalPagado / cuotaDiaria)) : 0;
+
+  return {
+    id: c.id,
+    codigo: c.codigo,
+    clienteId: c.clienteId,
+    producto: c.producto.nombre,
+    monto,
+    interes,
+    dias: c.dias,
+    montoTotal,
+    cuotaDiaria,
+    saldoPendiente,
+    totalPagado,
+    porcentajePagado,
+    estado: c.estado,
+    fechaInicio: c.fechaInicio.toISOString(),
+    cuotasPagadas,
+    cuotasTotal,
+  };
+}
+
+// Rollup simple del estado del cliente (Fase 3 — definitivo se cierra en 5).
+// Reglas:
+//   - mora            → algún crédito activo está en MORA.
+//   - proximo-a-vencer→ algún crédito activo y cuota que vence HOY.
+//   - pagado          → sin créditos activos y al menos uno en historial pagado.
+//   - activo          → en otro caso.
+export function rollupEstadoCliente(args: {
+  creditosActivos: CreditoListItem[];
+  creditosHistorial: CreditoListItem[];
+  hoy: Date;
+  cuotaSugerida: number;
+}): EstadoCliente {
+  const { creditosActivos, creditosHistorial, hoy, cuotaSugerida } = args;
+  if (creditosActivos.some((c) => c.estado === "MORA")) return "mora";
+
+  if (creditosActivos.length > 0 && cuotaSugerida > 0) {
+    // "Próximo a vencer" si lo esperado a HOY supera a lo ya pagado del crédito
+    // más antiguo (proxy: el de saldo más grande). Es provisional (Fase 5 lo
+    // cierra con el cierre diario).
+    const masAntiguo = [...creditosActivos].sort((a, b) =>
+      a.fechaInicio.localeCompare(b.fechaInicio),
+    )[0];
+    if (masAntiguo) {
+      const inicio = new Date(masAntiguo.fechaInicio);
+      const diasTranscurridos = Math.max(
+        0,
+        Math.floor((hoy.getTime() - inicio.getTime()) / (1000 * 60 * 60 * 24)),
+      );
+      const esperado = diasTranscurridos * cuotaSugerida;
+      const cuotaTolerada = cuotaSugerida * 1;
+      if (esperado - masAntiguo.totalPagado > cuotaTolerada * 1.5) {
+        return "proximo-a-vencer";
+      }
+    }
+  }
+
+  if (creditosActivos.length === 0 && creditosHistorial.some((c) => c.estado === "PAGADO")) {
+    return "pagado";
+  }
+
+  return "activo";
+}

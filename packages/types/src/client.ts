@@ -36,14 +36,16 @@ export type ClienteListItem = z.infer<typeof clienteListItemSchema>;
 export const estadoPagoSchema = z.enum(["pagado", "tarde", "pendiente"]);
 export type EstadoPago = z.infer<typeof estadoPagoSchema>;
 
-// Detalle de cliente (pantalla 5c) y preview de 3c. Refinado en la Fase 3: un
-// cliente tiene 1:N créditos (puede tener varios activos a la vez), por lo que
-// el detalle expone arrays `creditosActivos`/`creditosHistorial` en vez del
-// `creditoActivo` singular de la Fase 2.
-export const clienteDetailSchema = clienteSchema.extend({
-  ruta: z.object({ id: z.string(), nombre: z.string() }).nullable(),
+// Detalle de cliente (pantalla 5c) y preview de 3c. Extiende `clienteListItemSchema`
+// (hereda `ruta`/`saldoPendiente`/`estado`/`porcentajePagado`, ya poblados de
+// verdad por el backend de Fase 3 — ver su comentario) en vez del `clienteSchema`
+// base, para no perder esos campos al re-parsear la respuesta en el controller.
+// Refinado en la Fase 3: un cliente tiene 1:N créditos (puede tener varios
+// activos a la vez), por lo que el detalle expone arrays
+// `creditosActivos`/`creditosHistorial` en vez del `creditoActivo` singular de
+// la Fase 2.
+export const clienteDetailSchema = clienteListItemSchema.extend({
   cobradorNombre: z.string().nullable(),
-  estado: estadoClienteSchema.optional(),
   creditosActivos: z.array(creditoListItemSchema),
   creditosHistorial: z.array(creditoListItemSchema),
   historialPagos: z.array(pagoSchema).optional(),
