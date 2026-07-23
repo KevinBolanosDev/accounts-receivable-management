@@ -182,45 +182,51 @@ async function seedProductos(): Promise<void> {
 interface CreditoSeed {
   codigo: string;
   clienteDocumento: string;
-  productoNombre: string;
-  montoTotal: string;
-  cuotaDiaria: string;
+  producto: string; // texto libre (nombre) — se registra por upsert
+  monto: string; // capital (sin interés)
+  interes: string; // % de interés
+  dias: number; // plazo = número de cuotas diarias
   pagos: { monto: string; cobradorDocumento: string }[];
 }
 
-// Créditos demo. `saldoPendiente` se materializa al final como
-// `montoTotal - Σ pagos` (no se deja al server derivarlo en lectura: es
-// evento-driven). El cobrador demo (1000000002) tiene varios clientes de su
-// ruta (María + Carlos) con créditos ACTIVOS → es el set que usará "Mi ruta
-// de hoy". También sembramos un PAGADO para que aparezca en pestaña Historial
-// del detalle de cliente.
+// Créditos demo. El seed guarda `monto`/`interes`/`dias` y DERIVA
+// `montoTotal = monto + monto*interes/100`, `cuotaDiaria = montoTotal/dias` y
+// `saldoPendiente = montoTotal - Σ pagos` (event-driven, igual que el service).
+// El cobrador demo (1000000002) tiene varios clientes de su ruta (María +
+// Carlos) con créditos ACTIVOS → es el set que usará "Mi ruta de hoy". También
+// sembramos un PAGADO para que aparezca en la pestaña Historial del detalle.
 const CREDITOS: CreditoSeed[] = [
   {
+    // 1.000.000 + 20% = 1.200.000 ; /60 = 20.000/día ; pagó 40.000 → saldo 1.160.000
     codigo: "CR-2041",
     clienteDocumento: "3001112222",
-    productoNombre: "Nevera",
-    montoTotal: "1000000.00",
-    cuotaDiaria: "20000.00",
+    producto: "Nevera",
+    monto: "1000000.00",
+    interes: "20.00",
+    dias: 60,
     pagos: [
       { monto: "20000.00", cobradorDocumento: "1000000002" },
       { monto: "20000.00", cobradorDocumento: "1000000002" },
     ],
   },
   {
+    // 1.200.000 + 25% = 1.500.000 ; /60 = 25.000/día ; pagó 25.000 → saldo 1.475.000
     codigo: "CR-2050",
     clienteDocumento: "3002223333",
-    productoNombre: "Lavadora",
-    montoTotal: "1200000.00",
-    cuotaDiaria: "25000.00",
+    producto: "Lavadora",
+    monto: "1200000.00",
+    interes: "25.00",
+    dias: 60,
     pagos: [{ monto: "25000.00", cobradorDocumento: "1000000002" }],
   },
   {
-    // Crédito PAGADO: 5 pagos de 200k = 1000000 → saldo 0 → estado PAGADO.
+    // PAGADO: 800.000 + 25% = 1.000.000 ; /5 = 200.000/día ; 5 pagos = saldo 0 → PAGADO.
     codigo: "CR-2060",
     clienteDocumento: "3006667777",
-    productoNombre: "Televisor",
-    montoTotal: "1000000.00",
-    cuotaDiaria: "200000.00",
+    producto: "Televisor",
+    monto: "800000.00",
+    interes: "25.00",
+    dias: 5,
     pagos: [
       { monto: "200000.00", cobradorDocumento: "1000000003" },
       { monto: "200000.00", cobradorDocumento: "1000000003" },
@@ -230,12 +236,13 @@ const CREDITOS: CreditoSeed[] = [
     ],
   },
   {
-    // Crédito recién creado, aún sin pagos (→ ACTIVO, saldo = montoTotal).
+    // Recién creado, sin pagos (→ ACTIVO, saldo = montoTotal). 500.000 + 20% = 600.000 ; /40 = 15.000/día.
     codigo: "CR-2070",
     clienteDocumento: "3004445555",
-    productoNombre: "Estufa",
-    montoTotal: "600000.00",
-    cuotaDiaria: "15000.00",
+    producto: "Estufa",
+    monto: "500000.00",
+    interes: "20.00",
+    dias: 40,
     pagos: [],
   },
 ];
@@ -245,10 +252,19 @@ async function seedCreditos(): Promise<void> {
     const cliente = await prisma.cliente.findUniqueOrThrow({
       where: { documento: c.clienteDocumento },
     });
-    const producto = await prisma.producto.findUniqueOrThrow({
-      where: { nombre: c.productoNombre },
+    // Producto por texto libre: upsert por nombre (igual que el service). No
+    // pisa el precioBase de los sembrados en seedProductos.
+    const monto = new Prisma.Decimal(c.monto);
+    const producto = await prisma.producto.upsert({
+      where: { nombre: c.producto },
+      update: { activo: true },
+      create: { nombre: c.producto, precioBase: monto, activo: true },
     });
-    const montoTotal = new Prisma.Decimal(c.montoTotal);
+
+    // Derivar montos como el service: total = monto + monto*interes/100.
+    const interes = new Prisma.Decimal(c.interes);
+    const montoTotal = monto.add(monto.mul(interes).div(100)).toDecimalPlaces(2);
+    const cuotaDiaria = c.dias > 0 ? montoTotal.div(c.dias).toDecimalPlaces(2) : new Prisma.Decimal(0);
     const totalPagado = c.pagos.reduce(
       (acc, p) => acc.add(new Prisma.Decimal(p.monto)),
       new Prisma.Decimal(0),
@@ -261,8 +277,11 @@ async function seedCreditos(): Promise<void> {
       update: {
         clienteId: cliente.id,
         productoId: producto.id,
+        monto,
+        interes,
+        dias: c.dias,
         montoTotal,
-        cuotaDiaria: new Prisma.Decimal(c.cuotaDiaria),
+        cuotaDiaria,
         saldoPendiente,
         estado,
       },
@@ -271,8 +290,11 @@ async function seedCreditos(): Promise<void> {
         codigo: c.codigo,
         clienteId: cliente.id,
         productoId: producto.id,
+        monto,
+        interes,
+        dias: c.dias,
         montoTotal,
-        cuotaDiaria: new Prisma.Decimal(c.cuotaDiaria),
+        cuotaDiaria,
         saldoPendiente,
         estado,
       },
@@ -296,7 +318,7 @@ async function seedCreditos(): Promise<void> {
     }
 
     console.log(
-      `Crédito sembrado: ${c.codigo} · ${cliente.nombre} · ${c.productoNombre} · ` +
+      `Crédito sembrado: ${c.codigo} · ${cliente.nombre} · ${c.producto} · ` +
         `saldo ${saldoPendiente.toFixed(2)} (${estado})`,
     );
   }

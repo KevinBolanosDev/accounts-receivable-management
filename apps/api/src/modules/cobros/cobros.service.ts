@@ -95,7 +95,7 @@ export class CobrosService {
         // 4) lectura final para devolver el Crédito recalculado + Pago.
         const creditoFinal = await tx.credito.findUniqueOrThrow({
           where: { id: body.creditoId },
-          include: { producto: { select: { id: true, nombre: true } } },
+          include: { producto: { select: { nombre: true } } },
         });
 
         result = {
@@ -148,13 +148,15 @@ function toCredito(c: {
   id: string;
   codigo: string;
   clienteId: string;
-  productoId: string;
+  monto: Prisma.Decimal;
+  interes: Prisma.Decimal;
+  dias: number;
   montoTotal: Prisma.Decimal;
   cuotaDiaria: Prisma.Decimal;
   saldoPendiente: Prisma.Decimal;
   estado: "ACTIVO" | "PAGADO" | "MORA" | "ANULADO";
   fechaInicio: Date;
-  producto: { id: string; nombre: string };
+  producto: { nombre: string };
 }): CreditoListItem {
   const montoTotal = decimalToNumber(c.montoTotal);
   const saldoPendiente = decimalToNumber(c.saldoPendiente);
@@ -162,14 +164,18 @@ function toCredito(c: {
   const porcentajePagado =
     montoTotal > 0 ? Number(((totalPagado / montoTotal) * 100).toFixed(2)) : 0;
   const cuotaDiaria = decimalToNumber(c.cuotaDiaria);
-  const cuotasTotal = cuotaDiaria > 0 ? Math.ceil(montoTotal / cuotaDiaria) : 0;
-  const cuotasPagadas = cuotaDiaria > 0 ? Math.round(totalPagado / cuotaDiaria) : 0;
+  const cuotasTotal = c.dias;
+  const cuotasPagadas =
+    cuotaDiaria > 0 ? Math.min(c.dias, Math.round(totalPagado / cuotaDiaria)) : 0;
 
   return {
     id: c.id,
     codigo: c.codigo,
     clienteId: c.clienteId,
-    productoId: c.productoId,
+    producto: c.producto.nombre,
+    monto: decimalToNumber(c.monto),
+    interes: decimalToNumber(c.interes),
+    dias: c.dias,
     montoTotal,
     cuotaDiaria,
     saldoPendiente,
@@ -177,7 +183,6 @@ function toCredito(c: {
     porcentajePagado,
     estado: c.estado,
     fechaInicio: c.fechaInicio.toISOString(),
-    producto: { id: c.producto.id, nombre: c.producto.nombre },
     cuotasPagadas,
     cuotasTotal,
   };

@@ -209,20 +209,26 @@ export class ClientsService {
 }
 
 function mapCreditoListItem(c: ClientWithDetail["creditos"][number]): CreditoListItem {
+  const monto = Number(c.monto.toString());
+  const interes = Number(c.interes.toString());
   const montoTotal = Number(c.montoTotal.toString());
   const saldoPendiente = Number(c.saldoPendiente.toString());
   const totalPagado = Number((montoTotal - saldoPendiente).toFixed(2));
   const porcentajePagado =
     montoTotal > 0 ? Number(((totalPagado / montoTotal) * 100).toFixed(2)) : 0;
   const cuotaDiaria = Number(c.cuotaDiaria.toString());
-  const cuotasTotal = cuotaDiaria > 0 ? Math.ceil(montoTotal / cuotaDiaria) : 0;
-  const cuotasPagadas = cuotaDiaria > 0 ? Math.round(totalPagado / cuotaDiaria) : 0;
+  const cuotasTotal = c.dias;
+  const cuotasPagadas =
+    cuotaDiaria > 0 ? Math.min(c.dias, Math.round(totalPagado / cuotaDiaria)) : 0;
 
   return {
     id: c.id,
     codigo: c.codigo,
     clienteId: c.clienteId,
-    productoId: c.productoId,
+    producto: c.producto.nombre,
+    monto,
+    interes,
+    dias: c.dias,
     montoTotal,
     cuotaDiaria,
     saldoPendiente,
@@ -230,7 +236,6 @@ function mapCreditoListItem(c: ClientWithDetail["creditos"][number]): CreditoLis
     porcentajePagado,
     estado: c.estado,
     fechaInicio: c.fechaInicio.toISOString(),
-    producto: { id: c.producto.id, nombre: c.producto.nombre },
     cuotasPagadas,
     cuotasTotal,
   };

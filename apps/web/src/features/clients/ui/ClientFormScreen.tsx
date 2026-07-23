@@ -10,6 +10,7 @@ import {
 import { toast } from "sonner";
 import { ChevronsUpDownIcon } from "lucide-react";
 
+import { calcularCredito } from "@/entities/credit";
 import { getInitials } from "@/shared/lib/initials";
 import { formatCurrency } from "@/shared/lib/format-currency";
 import { Badge } from "@/shared/ui/badge";
@@ -27,8 +28,8 @@ import {
 import { AdminPageHeader } from "@/widgets/admin-shell/AdminPageHeader";
 
 import { useRutas } from "@/features/routes-collectors/api/use-rutas";
-import { useProductos } from "@/features/productos/api/use-productos";
 import { useCreateCredito } from "@/features/creditos/api/use-creditos";
+import { ProductoField } from "@/features/creditos/ui/CreditoFields";
 
 import { useCliente, useCreateCliente, useUpdateCliente } from "../api/use-clientes";
 import { DocumentUploader } from "./DocumentUploader";
@@ -68,9 +69,10 @@ function PreviewRow({ label, children }: { label: string; children: React.ReactN
 
 interface CreditoOpcional {
   abrirCredito: boolean;
-  productoId: string;
-  montoTotal?: number | undefined;
-  cuotaDiaria?: number | undefined;
+  producto: string;
+  monto?: number | undefined;
+  interes?: number | undefined;
+  dias?: number | undefined;
 }
 
 type FormValues = CreateClienteRequest & CreditoOpcional;
@@ -84,9 +86,10 @@ const DEFAULTS: FormValues = {
   fotoDocumentoFrenteUrl: null,
   fotoDocumentoReversoUrl: null,
   abrirCredito: false,
-  productoId: "",
-  montoTotal: undefined,
-  cuotaDiaria: undefined,
+  producto: "",
+  monto: undefined,
+  interes: undefined,
+  dias: undefined,
 };
 
 export function ClientFormScreen({ clienteId }: { clienteId?: string }) {
@@ -94,7 +97,6 @@ export function ClientFormScreen({ clienteId }: { clienteId?: string }) {
   const router = useRouter();
   const { data: cliente } = useCliente(clienteId ?? "");
   const { data: rutas = [] } = useRutas();
-  const { data: productos = [] } = useProductos();
   const createCliente = useCreateCliente();
   const updateCliente = useUpdateCliente(clienteId ?? "");
   const createCredito = useCreateCredito();
@@ -110,6 +112,7 @@ export function ClientFormScreen({ clienteId }: { clienteId?: string }) {
     handleSubmit,
     control,
     setValue,
+    getValues,
     watch,
     formState: { errors },
     setError,
@@ -126,15 +129,15 @@ export function ClientFormScreen({ clienteId }: { clienteId?: string }) {
     // que validamos a mano antes de salir.
     if (!isEdit && v.abrirCredito) {
       const fieldErrors: Array<{ name: keyof CreditoOpcional; message: string }> = [];
-      if (!v.productoId) fieldErrors.push({ name: "productoId", message: "Selecciona un producto." });
-      if (typeof v.montoTotal !== "number" || v.montoTotal <= 0) {
-        fieldErrors.push({ name: "montoTotal", message: "El monto total debe ser mayor a 0." });
+      if (!v.producto?.trim()) fieldErrors.push({ name: "producto", message: "Escribe el producto." });
+      if (typeof v.monto !== "number" || v.monto <= 0) {
+        fieldErrors.push({ name: "monto", message: "El monto debe ser mayor a 0." });
       }
-      if (typeof v.cuotaDiaria !== "number" || v.cuotaDiaria <= 0) {
-        fieldErrors.push({
-          name: "cuotaDiaria",
-          message: "La cuota diaria debe ser mayor a 0.",
-        });
+      if (typeof v.interes !== "number" || v.interes < 0) {
+        fieldErrors.push({ name: "interes", message: "El interés no puede ser negativo." });
+      }
+      if (typeof v.dias !== "number" || v.dias <= 0) {
+        fieldErrors.push({ name: "dias", message: "Los días deben ser mayor a 0." });
       }
       if (fieldErrors.length > 0) {
         for (const err of fieldErrors) {
@@ -172,16 +175,18 @@ export function ClientFormScreen({ clienteId }: { clienteId?: string }) {
 
       if (
         v.abrirCredito &&
-        v.productoId &&
-        typeof v.montoTotal === "number" &&
-        typeof v.cuotaDiaria === "number"
+        v.producto?.trim() &&
+        typeof v.monto === "number" &&
+        typeof v.interes === "number" &&
+        typeof v.dias === "number"
       ) {
         try {
           await createCredito.mutateAsync({
             clienteId: clienteCreado.id,
-            productoId: v.productoId,
-            montoTotal: v.montoTotal,
-            cuotaDiaria: v.cuotaDiaria,
+            producto: v.producto.trim(),
+            monto: v.monto,
+            interes: v.interes,
+            dias: v.dias,
           });
           toast.success("Cliente y crédito creados");
         } catch {
@@ -305,64 +310,61 @@ export function ClientFormScreen({ clienteId }: { clienteId?: string }) {
 
               {abrirCredito ? (
                 <div className="flex flex-col gap-4 border-t border-border pt-4">
-                  <Field
-                    id="credito-producto"
-                    label="Producto"
-                    error={errors.productoId?.message}
-                  >
-                    <Select
-                      value={values.productoId || undefined}
-                      onValueChange={(v) =>
-                        setValue("productoId", v, { shouldValidate: true })
-                      }
-                    >
-                      <SelectTrigger id="credito-producto" className="w-full">
-                        <SelectValue placeholder="Selecciona un producto" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {productos.map((p) => (
-                          <SelectItem key={p.id} value={p.id}>
-                            {p.nombre} · {formatCurrency(p.precioBase)}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </Field>
+                  <Controller
+                    control={control}
+                    name="producto"
+                    render={({ field }) => (
+                      <ProductoField
+                        value={field.value ?? ""}
+                        onChange={field.onChange}
+                        onPickPrecio={(precio) => {
+                          if (!getValues("monto")) {
+                            setValue("monto", precio, { shouldValidate: true });
+                          }
+                        }}
+                        error={errors.producto?.message}
+                      />
+                    )}
+                  />
 
-                  <div className="grid gap-4 sm:grid-cols-2">
-                    <Field
-                      id="credito-monto"
-                      label="Monto total"
-                      error={errors.montoTotal?.message}
-                    >
+                  <div className="grid gap-4 sm:grid-cols-3">
+                    <Field id="credito-monto" label="Monto (COP)" error={errors.monto?.message}>
                       <Input
                         id="credito-monto"
                         type="number"
                         min={0}
                         inputMode="numeric"
-                        placeholder="1500000"
-                        {...register("montoTotal", { valueAsNumber: true })}
+                        placeholder="200000"
+                        {...register("monto", { valueAsNumber: true })}
                       />
                     </Field>
-                    <Field
-                      id="credito-cuota"
-                      label="Cuota diaria"
-                      error={errors.cuotaDiaria?.message}
-                    >
+                    <Field id="credito-interes" label="% de interés" error={errors.interes?.message}>
                       <Input
-                        id="credito-cuota"
+                        id="credito-interes"
                         type="number"
                         min={0}
+                        step="any"
+                        inputMode="decimal"
+                        placeholder="40"
+                        {...register("interes", { valueAsNumber: true })}
+                      />
+                    </Field>
+                    <Field id="credito-dias" label="Días" error={errors.dias?.message}>
+                      <Input
+                        id="credito-dias"
+                        type="number"
+                        min={1}
                         inputMode="numeric"
-                        placeholder="25000"
-                        {...register("cuotaDiaria", { valueAsNumber: true })}
+                        placeholder="30"
+                        {...register("dias", { valueAsNumber: true })}
                       />
                     </Field>
                   </div>
 
                   <CuotasEstimadasInline
-                    monto={Number(values.montoTotal ?? 0)}
-                    cuota={Number(values.cuotaDiaria ?? 0)}
+                    monto={Number(values.monto ?? 0)}
+                    interes={Number(values.interes ?? 0)}
+                    dias={Number(values.dias ?? 0)}
                   />
                 </div>
               ) : null}
@@ -413,16 +415,27 @@ export function ClientFormScreen({ clienteId }: { clienteId?: string }) {
   );
 }
 
-function CuotasEstimadasInline({ monto, cuota }: { monto: number; cuota: number }) {
-  const cuotas = monto > 0 && cuota > 0 ? Math.ceil(monto / cuota) : 0;
+function CuotasEstimadasInline({
+  monto,
+  interes,
+  dias,
+}: {
+  monto: number;
+  interes: number;
+  dias: number;
+}) {
+  const calc = calcularCredito(monto, interes, dias);
   return (
     <div
       className="flex items-center justify-between rounded-md bg-muted/40 px-3 py-2 text-caption text-muted-foreground"
       aria-live="polite"
     >
-      <span>Cuotas estimadas</span>
+      <span>
+        Cuota diaria estimada
+        {calc.cuotas > 0 ? ` · ${calc.cuotas} cuotas` : ""}
+      </span>
       <span className="font-semibold text-foreground tabular-nums">
-        {cuotas > 0 ? cuotas : "—"}
+        {calc.cuotaDiaria > 0 ? formatCurrency(calc.cuotaDiaria) : "—"}
       </span>
     </div>
   );

@@ -83,7 +83,7 @@ function ClientPreview({ cliente }: { cliente: ClienteDetail }) {
           <div className="flex flex-1 flex-col gap-2 text-sm">
             <div className="flex justify-between">
               <span className="text-muted-foreground">Producto</span>
-              <span className="font-medium">{credito.producto.nombre}</span>
+              <span className="font-medium">{credito.producto}</span>
             </div>
             <div className="flex justify-between">
               <span className="text-muted-foreground">Saldo pendiente</span>

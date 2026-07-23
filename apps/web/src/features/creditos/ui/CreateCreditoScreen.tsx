@@ -1,40 +1,31 @@
 "use client";
 
-import { useEffect, useMemo } from "react";
+import { useEffect, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
-import { useForm } from "react-hook-form";
+import { Controller, useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import {
-  createCreditoRequestSchema,
-  type CreateCreditoRequest,
-} from "@repo/types";
+import { createCreditoRequestSchema, type CreateCreditoRequest } from "@repo/types";
 import { toast } from "sonner";
 
+import { calcularCredito, type CreditoCalculo } from "@/entities/credit";
+import { cn } from "@/shared/lib/utils";
 import { formatCurrency } from "@/shared/lib/format-currency";
-import { Badge } from "@/shared/ui/badge";
 import { Button } from "@/shared/ui/button";
-import { Form, FormControl, FormField, FormItem, FormMessage } from "@/shared/ui/form";
 import { Input } from "@/shared/ui/input";
 import { Label } from "@/shared/ui/label";
-import { ProgressRing } from "@/shared/ui/progress-ring";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/shared/ui/select";
 import { AdminPageHeader } from "@/widgets/admin-shell/AdminPageHeader";
 
-import { useClientes } from "@/features/clients/api/use-clientes";
-import { ClientePicker } from "@/features/creditos/ui/CreditoFields";
-import { useProductos } from "@/features/productos/api/use-productos";
+import { ClientePicker, ProductoField } from "@/features/creditos/ui/CreditoFields";
 
 import { useCreateCredito } from "../api/use-creditos";
 
-// DESIGN_SYSTEM.md §3.3 — pantalla Crear crédito (Admin, #9c). Combobox de
-// cliente + Select de producto + monto/cuota con cálculo en vivo de cuotas
-// estimadas. La validación es Zod inline (resolver on-blur).
+// DESIGN_SYSTEM.md §3.3 — pantalla Crear crédito (Admin, #9c). Panel izquierdo
+// "Datos del crédito" (cliente + producto texto libre + monto/interés/días) y
+// panel derecho "Cálculo estimado" en vivo (nº de cuotas, cuota diaria, total,
+// duración, primeras cuotas). La cuota se DERIVA: cuota = (monto + interés)/días.
+// El producto es texto libre con autocompletado; el backend lo registra (upsert).
+
+const hoyISO = () => new Date().toISOString().slice(0, 10);
 
 export interface CreateCreditoScreenProps {
   /** Si viene desde #5c con el cliente preseleccionado (#9c). */
@@ -44,31 +35,34 @@ export interface CreateCreditoScreenProps {
 export function CreateCreditoScreen({ clienteIdInicial }: CreateCreditoScreenProps) {
   const router = useRouter();
   const createCredito = useCreateCredito();
-  const { data: clientes = [] } = useClientes();
-  const { data: productos = [] } = useProductos();
 
   const form = useForm<CreateCreditoRequest>({
     resolver: zodResolver(createCreditoRequestSchema),
     mode: "onBlur",
     defaultValues: {
       clienteId: clienteIdInicial ?? "",
-      productoId: "",
-      montoTotal: undefined,
-      cuotaDiaria: undefined,
-      fechaInicio: undefined,
+      producto: "",
+      monto: undefined,
+      interes: undefined,
+      dias: undefined,
+      fechaInicio: hoyISO(),
     },
   });
 
+  const { control, register, setValue, getValues, formState } = form;
+
   useEffect(() => {
     if (clienteIdInicial) {
-      form.setValue("clienteId", clienteIdInicial, { shouldValidate: true });
+      setValue("clienteId", clienteIdInicial, { shouldValidate: true });
     }
-  }, [clienteIdInicial, form]);
+  }, [clienteIdInicial, setValue]);
 
   const watched = form.watch();
-  const clienteSeleccionado = useMemo(
-    () => clientes.find((c) => c.id === watched.clienteId) ?? null,
-    [clientes, watched.clienteId],
+
+  const calc = calcularCredito(
+    Number(watched.monto ?? 0),
+    Number(watched.interes ?? 0),
+    Number(watched.dias ?? 0),
   );
 
   async function onSubmit(values: CreateCreditoRequest) {
@@ -82,165 +76,207 @@ export function CreateCreditoScreen({ clienteIdInicial }: CreateCreditoScreenPro
   }
 
   return (
-    <Form {...form}>
-      <form onSubmit={form.handleSubmit(onSubmit)}>
-        <AdminPageHeader
-          eyebrow="Créditos / Nuevo"
-          title="Crear crédito"
-          subtitle="Asigna un crédito a un cliente y define su cuota diaria."
-        />
+    <form onSubmit={form.handleSubmit(onSubmit)}>
+      <AdminPageHeader
+        eyebrow="Créditos / Nuevo"
+        title="Crear crédito"
+        subtitle="Asigna un crédito a un cliente. La cuota diaria se calcula automáticamente."
+      />
 
-        <div className="grid gap-6 p-4 sm:p-6 lg:grid-cols-[minmax(0,1fr)_360px]">
-          <div className="flex flex-col gap-4">
-            <div className="flex flex-col gap-4 rounded-lg border border-border bg-card p-6">
-              <p className="text-caption text-muted-foreground uppercase">Cliente y producto</p>
+      <div className="grid gap-6 p-4 sm:p-6 lg:grid-cols-[minmax(0,1fr)_360px]">
+        {/* Panel izquierdo — Datos del crédito */}
+        <div className="flex flex-col gap-4">
+          <div className="flex flex-col gap-4 rounded-lg border border-border bg-card p-6">
+            <p className="text-caption text-muted-foreground uppercase">Datos del crédito</p>
 
-              <FormField
-                control={form.control}
-                name="clienteId"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormControl>
-                      <ClientePicker
-                        value={field.value ?? ""}
-                        onChange={field.onChange}
-                        error={form.formState.errors.clienteId?.message}
-                      />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-
-              <FormField
-                control={form.control}
-                name="productoId"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormControl>
-                      <div className="flex flex-col gap-1.5">
-                        <Label htmlFor="credito-producto">Producto</Label>
-                        <Select value={field.value || undefined} onValueChange={field.onChange}>
-                          <SelectTrigger id="credito-producto" className="w-full">
-                            <SelectValue placeholder="Selecciona un producto" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {productos.map((p) => (
-                              <SelectItem key={p.id} value={p.id}>
-                                {p.nombre} · {formatCurrency(p.precioBase)}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      </div>
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-            </div>
-
-            <div className="flex flex-col gap-4 rounded-lg border border-border bg-card p-6">
-              <p className="text-caption text-muted-foreground uppercase">Plan de pagos</p>
-
-              <div className="grid gap-4 sm:grid-cols-2">
-                <FormField
-                  control={form.control}
-                  name="montoTotal"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormControl>
-                        <MontoField
-                          id="monto-total"
-                          label="Monto total"
-                          value={Number.isFinite(field.value) ? field.value : undefined}
-                          onChange={field.onChange}
-                          onBlur={field.onBlur}
-                          error={form.formState.errors.montoTotal?.message}
-                        />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
+            <Controller
+              control={control}
+              name="clienteId"
+              render={({ field }) => (
+                <ClientePicker
+                  value={field.value ?? ""}
+                  onChange={field.onChange}
+                  error={formState.errors.clienteId?.message}
                 />
-                <FormField
-                  control={form.control}
-                  name="cuotaDiaria"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormControl>
-                        <MontoField
-                          id="cuota-diaria"
-                          label="Cuota diaria"
-                          value={Number.isFinite(field.value) ? field.value : undefined}
-                          onChange={field.onChange}
-                          onBlur={field.onBlur}
-                          error={form.formState.errors.cuotaDiaria?.message}
-                        />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
+              )}
+            />
+
+            <Controller
+              control={control}
+              name="producto"
+              render={({ field }) => (
+                <ProductoField
+                  value={field.value ?? ""}
+                  onChange={field.onChange}
+                  onPickPrecio={(precio) => {
+                    // Prellena el monto con el precio base solo si está vacío.
+                    if (!getValues("monto")) {
+                      setValue("monto", precio, { shouldValidate: true });
+                    }
+                  }}
+                  error={formState.errors.producto?.message}
                 />
-              </div>
+              )}
+            />
 
-              <CuotasEstimadas
-                monto={Number(watched.montoTotal ?? 0)}
-                cuota={Number(watched.cuotaDiaria ?? 0)}
-              />
-            </div>
-
-            <div className="flex justify-end gap-3">
-              <Button type="button" variant="secondary" onClick={() => router.back()}>
-                Cancelar
-              </Button>
-              <Button type="submit" loading={createCredito.isPending}>
-                Crear crédito
-              </Button>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <Field
+                id="monto"
+                label="Monto del crédito (COP)"
+                error={formState.errors.monto?.message}
+              >
+                <Input
+                  id="monto"
+                  type="number"
+                  min={0}
+                  inputMode="numeric"
+                  placeholder="200000"
+                  {...register("monto", { valueAsNumber: true })}
+                />
+              </Field>
+              <Field id="interes" label="% de interés" error={formState.errors.interes?.message}>
+                <Input
+                  id="interes"
+                  type="number"
+                  min={0}
+                  step="any"
+                  inputMode="decimal"
+                  placeholder="40"
+                  {...register("interes", { valueAsNumber: true })}
+                />
+              </Field>
+              <Field
+                id="dias"
+                label="Días (número de cuotas)"
+                error={formState.errors.dias?.message}
+              >
+                <Input
+                  id="dias"
+                  type="number"
+                  min={1}
+                  inputMode="numeric"
+                  placeholder="30"
+                  {...register("dias", { valueAsNumber: true })}
+                />
+              </Field>
+              <Field
+                id="fechaInicio"
+                label="Fecha de inicio"
+                error={formState.errors.fechaInicio?.message}
+              >
+                <Input id="fechaInicio" type="date" {...register("fechaInicio")} />
+              </Field>
             </div>
           </div>
 
-          <PreviewPanel
-            clienteNombre={clienteSeleccionado?.nombre ?? "Cliente"}
-            montoTotal={Number(watched.montoTotal ?? 0)}
-            cuotaDiaria={Number(watched.cuotaDiaria ?? 0)}
-          />
+          <div className="flex justify-end gap-3">
+            <Button type="button" variant="secondary" onClick={() => router.back()}>
+              Cancelar
+            </Button>
+            <Button type="submit" loading={createCredito.isPending}>
+              Crear crédito
+            </Button>
+          </div>
         </div>
-      </form>
-    </Form>
+
+        {/* Panel derecho — Cálculo estimado */}
+        <CalculoPanel
+          interes={Number(watched.interes ?? 0)}
+          calc={calc}
+          fechaInicio={watched.fechaInicio ?? hoyISO()}
+        />
+      </div>
+    </form>
   );
 }
 
-function MontoField({
+function CalculoPanel({
+  interes,
+  calc,
+  fechaInicio,
+}: {
+  interes: number;
+  calc: CreditoCalculo;
+  fechaInicio: string;
+}) {
+  const base = parseFecha(fechaInicio);
+  const tieneDatos = calc.cuotaDiaria > 0;
+  const semanas = calc.cuotas > 0 ? Math.ceil(calc.cuotas / 7) : 0;
+  const ultimaCuota = calc.cuotas > 0 ? addDays(base, calc.cuotas) : null;
+  const primeras =
+    calc.cuotas > 0
+      ? Array.from({ length: Math.min(3, calc.cuotas) }, (_, i) => addDays(base, i + 1))
+      : [];
+
+  return (
+    <div className="flex flex-col gap-6 self-start rounded-lg border border-border bg-card p-6 lg:sticky lg:top-6">
+      <p className="text-caption font-semibold uppercase tracking-wide text-primary">
+        Cálculo estimado
+      </p>
+
+      <div className="flex flex-col gap-1">
+        <span className="text-caption text-muted-foreground">Número de cuotas</span>
+        <span className="text-display font-bold leading-none tabular-nums">
+          {tieneDatos ? calc.cuotas : "—"}
+        </span>
+        <span className="text-body-sm text-muted-foreground">
+          {tieneDatos
+            ? `cuotas diarias de ${formatCurrency(calc.cuotaDiaria)}`
+            : "Completa monto, interés y días"}
+        </span>
+      </div>
+
+      <div className="flex flex-col gap-3 border-t border-border pt-5">
+        <Row
+          label={`Interés (${interes > 0 ? interes : 0}%)`}
+          value={calc.interesTotal > 0 ? formatCurrency(calc.interesTotal) : "—"}
+        />
+        <Row
+          label="Monto total"
+          value={calc.montoTotal > 0 ? formatCurrency(calc.montoTotal) : "—"}
+          strong
+        />
+        <Row
+          label="Duración"
+          value={semanas > 0 ? `~ ${semanas} semana${semanas === 1 ? "" : "s"}` : "—"}
+        />
+        <Row label="Última cuota" value={ultimaCuota ? fmtFecha(ultimaCuota) : "—"} />
+      </div>
+
+      {primeras.length > 0 ? (
+        <div className="flex flex-col gap-2.5 border-t border-border pt-5">
+          <span className="text-caption uppercase tracking-wide text-muted-foreground">
+            Primeras cuotas
+          </span>
+          {primeras.map((d, i) => (
+            <div key={i} className="flex items-center justify-between text-sm">
+              <span className="text-muted-foreground">
+                Cuota {i + 1} · {fmtFechaCorta(d)}
+              </span>
+              <span className="font-medium tabular-nums">{formatCurrency(calc.cuotaDiaria)}</span>
+            </div>
+          ))}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function Field({
   id,
   label,
-  value,
-  onChange,
-  onBlur,
   error,
+  children,
 }: {
   id: string;
   label: string;
-  value: number | undefined;
-  onChange: (v: number | undefined) => void;
-  onBlur: () => void;
   error?: string;
+  children: ReactNode;
 }) {
   return (
     <div className="flex flex-col gap-1.5">
       <Label htmlFor={id}>{label}</Label>
-      <Input
-        id={id}
-        type="number"
-        min={0}
-        inputMode="numeric"
-        value={value ?? ""}
-        onChange={(e) => {
-          const raw = e.target.value;
-          onChange(raw === "" ? undefined : Number(raw));
-        }}
-        onBlur={onBlur}
-      />
+      {children}
       {error ? (
         <p className="text-body-sm text-destructive" role="alert">
           {error}
@@ -250,73 +286,33 @@ function MontoField({
   );
 }
 
-function CuotasEstimadas({ monto, cuota }: { monto: number; cuota: number }) {
-  const cuotas = monto > 0 && cuota > 0 ? Math.ceil(monto / cuota) : 0;
-  return (
-    <div
-      className="flex items-center justify-between rounded-md bg-muted/40 px-3 py-2 text-caption text-muted-foreground"
-      aria-live="polite"
-    >
-      <span>
-        Cuotas estimadas{" "}
-        {cuota > 0 ? (
-          <span>
-            (si cobras {formatCurrency(cuota)} al día)
-          </span>
-        ) : null}
-      </span>
-      <span className="font-semibold text-foreground tabular-nums">
-        {cuotas > 0 ? cuotas : "—"}
-      </span>
-    </div>
-  );
-}
-
-function PreviewPanel({
-  clienteNombre,
-  montoTotal,
-  cuotaDiaria,
-}: {
-  clienteNombre: string;
-  montoTotal: number;
-  cuotaDiaria: number;
-}) {
-  return (
-    <div className="flex flex-col gap-3">
-      <p className="text-caption text-muted-foreground uppercase">Vista previa</p>
-      <div className="flex flex-col gap-4 rounded-lg border border-border bg-card p-5">
-        <div className="flex items-center gap-4">
-          <ProgressRing value={0} size="md" />
-          <div className="flex min-w-0 flex-1 flex-col">
-            <span className="text-caption text-muted-foreground uppercase">Próximo crédito</span>
-            <span className="truncate text-h3 font-semibold">{clienteNombre}</span>
-          </div>
-        </div>
-        <div className="flex flex-col gap-2">
-          <Row label="Monto total" value={montoTotal > 0 ? formatCurrency(montoTotal) : "—"} />
-          <Row label="Cuota diaria" value={cuotaDiaria > 0 ? formatCurrency(cuotaDiaria) : "—"} />
-          <Row label="Estado inicial">
-            <Badge status="activo">Activo</Badge>
-          </Row>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function Row({
-  label,
-  value,
-  children,
-}: {
-  label: string;
-  value?: string;
-  children?: React.ReactNode;
-}) {
+function Row({ label, value, strong }: { label: string; value: string; strong?: boolean }) {
   return (
     <div className="flex items-center justify-between text-sm">
       <span className="text-muted-foreground">{label}</span>
-      <span className="font-medium tabular-nums">{children ?? value}</span>
+      <span className={cn("tabular-nums", strong ? "text-base font-semibold" : "font-medium")}>
+        {value}
+      </span>
     </div>
   );
+}
+
+// --- fechas (vista previa) ---------------------------------------------------
+function parseFecha(s: string): Date {
+  const d = new Date(s);
+  return Number.isNaN(d.getTime()) ? new Date() : d;
+}
+
+function addDays(base: Date, days: number): Date {
+  const d = new Date(base);
+  d.setDate(d.getDate() + days);
+  return d;
+}
+
+function fmtFecha(d: Date): string {
+  return d.toLocaleDateString("es-CO", { day: "numeric", month: "short", year: "numeric" });
+}
+
+function fmtFechaCorta(d: Date): string {
+  return d.toLocaleDateString("es-CO", { day: "numeric", month: "short" });
 }

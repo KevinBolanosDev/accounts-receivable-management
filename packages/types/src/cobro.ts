@@ -6,6 +6,7 @@ export const pagoSchema = z.object({
   monto: z.number(),
   fecha: z.string(),
   cobradorId: z.string(),
+  cobradorNombre: z.string().nullable().optional(), // nombre del cobrador (columna del detalle #10a)
   reciboUrl: z.string().url().nullable(),
 });
 export type Pago = z.infer<typeof pagoSchema>;

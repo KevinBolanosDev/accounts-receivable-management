@@ -85,9 +85,13 @@ model Producto {
 
 // Fase 3 — Crédito. `codigo` legible y único (CR-XXXX), generado en el service
 // desde una secuencia de Postgres (`credito_codigo_seq`; race-safe).
-// `saldoPendiente` se materializa al crear (= montoTotal) y se recalcula dentro
-// de la transacción del cobro (ver §3.9 del plan). `estado` cambia por evento,
-// excepto MORA que se deriva en lectura y se cierra con el cierre diario (Fase 5).
+// El alta envía `monto` (capital) + `interes` (%) + `dias`; el service DERIVA y
+// materializa `montoTotal = monto + monto*interes/100` y `cuotaDiaria = montoTotal/dias`.
+// `producto` es texto libre: el service registra el nombre en el catálogo
+// (upsert) y enlaza por `productoId` (inventario). `saldoPendiente` se
+// materializa al crear (= montoTotal) y se recalcula dentro de la transacción del
+// cobro (ver §3.9 del plan). `estado` cambia por evento, excepto MORA que se
+// deriva en lectura y se cierra con el cierre diario (Fase 5).
 model Credito {
   id             String        @id @default(uuid())
   codigo         String        @unique
@@ -95,8 +99,11 @@ model Credito {
   cliente        Cliente       @relation(fields: [clienteId], references: [id], onDelete: Restrict)
   productoId     String
   producto       Producto      @relation(fields: [productoId], references: [id], onDelete: Restrict)
-  montoTotal     Decimal       @db.Decimal(12, 2)
-  cuotaDiaria    Decimal       @db.Decimal(12, 2)
+  monto          Decimal       @db.Decimal(12, 2) // capital (sin interés)
+  interes        Decimal       @db.Decimal(5, 2) // % de interés sobre el capital
+  dias           Int // plazo en días = número de cuotas diarias
+  montoTotal     Decimal       @db.Decimal(12, 2) // derivado = monto + monto*interes/100
+  cuotaDiaria    Decimal       @db.Decimal(12, 2) // derivado = montoTotal/dias
   saldoPendiente Decimal       @db.Decimal(12, 2)
   estado         EstadoCredito @default(ACTIVO)
   fechaInicio    DateTime      @default(now())

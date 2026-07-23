@@ -143,7 +143,7 @@ export function RegistrarCobroSheet({
                 <SelectContent>
                   {creditos.map((c) => (
                     <SelectItem key={c.id} value={c.id}>
-                      {c.codigo} · {c.producto.nombre} · {formatCurrency(c.saldoPendiente)}
+                      {c.codigo} · {c.producto} · {formatCurrency(c.saldoPendiente)}
                     </SelectItem>
                   ))}
                 </SelectContent>

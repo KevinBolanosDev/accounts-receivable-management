@@ -9,8 +9,13 @@ const creditoListInclude = {
 
 const creditoDetailInclude = {
   ...creditoListInclude,
-  cliente: { select: { id: true, nombre: true } },
-  pagos: { orderBy: { fecha: "desc" } },
+  cliente: {
+    select: { id: true, nombre: true, ruta: { select: { id: true, nombre: true } } },
+  },
+  pagos: {
+    orderBy: { fecha: "desc" },
+    include: { cobrador: { select: { nombre: true } } },
+  },
 } satisfies Prisma.CreditoInclude;
 
 export type CreditoWithProducto = Prisma.CreditoGetPayload<{

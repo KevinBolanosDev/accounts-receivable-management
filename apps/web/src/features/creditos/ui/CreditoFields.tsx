@@ -2,8 +2,10 @@
 
 import * as React from "react";
 import { Controller, useFormContext } from "react-hook-form";
-import { CheckIcon } from "lucide-react";
+import { CheckIcon, ChevronDownIcon } from "lucide-react";
 
+import { calcularCredito } from "@/entities/credit";
+import { getInitials } from "@/shared/lib/initials";
 import { cn } from "@/shared/lib/utils";
 import { formatCurrency } from "@/shared/lib/format-currency";
 import {
@@ -17,40 +19,32 @@ import {
 import { Input } from "@/shared/ui/input";
 import { Label } from "@/shared/ui/label";
 import { Popover, PopoverContent, PopoverTrigger } from "@/shared/ui/popover";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/shared/ui/select";
 
 import { useClientes } from "@/features/clients/api/use-clientes";
 import { useProductos } from "@/features/productos/api/use-productos";
 
 // DESIGN_SYSTEM.md §3.4 — `CreditoFields` es el sub-componente reutilizable
-// compartido por composición entre la pantalla Crear crédito (#9c), el alta
-// de cliente con crédito opcional (#4c) y el flujo de "Nuevo crédito" del
-// móvil (#15c). Los campos viven aquí para no duplicar lógica ni acoplar
-// features (3.4 — FSD).
+// compartido por composición entre Crear crédito (#9c), el alta de cliente con
+// crédito opcional (#4c) y el "Nuevo crédito" del móvil (#15c). Fase 3 (revisión):
+// `producto` es texto libre con autocompletado (datalist del inventario) y el
+// crédito se define con `monto` (capital) + `interes` (%) + `dias`; la cuota se
+// deriva (no se ingresa). Los campos viven aquí para no duplicar lógica (3.4 — FSD).
 
 interface CreditoFieldsForm {
-  productoId?: string;
-  montoTotal?: number;
-  cuotaDiaria?: number;
+  producto?: string;
+  monto?: number;
+  interes?: number;
+  dias?: number;
 }
 
 interface CreditoFieldsProps {
   /** Mensajes de error a pintar (los entrega el formulario padre). */
   errors?: {
-    productoId?: string;
-    montoTotal?: string;
-    cuotaDiaria?: string;
+    producto?: string;
+    monto?: string;
+    interes?: string;
+    dias?: string;
   };
-  /** Si el padre quiere su propio combobox de cliente (sólo cambia el visual). */
-  hideClientePicker?: boolean;
-  /** Si el padre quiere que NO se renderice este bloque (lo usar #4c con un toggle). */
-  collapsed?: boolean;
   className?: string;
 }
 
@@ -78,69 +72,123 @@ function Field({
   );
 }
 
+interface ProductoFieldProps {
+  value: string;
+  onChange: (nombre: string) => void;
+  /** Se dispara al escribir/elegir un producto ya registrado (para prellenar el monto). */
+  onPickPrecio?: (precioBase: number) => void;
+  error?: string;
+}
+
+// Campo de producto: texto libre con autocompletado nativo (`<datalist>`) desde
+// el inventario. Escribes lo que quieras; si coincide con un producto
+// registrado, se prellena el monto con su precio base (editable). El registro
+// del producto (upsert por nombre) lo hace el backend al crear el crédito.
+function ProductoField({ value, onChange, onPickPrecio, error }: ProductoFieldProps) {
+  const listId = React.useId();
+  const { data: productos = [] } = useProductos();
+
+  return (
+    <Field id="credito-producto" label="Producto" error={error}>
+      <div className="relative">
+        <Input
+          id="credito-producto"
+          list={listId}
+          autoComplete="off"
+          placeholder="Escribe o elige un producto"
+          className="pr-9"
+          value={value ?? ""}
+          onChange={(e) => {
+            const v = e.target.value;
+            onChange(v);
+            const match = productos.find(
+              (p) => p.nombre.toLowerCase() === v.trim().toLowerCase(),
+            );
+            if (match) onPickPrecio?.(match.precioBase);
+          }}
+        />
+        <ChevronDownIcon className="pointer-events-none absolute right-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+        <datalist id={listId}>
+          {productos.map((p) => (
+            <option key={p.id} value={p.nombre}>
+              {formatCurrency(p.precioBase)}
+            </option>
+          ))}
+        </datalist>
+      </div>
+    </Field>
+  );
+}
+
 function CreditoFields({ errors, className }: CreditoFieldsProps) {
   const form = useFormContext<CreditoFieldsForm>();
-  const { register, control } = form;
-  const watchedMonto = form.watch("montoTotal");
-  const watchedCuota = form.watch("cuotaDiaria");
+  const { control, register, setValue, getValues } = form;
 
-  const monto = Number(watchedMonto ?? 0);
-  const cuota = Number(watchedCuota ?? 0);
-  const cuotasEstimadas = monto > 0 && cuota > 0 ? Math.ceil(monto / cuota) : 0;
-
-  const productos = useProductos();
-  const productosList = productos.data ?? [];
+  const monto = Number(form.watch("monto") ?? 0);
+  const interes = Number(form.watch("interes") ?? 0);
+  const dias = Number(form.watch("dias") ?? 0);
+  const calc = calcularCredito(monto, interes, dias);
 
   return (
     <div className={cn("flex flex-col gap-4", className)}>
       <Controller
         control={control}
-        name="productoId"
+        name="producto"
         render={({ field }) => (
-          <Field id="credito-producto" label="Producto" error={errors?.productoId}>
-            <Select value={field.value || undefined} onValueChange={field.onChange}>
-              <SelectTrigger id="credito-producto" className="w-full">
-                <SelectValue placeholder="Selecciona un producto" />
-              </SelectTrigger>
-              <SelectContent>
-                {productosList.map((p) => (
-                  <SelectItem key={p.id} value={p.id}>
-                    {p.nombre} · {formatCurrency(p.precioBase)}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </Field>
+          <ProductoField
+            value={field.value ?? ""}
+            onChange={field.onChange}
+            onPickPrecio={(precio) => {
+              // Prellena el monto solo si está vacío (no pisa lo tecleado).
+              const actual = getValues("monto");
+              if (!actual) setValue("monto", precio, { shouldValidate: true });
+            }}
+            error={errors?.producto}
+          />
         )}
       />
 
-      <div className="grid gap-4 sm:grid-cols-2">
-        <Field id="credito-monto" label="Monto total" error={errors?.montoTotal}>
+      <div className="grid gap-4 sm:grid-cols-3">
+        <Field id="credito-monto" label="Monto (COP)" error={errors?.monto}>
           <Input
             id="credito-monto"
             type="number"
             min={0}
             inputMode="numeric"
-            placeholder="1500000"
-            {...register("montoTotal", { valueAsNumber: true })}
+            placeholder="200000"
+            {...register("monto", { valueAsNumber: true })}
           />
         </Field>
-        <Field id="credito-cuota" label="Cuota diaria" error={errors?.cuotaDiaria}>
+        <Field id="credito-interes" label="% de interés" error={errors?.interes}>
           <Input
-            id="credito-cuota"
+            id="credito-interes"
             type="number"
             min={0}
+            step="any"
+            inputMode="decimal"
+            placeholder="40"
+            {...register("interes", { valueAsNumber: true })}
+          />
+        </Field>
+        <Field id="credito-dias" label="Días" error={errors?.dias}>
+          <Input
+            id="credito-dias"
+            type="number"
+            min={1}
             inputMode="numeric"
-            placeholder="25000"
-            {...register("cuotaDiaria", { valueAsNumber: true })}
+            placeholder="30"
+            {...register("dias", { valueAsNumber: true })}
           />
         </Field>
       </div>
 
       <div className="flex items-center justify-between rounded-md bg-muted/40 px-3 py-2 text-caption text-muted-foreground">
-        <span>Cuotas estimadas</span>
+        <span>
+          Cuota diaria estimada
+          {calc.cuotas > 0 ? ` · ${calc.cuotas} cuotas` : ""}
+        </span>
         <span className="font-semibold text-foreground tabular-nums">
-          {cuotasEstimadas > 0 ? cuotasEstimadas : "—"}
+          {calc.cuotaDiaria > 0 ? formatCurrency(calc.cuotaDiaria) : "—"}
         </span>
       </div>
     </div>
@@ -171,17 +219,30 @@ function ClientePicker({ value, onChange, error, disabled }: ClientePickerProps)
             aria-expanded={open}
             disabled={disabled}
             className={cn(
-              "flex h-10 w-full items-center justify-between rounded-md border border-input bg-background px-3 text-sm",
+              "flex w-full items-center gap-3 rounded-md border border-input bg-background px-3 py-2.5 text-left text-sm",
               "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-              !selected && "text-muted-foreground",
               disabled && "cursor-not-allowed opacity-60",
             )}
           >
-            {selected ? selected.nombre : "Selecciona un cliente"}
-            <CheckIcon className={cn("size-4 opacity-50", selected && "opacity-100")} />
+            {selected ? (
+              <>
+                <span className="flex size-9 shrink-0 items-center justify-center rounded-full bg-primary/15 text-xs font-semibold text-primary">
+                  {getInitials(selected.nombre)}
+                </span>
+                <span className="flex min-w-0 flex-1 flex-col">
+                  <span className="truncate font-medium text-foreground">{selected.nombre}</span>
+                  <span className="truncate text-caption text-muted-foreground">
+                    {selected.ruta?.nombre ?? "Sin ruta"}
+                  </span>
+                </span>
+              </>
+            ) : (
+              <span className="flex-1 text-muted-foreground">Selecciona un cliente</span>
+            )}
+            <ChevronDownIcon className="size-4 shrink-0 text-muted-foreground" />
           </button>
         </PopoverTrigger>
-        <PopoverContent align="start" className="w-72 p-0">
+        <PopoverContent align="start" className="w-[var(--radix-popover-trigger-width)] min-w-72 p-0">
           <Command>
             <CommandInput placeholder="Buscar cliente..." />
             <CommandList>
@@ -196,11 +257,21 @@ function ClientePicker({ value, onChange, error, disabled }: ClientePickerProps)
                       setOpen(false);
                     }}
                   >
-                    <CheckIcon className={cn(value === c.id ? "opacity-100" : "opacity-0")} />
-                    <span className="truncate">{c.nombre}</span>
-                    <span className="ml-auto text-caption text-muted-foreground">
-                      {c.documento}
+                    <span className="flex size-7 shrink-0 items-center justify-center rounded-full bg-secondary text-[10px] font-semibold">
+                      {getInitials(c.nombre)}
                     </span>
+                    <span className="flex min-w-0 flex-1 flex-col">
+                      <span className="truncate">{c.nombre}</span>
+                      <span className="truncate text-caption text-muted-foreground">
+                        {(c.ruta?.nombre ?? "Sin ruta") + " · " + c.documento}
+                      </span>
+                    </span>
+                    <CheckIcon
+                      className={cn(
+                        "ml-auto size-4 shrink-0",
+                        value === c.id ? "opacity-100" : "opacity-0",
+                      )}
+                    />
                   </CommandItem>
                 ))}
               </CommandGroup>
@@ -212,9 +283,5 @@ function ClientePicker({ value, onChange, error, disabled }: ClientePickerProps)
   );
 }
 
-export { CreditoFields, ClientePicker };
-export type { CreditoFieldsProps, CreditoFieldsForm, ClientePickerProps };
-
-// Silencia "unused" si trabajTree fuera estricto con `watchedProductoId`.
-// (Útil si más adelante queremos mostrar la cuota sugerida por producto.)
-void useProductos;
+export { CreditoFields, ClientePicker, ProductoField };
+export type { CreditoFieldsProps, CreditoFieldsForm, ClientePickerProps, ProductoFieldProps };

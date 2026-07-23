@@ -166,7 +166,7 @@ function ClienteRowLink({
         <span className="truncate text-sm font-medium">{cliente.nombre}</span>
         <span className="truncate text-caption text-muted-foreground">
           {creditoPrincipal
-            ? `${creditoPrincipal.producto.nombre} · ${formatCurrency(creditoPrincipal.saldoPendiente)}`
+            ? `${creditoPrincipal.producto} · ${formatCurrency(creditoPrincipal.saldoPendiente)}`
             : "Sin crédito activo"}
         </span>
       </div>

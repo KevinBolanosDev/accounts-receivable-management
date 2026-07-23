@@ -1,4 +1,5 @@
 import { useSessionStore } from "@/entities/session";
+import { calcularCredito } from "@/entities/credit";
 import { apiFetch } from "@/shared/api/client";
 import {
   creditoDetailSchema,
@@ -31,39 +32,46 @@ const MOCK_CREDITOS: CreditoListItem[] = [
     id: "cr-2041",
     codigo: "CR-2041",
     clienteId: "cl1",
-    productoId: "prod-nevera",
-    montoTotal: 1_000_000,
+    producto: "Nevera",
+    monto: 1_000_000,
+    interes: 20,
+    dias: 60,
+    montoTotal: 1_200_000,
     cuotaDiaria: 20_000,
-    saldoPendiente: 320_000,
-    totalPagado: 680_000,
-    porcentajePagado: 68,
+    saldoPendiente: 840_000,
+    totalPagado: 360_000,
+    porcentajePagado: 30,
     estado: "ACTIVO",
     fechaInicio: "2026-06-18T00:00:00.000Z",
-    producto: { id: "prod-nevera", nombre: "Nevera" },
-    cuotasPagadas: 34,
-    cuotasTotal: 50,
+    cuotasPagadas: 18,
+    cuotasTotal: 60,
   },
   {
     id: "cr-2050",
     codigo: "CR-2050",
     clienteId: "cl2",
-    productoId: "prod-lavadora",
-    montoTotal: 1_200_000,
+    producto: "Lavadora",
+    monto: 1_200_000,
+    interes: 25,
+    dias: 60,
+    montoTotal: 1_500_000,
     cuotaDiaria: 25_000,
-    saldoPendiente: 540_000,
-    totalPagado: 660_000,
-    porcentajePagado: 55,
+    saldoPendiente: 900_000,
+    totalPagado: 600_000,
+    porcentajePagado: 40,
     estado: "ACTIVO",
     fechaInicio: "2026-05-10T00:00:00.000Z",
-    producto: { id: "prod-lavadora", nombre: "Lavadora" },
-    cuotasPagadas: 26,
-    cuotasTotal: 48,
+    cuotasPagadas: 24,
+    cuotasTotal: 60,
   },
   {
     id: "cr-2051",
     codigo: "CR-2051",
     clienteId: "cl2",
-    productoId: "prod-tv",
+    producto: "Televisor",
+    monto: 500_000,
+    interes: 20,
+    dias: 40,
     montoTotal: 600_000,
     cuotaDiaria: 15_000,
     saldoPendiente: 360_000,
@@ -71,7 +79,6 @@ const MOCK_CREDITOS: CreditoListItem[] = [
     porcentajePagado: 40,
     estado: "ACTIVO",
     fechaInicio: "2026-06-30T00:00:00.000Z",
-    producto: { id: "prod-tv", nombre: "Televisor" },
     cuotasPagadas: 16,
     cuotasTotal: 40,
   },
@@ -79,7 +86,10 @@ const MOCK_CREDITOS: CreditoListItem[] = [
     id: "cr-2052",
     codigo: "CR-2052",
     clienteId: "cl4",
-    productoId: "prod-nevera",
+    producto: "Nevera",
+    monto: 800_000,
+    interes: 25,
+    dias: 50,
     montoTotal: 1_000_000,
     cuotaDiaria: 20_000,
     saldoPendiente: 0,
@@ -87,7 +97,6 @@ const MOCK_CREDITOS: CreditoListItem[] = [
     porcentajePagado: 100,
     estado: "PAGADO",
     fechaInicio: "2026-04-01T00:00:00.000Z",
-    producto: { id: "prod-nevera", nombre: "Nevera" },
     cuotasPagadas: 50,
     cuotasTotal: 50,
   },
@@ -98,7 +107,7 @@ const MOCK_DETAIL: Record<string, CreditoDetail> = Object.fromEntries(
     c.id,
     {
       ...c,
-      cliente: { id: c.clienteId, nombre: "Cliente demo" },
+      cliente: { id: c.clienteId, nombre: "Cliente demo", ruta: { id: "r1", nombre: "Ruta Centro" } },
       pagos: [
         {
           id: `pg-${c.id}-7`,
@@ -106,6 +115,7 @@ const MOCK_DETAIL: Record<string, CreditoDetail> = Object.fromEntries(
           monto: c.cuotaDiaria,
           fecha: "2026-07-21T08:00:00.000Z",
           cobradorId: "u-1000000002",
+          cobradorNombre: "Carlos Ramírez",
           reciboUrl: null,
         },
         {
@@ -114,6 +124,7 @@ const MOCK_DETAIL: Record<string, CreditoDetail> = Object.fromEntries(
           monto: c.cuotaDiaria,
           fecha: "2026-07-20T08:00:00.000Z",
           cobradorId: "u-1000000002",
+          cobradorNombre: "Carlos Ramírez",
           reciboUrl: null,
         },
         {
@@ -122,6 +133,7 @@ const MOCK_DETAIL: Record<string, CreditoDetail> = Object.fromEntries(
           monto: c.cuotaDiaria,
           fecha: "2026-07-19T08:00:00.000Z",
           cobradorId: "u-1000000002",
+          cobradorNombre: "Carlos Ramírez",
           reciboUrl: null,
         },
       ],
@@ -146,31 +158,43 @@ export const mockCreditosService: CreditosService = {
     await delay();
     const newId = `cr-${Math.floor(Math.random() * 9000) + 3000}`;
     const codigo = `CR-${newId.split("-")[1]}`;
+    const calc = calcularCredito(body.monto, body.interes, body.dias);
     return creditoListItemSchema.parse({
       id: newId,
       codigo,
       clienteId: body.clienteId,
-      productoId: body.productoId,
-      montoTotal: body.montoTotal,
-      cuotaDiaria: body.cuotaDiaria,
-      saldoPendiente: body.montoTotal,
+      producto: body.producto,
+      monto: body.monto,
+      interes: body.interes,
+      dias: body.dias,
+      montoTotal: calc.montoTotal,
+      cuotaDiaria: calc.cuotaDiaria,
+      saldoPendiente: calc.montoTotal,
       totalPagado: 0,
       porcentajePagado: 0,
       estado: "ACTIVO",
       fechaInicio: body.fechaInicio ?? new Date().toISOString(),
-      producto: { id: body.productoId, nombre: "Producto demo" },
       cuotasPagadas: 0,
-      cuotasTotal: Math.ceil(body.montoTotal / body.cuotaDiaria),
+      cuotasTotal: body.dias,
     });
   },
   async updateCredito(id, body) {
     await delay();
     const current = MOCK_CREDITOS.find((c) => c.id === id) ?? MOCK_CREDITOS[0]!;
+    const monto = body.monto ?? current.monto;
+    const interes = body.interes ?? current.interes;
+    const dias = body.dias ?? current.dias;
+    const calc = calcularCredito(monto, interes, dias);
     return creditoListItemSchema.parse({
       ...current,
-      productoId: body.productoId ?? current.productoId,
-      montoTotal: body.montoTotal ?? current.montoTotal,
-      cuotaDiaria: body.cuotaDiaria ?? current.cuotaDiaria,
+      producto: body.producto ?? current.producto,
+      monto,
+      interes,
+      dias,
+      montoTotal: calc.montoTotal,
+      cuotaDiaria: calc.cuotaDiaria,
+      saldoPendiente: calc.montoTotal,
+      cuotasTotal: dias,
     });
   },
   async anularCredito(id) {

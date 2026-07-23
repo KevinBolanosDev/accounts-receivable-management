@@ -96,7 +96,7 @@ function CreditCard({
               {credito.codigo}
               {clienteNombre ? ` · ${clienteNombre}` : ""}
             </span>
-            <span className="truncate text-sm font-medium">{credito.producto.nombre}</span>
+            <span className="truncate text-sm font-medium">{credito.producto}</span>
           </div>
           <Badge status={ESTADO_CREDITO_BADGE_STATUS[credito.estado]}>
             {ESTADO_CREDITO_LABEL[credito.estado]}

@@ -36,17 +36,14 @@ export class CreditosService {
   async findAll(user: AuthenticatedUser, query: CreditosQuery): Promise<CreditoListItem[]> {
     const where = this.scopedWhereForCreditos(user, query);
     const rows = await this.creditosRepository.findMany(where);
-    const hoy = new Date();
-    return rows.map((row) => toListItem(row, hoy));
+    return rows.map((row) => toListItem(row));
   }
 
   async findOne(id: string, user: AuthenticatedUser): Promise<CreditoDetail> {
     const where = this.scopedWhereByCliente(user);
     const row = await this.creditosRepository.findById(id, where);
     if (!row) throw new NotFoundException("Crédito no encontrado.");
-
-    const hoy = new Date();
-    return toDetail(row, hoy);
+    return toDetail(row);
   }
 
   async create(body: CreateCreditoRequest, user: AuthenticatedUser): Promise<Credito> {
@@ -60,30 +57,34 @@ export class CreditosService {
     }
 
     // 2. Scoping por cobrador.
-    if (user.rol === "COBRADOR") {
-      if (cliente.ruta.cobradorId !== user.sub) {
-        throw new ForbiddenException("Solo puedes crear créditos para clientes de tus rutas.");
-      }
+    if (user.rol === "COBRADOR" && cliente.ruta.cobradorId !== user.sub) {
+      throw new ForbiddenException("Solo puedes crear créditos para clientes de tus rutas.");
     }
 
-    // 3. Producto debe existir y estar activo.
-    const producto = await this.prisma.producto.findUnique({ where: { id: body.productoId } });
-    if (!producto || !producto.activo) {
-      throw new NotFoundException("El producto no existe o está inactivo.");
-    }
+    // 3. Producto (texto libre): se registra en el catálogo por nombre (upsert).
+    // Si ya existe, se reutiliza (inventario, sin pisar su precioBase); si es
+    // nuevo, se crea con precioBase = monto de esta venta.
+    const producto = await this.upsertProducto(body.producto, body.monto);
 
-    // 4. Generar código desde la secuencia (race-safe).
+    // 4. Derivar montos: montoTotal = monto + monto*interes/100; cuota = /dias.
+    const { monto, interes, montoTotal, cuotaDiaria } = derivarMontos(
+      body.monto,
+      body.interes,
+      body.dias,
+    );
+
+    // 5. Generar código desde la secuencia (race-safe).
     const codigo = await this.creditosRepository.nextCodigo();
-
-    const montoTotal = new Prisma.Decimal(body.montoTotal);
-    const cuotaDiaria = new Prisma.Decimal(body.cuotaDiaria);
 
     try {
       const created = await this.prisma.credito.create({
         data: {
           codigo,
           clienteId: body.clienteId,
-          productoId: body.productoId,
+          productoId: producto.id,
+          monto,
+          interes,
+          dias: body.dias,
           montoTotal,
           cuotaDiaria,
           saldoPendiente: montoTotal,
@@ -92,8 +93,7 @@ export class CreditosService {
         },
         include: { producto: { select: { id: true, nombre: true } } },
       });
-      const hoy = new Date();
-      return toListItem(created, hoy);
+      return toListItem(created);
     } catch (error) {
       if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
         throw new ConflictException("Conflicto generando código de crédito. Reintenta.");
@@ -113,26 +113,40 @@ export class CreditosService {
       );
     }
 
-    if (body.productoId) {
-      const producto = await this.prisma.producto.findUnique({ where: { id: body.productoId } });
-      if (!producto || !producto.activo) {
-        throw new NotFoundException("El producto no existe o está inactivo.");
-      }
+    // Producto (texto libre): upsert por nombre si viene.
+    let productoId: string | undefined;
+    if (body.producto !== undefined) {
+      const producto = await this.upsertProducto(body.producto, body.monto ?? existing.monto);
+      productoId = producto.id;
     }
+
+    // Recalcular montos si cambió monto/interes/dias. Como el crédito no tiene
+    // pagos (validado arriba), es seguro reasignar saldoPendiente = montoTotal.
+    const recalcular =
+      body.monto !== undefined || body.interes !== undefined || body.dias !== undefined;
+    const derivados = recalcular
+      ? derivarMontos(
+          body.monto ?? decimalToNumber(existing.monto),
+          body.interes ?? decimalToNumber(existing.interes),
+          body.dias ?? existing.dias,
+        )
+      : undefined;
 
     const updated = await this.prisma.credito.update({
       where: { id },
       data: {
-        producto: body.productoId ? { connect: { id: body.productoId } } : undefined,
-        montoTotal: body.montoTotal !== undefined ? new Prisma.Decimal(body.montoTotal) : undefined,
-        cuotaDiaria:
-          body.cuotaDiaria !== undefined ? new Prisma.Decimal(body.cuotaDiaria) : undefined,
+        producto: productoId ? { connect: { id: productoId } } : undefined,
+        monto: body.monto !== undefined ? new Prisma.Decimal(body.monto) : undefined,
+        interes: body.interes !== undefined ? new Prisma.Decimal(body.interes) : undefined,
+        dias: body.dias !== undefined ? body.dias : undefined,
+        montoTotal: derivados?.montoTotal,
+        cuotaDiaria: derivados?.cuotaDiaria,
+        saldoPendiente: derivados?.montoTotal,
       },
       include: { producto: { select: { id: true, nombre: true } } },
     });
 
-    const hoy = new Date();
-    return toListItem(updated, hoy);
+    return toListItem(updated);
   }
 
   async anular(id: string): Promise<Credito> {
@@ -148,8 +162,27 @@ export class CreditosService {
       include: { producto: { select: { id: true, nombre: true } } },
     });
 
-    const hoy = new Date();
-    return toListItem(updated, hoy);
+    return toListItem(updated);
+  }
+
+  // Registra un producto por nombre (texto libre). Idempotente: si existe se
+  // reutiliza sin pisar su precioBase; si es nuevo, precioBase = monto de la
+  // venta. Es la pieza que mantiene el "inventario" pese al campo libre.
+  private upsertProducto(
+    nombre: string,
+    montoReferencia: number | Prisma.Decimal,
+  ): Promise<{ id: string }> {
+    const nombreNormalizado = nombre.trim();
+    return this.prisma.producto.upsert({
+      where: { nombre: nombreNormalizado },
+      update: { activo: true },
+      create: {
+        nombre: nombreNormalizado,
+        precioBase: new Prisma.Decimal(montoReferencia),
+        activo: true,
+      },
+      select: { id: true },
+    });
   }
 
   /**
@@ -177,29 +210,54 @@ export class CreditosService {
   }
 }
 
-// toDto: Decimal → number en el borde, fecha → ISO string. Nunca `Float` para
-// dinero: el backend trabaja con `Decimal` y nosotros hacemos `.toNumber()`
-// indirecto (vía `.toString()` para no perder precisión en el casteo).
+// === Cálculo de montos (dinero en Decimal, nunca Float) =====================
+// montoTotal = monto + monto*interes/100 ; cuotaDiaria = montoTotal/dias.
+// Ej: 200000 capital, 40% → interés 80000 → total 280000 → /30 = 9333.33.
+function derivarMontos(
+  montoNum: number,
+  interesNum: number,
+  dias: number,
+): {
+  monto: Prisma.Decimal;
+  interes: Prisma.Decimal;
+  montoTotal: Prisma.Decimal;
+  cuotaDiaria: Prisma.Decimal;
+} {
+  const monto = new Prisma.Decimal(montoNum);
+  const interes = new Prisma.Decimal(interesNum);
+  const interesTotal = monto.mul(interes).div(100);
+  const montoTotal = monto.add(interesTotal).toDecimalPlaces(2);
+  const cuotaDiaria = dias > 0 ? montoTotal.div(dias).toDecimalPlaces(2) : new Prisma.Decimal(0);
+  return { monto, interes, montoTotal, cuotaDiaria };
+}
+
+// === toDto: Decimal → number, Date → ISO string ============================
 
 function decimalToNumber(d: Prisma.Decimal): number {
   return Number(d.toString());
 }
 
-function toListItem(row: CreditoWithProducto, _hoy: Date): CreditoListItem {
+function toListItem(row: CreditoWithProducto): CreditoListItem {
+  const monto = decimalToNumber(row.monto);
+  const interes = decimalToNumber(row.interes);
   const montoTotal = decimalToNumber(row.montoTotal);
   const saldoPendiente = decimalToNumber(row.saldoPendiente);
   const totalPagado = Number((montoTotal - saldoPendiente).toFixed(2));
   const porcentajePagado =
-    montoTotal > 0 ? Number((((montoTotal - saldoPendiente) / montoTotal) * 100).toFixed(2)) : 0;
+    montoTotal > 0 ? Number(((totalPagado / montoTotal) * 100).toFixed(2)) : 0;
   const cuotaDiaria = decimalToNumber(row.cuotaDiaria);
-  const cuotasTotal = cuotaDiaria > 0 ? Math.ceil(montoTotal / cuotaDiaria) : 0;
-  const cuotasPagadas = cuotaDiaria > 0 ? Math.round(totalPagado / cuotaDiaria) : 0;
+  const cuotasTotal = row.dias;
+  const cuotasPagadas =
+    cuotaDiaria > 0 ? Math.min(row.dias, Math.round(totalPagado / cuotaDiaria)) : 0;
 
   return {
     id: row.id,
     codigo: row.codigo,
     clienteId: row.clienteId,
-    productoId: row.productoId,
+    producto: row.producto.nombre,
+    monto,
+    interes,
+    dias: row.dias,
     montoTotal,
     cuotaDiaria,
     saldoPendiente,
@@ -207,22 +265,26 @@ function toListItem(row: CreditoWithProducto, _hoy: Date): CreditoListItem {
     porcentajePagado,
     estado: row.estado,
     fechaInicio: row.fechaInicio.toISOString(),
-    producto: { id: row.producto.id, nombre: row.producto.nombre },
     cuotasPagadas,
     cuotasTotal,
   };
 }
 
-function toDetail(row: CreditoWithDetail, hoy: Date): CreditoDetail {
+function toDetail(row: CreditoWithDetail): CreditoDetail {
   return {
-    ...toListItem(row, hoy),
-    cliente: { id: row.cliente.id, nombre: row.cliente.nombre },
+    ...toListItem(row),
+    cliente: {
+      id: row.cliente.id,
+      nombre: row.cliente.nombre,
+      ruta: row.cliente.ruta ? { id: row.cliente.ruta.id, nombre: row.cliente.ruta.nombre } : null,
+    },
     pagos: row.pagos.map((p) => ({
       id: p.id,
       creditoId: p.creditoId,
       monto: decimalToNumber(p.monto),
       fecha: p.fecha.toISOString(),
       cobradorId: p.cobradorId,
+      cobradorNombre: p.cobrador?.nombre ?? null,
       reciboUrl: p.reciboUrl ?? null,
     })),
   };
