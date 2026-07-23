@@ -7,7 +7,7 @@ import { Avatar, AvatarFallback } from "@/shared/ui/avatar";
 import { Badge } from "@/shared/ui/badge";
 import { ProgressRing } from "@/shared/ui/progress-ring";
 
-import { getInitials } from "../lib/get-initials";
+import { getInitials } from "@/shared/lib/initials";
 
 // Estados de crédito que la card sabe pintar (subconjunto de los badges §2.3).
 type EstadoCredito = "activo" | "proximo-a-vencer" | "mora" | "pagado";

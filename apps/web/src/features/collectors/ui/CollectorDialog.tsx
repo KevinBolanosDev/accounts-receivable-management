@@ -6,7 +6,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { createCobradorRequestSchema, type CobradorListItem, type CreateCobradorRequest } from "@repo/types";
 import { toast } from "sonner";
 
-import { RUTA_OPTIONS } from "@/shared/lib/assignment-options";
+import { useRutas } from "@/features/routes-collectors/api/use-rutas";
 import { Button } from "@/shared/ui/button";
 import {
   Dialog,
@@ -18,7 +18,6 @@ import {
 import { Input } from "@/shared/ui/input";
 import { Label } from "@/shared/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/shared/ui/select";
-import { Switch } from "@/shared/ui/switch";
 
 import { useCreateCobrador, useUpdateCobrador } from "../api/use-cobradores";
 
@@ -33,6 +32,7 @@ export function CollectorDialog({ open, onOpenChange, cobrador }: CollectorDialo
   const isEdit = !!cobrador;
   const createCobrador = useCreateCobrador();
   const updateCobrador = useUpdateCobrador();
+  const { data: rutas = [] } = useRutas();
 
   const {
     register,
@@ -42,7 +42,7 @@ export function CollectorDialog({ open, onOpenChange, cobrador }: CollectorDialo
     formState: { errors },
   } = useForm<CreateCobradorRequest>({
     resolver: zodResolver(createCobradorRequestSchema),
-    defaultValues: { nombre: "", telefono: "", rutaId: null, activo: true },
+    defaultValues: { nombre: "", documento: "", password: "", rutaId: null },
   });
 
   useEffect(() => {
@@ -51,19 +51,23 @@ export function CollectorDialog({ open, onOpenChange, cobrador }: CollectorDialo
         cobrador
           ? {
               nombre: cobrador.nombre,
-              telefono: cobrador.telefono,
+              documento: cobrador.documento,
+              password: "",
               rutaId: cobrador.rutas[0]?.id ?? null,
-              activo: cobrador.activo,
             }
-          : { nombre: "", telefono: "", rutaId: null, activo: true },
+          : { nombre: "", documento: "", password: "", rutaId: null },
       );
     }
   }, [open, cobrador, reset]);
 
   async function onSubmit(values: CreateCobradorRequest) {
     try {
-      if (isEdit && cobrador) {
-        await updateCobrador.mutateAsync({ id: cobrador.id, body: values });
+       if (isEdit && cobrador) {
+         await updateCobrador.mutateAsync({
+           id: cobrador.id,
+           body: { nombre: values.nombre, rutaId: values.rutaId },
+         });
+
         toast.success("Cobrador actualizado");
       } else {
         await createCobrador.mutateAsync(values);
@@ -96,11 +100,21 @@ export function CollectorDialog({ open, onOpenChange, cobrador }: CollectorDialo
           </div>
 
           <div className="flex flex-col gap-1.5">
-            <Label htmlFor="cobrador-telefono">Teléfono</Label>
-            <Input id="cobrador-telefono" placeholder="+57 300 000 0000" {...register("telefono")} />
-            {errors.telefono ? (
+            <Label htmlFor="cobrador-documento">Documento</Label>
+            <Input id="cobrador-documento" placeholder="Ej. 1000000004" {...register("documento")} />
+            {errors.documento ? (
               <p className="text-body-sm text-destructive" role="alert">
-                {errors.telefono.message}
+                {errors.documento.message}
+              </p>
+            ) : null}
+          </div>
+
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="cobrador-password">Contraseña inicial</Label>
+            <Input id="cobrador-password" type="password" {...register("password")} />
+            {errors.password ? (
+              <p className="text-body-sm text-destructive" role="alert">
+                {errors.password.message}
               </p>
             ) : null}
           </div>
@@ -116,28 +130,13 @@ export function CollectorDialog({ open, onOpenChange, cobrador }: CollectorDialo
                     <SelectValue placeholder="Selecciona una ruta" />
                   </SelectTrigger>
                   <SelectContent>
-                    {RUTA_OPTIONS.map((ruta) => (
-                      <SelectItem key={ruta.id} value={ruta.id}>
-                        {ruta.nombre}
-                      </SelectItem>
-                    ))}
+                     {rutas.map((route) => (
+                       <SelectItem key={route.id} value={route.id}>
+                         {route.nombre}
+                       </SelectItem>
+                     ))}
                   </SelectContent>
                 </Select>
-              )}
-            />
-          </div>
-
-          <div className="flex items-center justify-between">
-            <Label htmlFor="cobrador-activo">Activo</Label>
-            <Controller
-              control={control}
-              name="activo"
-              render={({ field }) => (
-                <Switch
-                  id="cobrador-activo"
-                  checked={field.value ?? true}
-                  onCheckedChange={field.onChange}
-                />
               )}
             />
           </div>

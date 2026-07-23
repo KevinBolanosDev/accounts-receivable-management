@@ -3,10 +3,12 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useForm, useWatch } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { createRutaRequestSchema } from "@repo/types";
+import { useCobradores } from "@/features/collectors/api/use-cobradores";
 import { CheckIcon } from "lucide-react";
 import { toast } from "sonner";
 
-import { COBRADOR_OPTIONS } from "@/shared/lib/assignment-options";
 import { formatCurrency } from "@/shared/lib/format-currency";
 import { getInitials } from "@/shared/lib/initials";
 import { cn } from "@/shared/lib/utils";
@@ -23,8 +25,8 @@ import { useCreateRuta, useRuta, useUpdateRuta } from "../api/use-rutas";
 
 interface RouteFormValues {
   nombre: string;
-  cobradorId: string | null;
-  activa: boolean;
+  cobradorId?: string | null;
+  activa?: boolean;
 }
 
 function SectionLabel({ children }: { children: React.ReactNode }) {
@@ -39,7 +41,8 @@ function CobradorPicker({
   onChange: (id: string) => void;
 }) {
   const [open, setOpen] = useState(false);
-  const selected = COBRADOR_OPTIONS.find((c) => c.id === value) ?? null;
+  const { data: collectors = [] } = useCobradores();
+  const selected = collectors.find((c) => c.id === value) ?? null;
 
   return (
     <div className="flex items-center gap-3 rounded-lg border border-border bg-background p-3">
@@ -68,19 +71,19 @@ function CobradorPicker({
             <CommandList>
               <CommandEmpty>Sin resultados.</CommandEmpty>
               <CommandGroup>
-                {COBRADOR_OPTIONS.map((c) => (
-                  <CommandItem
-                    key={c.id}
-                    value={c.nombre}
-                    onSelect={() => {
-                      onChange(c.id);
-                      setOpen(false);
-                    }}
-                  >
-                    <CheckIcon className={value === c.id ? "opacity-100" : "opacity-0"} />
-                    {c.nombre}
-                  </CommandItem>
-                ))}
+                 {collectors.map((collector) => (
+                   <CommandItem
+                     key={collector.id}
+                     value={collector.nombre}
+                     onSelect={() => {
+                       onChange(collector.id);
+                       setOpen(false);
+                     }}
+                   >
+                     <CheckIcon className={value === collector.id ? "opacity-100" : "opacity-0"} />
+                     {collector.nombre}
+                   </CommandItem>
+                 ))}
               </CommandGroup>
             </CommandList>
           </Command>
@@ -98,6 +101,8 @@ export function RouteFormScreen({ rutaId }: { rutaId?: string }) {
   const updateRuta = useUpdateRuta(rutaId ?? "");
 
   const form = useForm<RouteFormValues>({
+    resolver: zodResolver(createRutaRequestSchema),
+    mode: "onBlur",
     defaultValues: { nombre: "", cobradorId: null, activa: true },
   });
   const { register, handleSubmit, control, setValue, reset } = form;
@@ -109,9 +114,10 @@ export function RouteFormScreen({ rutaId }: { rutaId?: string }) {
   }, [ruta, reset]);
 
   const nombre = useWatch({ control, name: "nombre" });
-  const cobradorId = useWatch({ control, name: "cobradorId" });
-  const activa = useWatch({ control, name: "activa" });
-  const cobrador = COBRADOR_OPTIONS.find((c) => c.id === cobradorId) ?? null;
+  const cobradorId = useWatch({ control, name: "cobradorId" }) ?? null;
+  const activa = useWatch({ control, name: "activa" }) ?? true;
+  const { data: collectors = [] } = useCobradores();
+  const cobrador = collectors.find((collector) => collector.id === cobradorId) ?? null;
 
   // Métricas de la vista previa: en edición, las de la ruta; en alta, ceros.
   const clientesCount = ruta?.clientesCount ?? 0;
@@ -120,12 +126,13 @@ export function RouteFormScreen({ rutaId }: { rutaId?: string }) {
   const abierta = (ruta?.estadoDia ?? "cerrada") === "abierta";
 
   async function onSubmit(values: RouteFormValues) {
+    const payload = { nombre: values.nombre, cobradorId: values.cobradorId, activa: values.activa ?? true };
     try {
       if (isEdit) {
-        await updateRuta.mutateAsync(values);
+         await updateRuta.mutateAsync(payload);
         toast.success("Ruta actualizada");
       } else {
-        await createRuta.mutateAsync(values);
+         await createRuta.mutateAsync(payload);
         toast.success("Ruta creada");
       }
       router.push("/admin/routes-collectors");

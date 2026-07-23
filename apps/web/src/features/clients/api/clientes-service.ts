@@ -12,6 +12,7 @@ import {
   uploadFotoDocumentoResponseSchema,
 } from "@repo/types";
 
+import { useSessionStore } from "@/entities/session";
 import { apiFetch, uploadFile } from "@/shared/api/client";
 
 export interface ClientesService {
@@ -198,28 +199,40 @@ export const mockClientesService: ClientesService = {
 
 export const httpClientesService: ClientesService = {
   listClientes(query) {
+    const token = useSessionStore.getState().token;
     const params = new URLSearchParams();
     if (query?.search) params.set("search", query.search);
     if (query?.rutaId) params.set("rutaId", query.rutaId);
     const qs = params.toString();
-    return apiFetch(`/clientes${qs ? `?${qs}` : ""}`, clienteListItemSchema.array());
+    return apiFetch(`/clientes${qs ? `?${qs}` : ""}`, clienteListItemSchema.array(), { token });
   },
   getCliente(id) {
-    return apiFetch(`/clientes/${id}`, clienteDetailSchema);
+    return apiFetch(`/clientes/${id}`, clienteDetailSchema, { token: useSessionStore.getState().token });
   },
   createCliente(body) {
-    return apiFetch("/clientes", clienteSchema, { method: "POST", body });
+    return apiFetch("/clientes", clienteDetailSchema, {
+      method: "POST",
+      body,
+      token: useSessionStore.getState().token,
+    });
   },
   updateCliente(id, body) {
-    return apiFetch(`/clientes/${id}`, clienteSchema, { method: "PATCH", body });
+    return apiFetch(`/clientes/${id}`, clienteDetailSchema, {
+      method: "PATCH",
+      body,
+      token: useSessionStore.getState().token,
+    });
   },
   async deleteCliente(id) {
-    await apiFetch(`/clientes/${id}`, clienteSchema, { method: "DELETE" });
+    await apiFetch(`/clientes/${id}`, clienteSchema, { method: "DELETE", token: useSessionStore.getState().token });
   },
   uploadFotoDocumento(file) {
-    return uploadFile("/clientes/foto-documento", uploadFotoDocumentoResponseSchema, { file });
+    return uploadFile("/clientes/foto-documento", uploadFotoDocumentoResponseSchema, {
+      file,
+      token: useSessionStore.getState().token,
+    });
   },
 };
 
 // Punto de inyección del swap mock→real (sub-fase 2.14). Bloque A: mock.
-export const clientesService: ClientesService = mockClientesService;
+export const clientesService: ClientesService = httpClientesService;

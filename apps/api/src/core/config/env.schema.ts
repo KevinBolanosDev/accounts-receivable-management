@@ -7,6 +7,9 @@ export const envSchema = z.object({
   DATABASE_URL: z.string().min(1, "DATABASE_URL es requerida"),
   JWT_SECRET: z.string().min(1, "JWT_SECRET es requerida"),
   JWT_EXPIRES_IN: z.string().default("1d"),
+  SUPABASE_URL: z.string().url("SUPABASE_URL debe ser una URL válida"),
+  SUPABASE_SERVICE_KEY: z.string().min(1, "SUPABASE_SERVICE_KEY es requerida"),
+  SUPABASE_STORAGE_BUCKET: z.string().min(1, "SUPABASE_STORAGE_BUCKET es requerido"),
 });
 
 export type Env = z.infer<typeof envSchema>;

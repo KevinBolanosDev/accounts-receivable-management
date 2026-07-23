@@ -7,7 +7,7 @@ import { ArrowLeftIcon } from "lucide-react";
 import { createClienteRequestSchema, type CreateClienteRequest } from "@repo/types";
 import { toast } from "sonner";
 
-import { COBRADOR_RUTA_ACTIVA } from "@/shared/lib/assignment-options";
+import { useRutas } from "@/features/routes-collectors/api/use-rutas";
 import { Button } from "@/shared/ui/button";
 import { Input } from "@/shared/ui/input";
 import { Label } from "@/shared/ui/label";
@@ -15,7 +15,7 @@ import { Label } from "@/shared/ui/label";
 import { useCreateCliente } from "../api/use-clientes";
 import { DocumentUploader } from "./DocumentUploader";
 
-const RUTA_CORTA = COBRADOR_RUTA_ACTIVA.nombre.split("·")[0]?.trim() ?? "Mi ruta";
+const RUTA_CORTA = "Mi ruta";
 
 // DESIGN_SYSTEM.md §4.4 — alta de cliente en la calle: hero de gradiente +
 // tarjeta con el formulario (foto primero), cámara, y botón "Guardar" fijo al
@@ -23,6 +23,8 @@ const RUTA_CORTA = COBRADOR_RUTA_ACTIVA.nombre.split("·")[0]?.trim() ?? "Mi rut
 export function FieldClientCreateScreen() {
   const router = useRouter();
   const createCliente = useCreateCliente();
+  const { data: rutas = [] } = useRutas();
+  const activeRoute = rutas[0];
 
   const {
     register,
@@ -37,7 +39,7 @@ export function FieldClientCreateScreen() {
       telefono: "",
       documento: "",
       direccion: "",
-      rutaId: COBRADOR_RUTA_ACTIVA.id,
+      rutaId: activeRoute?.id ?? "",
       fotoDocumentoFrenteUrl: null,
       fotoDocumentoReversoUrl: null,
     },
@@ -82,7 +84,8 @@ export function FieldClientCreateScreen() {
           </button>
           <span className="text-lg font-semibold">Nuevo cliente</span>
           <span className="ml-auto rounded-full bg-white/20 px-3 py-1 text-caption font-medium">
-            {RUTA_CORTA}
+             {activeRoute?.nombre?.split("·")[0]?.trim() ?? RUTA_CORTA}
+
           </span>
         </div>
       </div>

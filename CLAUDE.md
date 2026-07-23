@@ -13,7 +13,7 @@ Accounts receivable / daily-installment collection system (see `specs/PLAN_DESAR
 Two project-wide conventions (also in `specs/PLAN_DESARROLLO.md` §5):
 
 - **Per-phase order: frontend → backend → wiring.** From Fase 1 on, each phase ships in three sub-phase blocks: (A) frontend first, built against mocked services (the design system is already done); (B) backend next (Nest modules, Prisma, guards); (C) wiring last, swapping the mock for the real API and verifying end-to-end. The service that talks to the backend hides behind an interface from the first frontend sub-phase, so the mock→real swap is a single change point. Shared contracts (Zod schema + inferred type in `@repo/types`) are defined in the first frontend sub-phase and **reused** by the backend, never duplicated.
-- **Language: code in English, prose in Spanish.** Project names, routes, folders, and code identifiers are in English; documentation (`specs/*`), user-facing answers, and code comments are in Spanish (comments only where they add clarity).
+- **Language: code in English, prose in Spanish.** All code identifiers, filenames, folders, classes, functions, variables, schemas, services, repositories, and new API/frontend routes must use English. Existing Spanish technical names are migration debt and must be renamed when touched. Documentation (`specs/*`), user-facing copy, answers, and code comments remain in Spanish (comments only where they add clarity).
 
 ## Commands
 

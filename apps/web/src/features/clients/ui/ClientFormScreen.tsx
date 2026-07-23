@@ -8,7 +8,7 @@ import { createClienteRequestSchema, type CreateClienteRequest } from "@repo/typ
 import { toast } from "sonner";
 
 import { getInitials } from "@/shared/lib/initials";
-import { RUTA_OPTIONS } from "@/shared/lib/assignment-options";
+import { useRutas } from "@/features/routes-collectors/api/use-rutas";
 import { Badge } from "@/shared/ui/badge";
 import { Button } from "@/shared/ui/button";
 import { Input } from "@/shared/ui/input";
@@ -57,6 +57,7 @@ export function ClientFormScreen({ clienteId }: { clienteId?: string }) {
   const router = useRouter();
   const isEdit = !!clienteId;
   const { data: cliente } = useCliente(clienteId ?? "");
+  const { data: rutas = [] } = useRutas();
   const createCliente = useCreateCliente();
   const updateCliente = useUpdateCliente(clienteId ?? "");
 
@@ -95,7 +96,7 @@ export function ClientFormScreen({ clienteId }: { clienteId?: string }) {
   }, [cliente, reset]);
 
   const values = useWatch({ control });
-  const rutaNombre = RUTA_OPTIONS.find((r) => r.id === values.rutaId)?.nombre ?? "Sin ruta";
+  const rutaNombre = rutas.find((route) => route.id === values.rutaId)?.nombre ?? "Sin ruta";
 
   async function onSubmit(v: CreateClienteRequest) {
     try {
@@ -158,9 +159,9 @@ export function ClientFormScreen({ clienteId }: { clienteId?: string }) {
                       <SelectValue placeholder="Selecciona una ruta" />
                     </SelectTrigger>
                     <SelectContent>
-                      {RUTA_OPTIONS.map((ruta) => (
-                        <SelectItem key={ruta.id} value={ruta.id}>
-                          {ruta.nombre}
+                      {rutas.map((route) => (
+                        <SelectItem key={route.id} value={route.id}>
+                          {route.nombre}
                         </SelectItem>
                       ))}
                     </SelectContent>

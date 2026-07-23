@@ -9,6 +9,7 @@ import {
   type UpdateRutaRequest,
 } from "@repo/types";
 
+import { useSessionStore } from "@/entities/session";
 import { apiFetch } from "@/shared/api/client";
 
 // Resumen de la tira superior de la lista de rutas (pantalla 6c). Es un
@@ -139,10 +140,10 @@ export const mockRutasService: RutasService = {
 
 export const httpRutasService: RutasService = {
   listRutas() {
-    return apiFetch("/rutas", rutaListItemSchema.array());
+    return apiFetch("/rutas", rutaListItemSchema.array(), { token: useSessionStore.getState().token });
   },
   async getRutasSummary() {
-    const rutas = await apiFetch("/rutas", rutaListItemSchema.array());
+    const rutas = await apiFetch("/rutas", rutaListItemSchema.array(), { token: useSessionStore.getState().token });
     const abiertas = rutas.filter((r) => r.estadoDia === "abierta");
     return {
       rutasAbiertas: abiertas.length,
@@ -152,18 +153,18 @@ export const httpRutasService: RutasService = {
     };
   },
   getRuta(id) {
-    return apiFetch(`/rutas/${id}`, rutaDetailSchema);
+    return apiFetch(`/rutas/${id}`, rutaDetailSchema, { token: useSessionStore.getState().token });
   },
   createRuta(body) {
-    return apiFetch("/rutas", rutaSchema, { method: "POST", body });
+    return apiFetch("/rutas", rutaSchema, { method: "POST", body, token: useSessionStore.getState().token });
   },
   updateRuta(id, body) {
-    return apiFetch(`/rutas/${id}`, rutaSchema, { method: "PATCH", body });
+    return apiFetch(`/rutas/${id}`, rutaSchema, { method: "PATCH", body, token: useSessionStore.getState().token });
   },
   async deleteRuta(id) {
-    await apiFetch(`/rutas/${id}`, rutaSchema, { method: "DELETE" });
+    await apiFetch(`/rutas/${id}`, rutaSchema, { method: "DELETE", token: useSessionStore.getState().token });
   },
 };
 
 // Punto de inyección del swap mock→real (sub-fase 2.14). Bloque A: mock.
-export const rutasService: RutasService = mockRutasService;
+export const rutasService: RutasService = httpRutasService;

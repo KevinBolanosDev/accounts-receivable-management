@@ -12,6 +12,8 @@ import { Badge } from "@/shared/ui/badge";
 import { Button } from "@/shared/ui/button";
 import { Input } from "@/shared/ui/input";
 import { ProgressRing } from "@/shared/ui/progress-ring";
+import { useRutas } from "@/features/routes-collectors/api/use-rutas";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/shared/ui/select";
 import { Skeleton } from "@/shared/ui/skeleton";
 import { AdminPageHeader } from "@/widgets/admin-shell/AdminPageHeader";
 
@@ -125,7 +127,12 @@ function ClientPreview({ cliente }: { cliente: ClienteDetail }) {
 export function ClientsListScreen() {
   const [search, setSearch] = useState("");
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  const { data: clientes, isLoading } = useClientes(search ? { search } : undefined);
+  const [routeId, setRouteId] = useState("all");
+  const { data: rutas = [] } = useRutas();
+  const { data: clientes, isLoading } = useClientes({
+    ...(search ? { search } : {}),
+    ...(routeId !== "all" ? { rutaId: routeId } : {}),
+  });
 
   const activeId = selectedId ?? clientes?.[0]?.id ?? "";
   const { data: cliente } = useCliente(activeId);
@@ -153,10 +160,25 @@ export function ClientsListScreen() {
               value={search}
               onChange={(e) => setSearch(e.target.value)}
             />
-          </div>
+           </div>
 
-          <div className="overflow-hidden rounded-lg border border-border bg-card">
-            {isLoading ? (
+           <Select value={routeId} onValueChange={setRouteId}>
+             <SelectTrigger>
+               <SelectValue placeholder="Todas las rutas" />
+             </SelectTrigger>
+             <SelectContent>
+               <SelectItem value="all">Todas las rutas</SelectItem>
+               {rutas.map((route) => (
+                 <SelectItem key={route.id} value={route.id}>
+                   {route.nombre}
+                 </SelectItem>
+               ))}
+             </SelectContent>
+           </Select>
+
+           <div className="overflow-hidden rounded-lg border border-border bg-card">
+             {isLoading ? (
+
               <div className="flex flex-col gap-3 p-4">
                 {Array.from({ length: 6 }).map((_, i) => (
                   <Skeleton key={i} className="h-12 w-full" />
