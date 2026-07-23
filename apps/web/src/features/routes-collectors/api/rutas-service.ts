@@ -28,6 +28,10 @@ export interface RutasService {
   createRuta(body: CreateRutaRequest): Promise<Ruta>;
   updateRuta(id: string, body: UpdateRutaRequest): Promise<Ruta>;
   deleteRuta(id: string): Promise<void>;
+  /** Asigna clientes a la ruta en bloque (pantalla de Ruta, §3 cierre Fase 3). */
+  assignClientes(rutaId: string, clienteIds: string[]): Promise<RutaDetail>;
+  /** Quita un cliente de la ruta (queda "sin ruta", no se borra). */
+  unassignCliente(rutaId: string, clienteId: string): Promise<RutaDetail>;
 }
 
 const delay = (ms = 280) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -135,6 +139,16 @@ export const mockRutasService: RutasService = {
   async deleteRuta() {
     await delay();
   },
+  async assignClientes(id) {
+    await delay();
+    const item = MOCK_RUTAS.find((r) => r.id === id) ?? MOCK_RUTAS[0]!;
+    return rutaDetailSchema.parse(buildRutaDetail(item));
+  },
+  async unassignCliente(id) {
+    await delay();
+    const item = MOCK_RUTAS.find((r) => r.id === id) ?? MOCK_RUTAS[0]!;
+    return rutaDetailSchema.parse(buildRutaDetail(item));
+  },
 };
 
 // ---- Implementación real (se activa en el cableado, sub-fase 2.14) -----------
@@ -164,6 +178,19 @@ export const httpRutasService: RutasService = {
   },
   async deleteRuta(id) {
     await apiFetch(`/routes/${id}`, rutaSchema, { method: "DELETE", token: useSessionStore.getState().token });
+  },
+  assignClientes(id, clienteIds) {
+    return apiFetch(`/routes/${id}/clients`, rutaDetailSchema, {
+      method: "POST",
+      body: { clienteIds },
+      token: useSessionStore.getState().token,
+    });
+  },
+  unassignCliente(id, clienteId) {
+    return apiFetch(`/routes/${id}/clients/${clienteId}`, rutaDetailSchema, {
+      method: "DELETE",
+      token: useSessionStore.getState().token,
+    });
   },
 };
 

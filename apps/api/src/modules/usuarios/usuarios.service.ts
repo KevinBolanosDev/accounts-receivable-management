@@ -23,6 +23,7 @@ export class UsuariosService {
     try {
       const usuario = await this.usuariosRepository.create({
         nombre: body.nombre,
+        telefono: body.telefono,
         documento: body.documento,
         passwordHash: await bcrypt.hash(body.password, 10),
         rol: "COBRADOR",

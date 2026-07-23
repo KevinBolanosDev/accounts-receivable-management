@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { BriefcaseIcon, PencilIcon, PlusIcon, PowerIcon, UserIcon, UsersRoundIcon } from "lucide-react";
+import { BriefcaseIcon, PencilIcon, PlusIcon, UserIcon, UsersRoundIcon } from "lucide-react";
 import type { CobradorListItem } from "@repo/types";
 
 import { getInitials } from "@/shared/lib/initials";
@@ -10,6 +10,7 @@ import { Badge } from "@/shared/ui/badge";
 import { Button } from "@/shared/ui/button";
 import { MetricCard } from "@/shared/ui/metric-card";
 import { Skeleton } from "@/shared/ui/skeleton";
+import { Switch } from "@/shared/ui/switch";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/shared/ui/table";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/shared/ui/tooltip";
 import { AdminPageHeader } from "@/widgets/admin-shell/AdminPageHeader";
@@ -61,7 +62,27 @@ function CobradoRow({
         </Badge>
       </TableCell>
       <TableCell className="text-right">
-        <div className="flex items-center justify-end gap-1">
+        <div className="flex items-center justify-end gap-3">
+          <Tooltip>
+            {/* El trigger envuelve un <span>, no el Switch directamente: Radix
+                Slot (asChild) fusiona los props del trigger sobre el hijo, y
+                Tooltip/Switch usan `data-state` con significados distintos
+                (abierto/cerrado del popover vs. checked/unchecked) — sobre el
+                Switch directo, el del Tooltip pisa al del Switch y el CSS
+                `data-[state=checked]:bg-primary` nunca hace match. */}
+            <TooltipTrigger asChild>
+              <span className="inline-flex">
+                <Switch
+                  checked={cobrador.activo}
+                  aria-label={cobrador.activo ? "Desactivar" : "Activar"}
+                  onCheckedChange={(checked) =>
+                    updateCobrador.mutate({ id: cobrador.id, body: { activo: checked } })
+                  }
+                />
+              </span>
+            </TooltipTrigger>
+            <TooltipContent>{cobrador.activo ? "Desactivar" : "Activar"}</TooltipContent>
+          </Tooltip>
           <Tooltip>
             <TooltipTrigger asChild>
               <Button variant="ghost" size="icon" aria-label="Editar" onClick={() => onEdit(cobrador)}>
@@ -69,21 +90,6 @@ function CobradoRow({
               </Button>
             </TooltipTrigger>
             <TooltipContent>Editar</TooltipContent>
-          </Tooltip>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button
-                variant="ghost"
-                size="icon"
-                aria-label={cobrador.activo ? "Desactivar" : "Activar"}
-                onClick={() =>
-                  updateCobrador.mutate({ id: cobrador.id, body: { activo: !cobrador.activo } })
-                }
-              >
-                <PowerIcon />
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent>{cobrador.activo ? "Desactivar" : "Activar"}</TooltipContent>
           </Tooltip>
         </div>
       </TableCell>

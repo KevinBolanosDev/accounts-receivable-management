@@ -2,103 +2,188 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+> **Estado actual (Fase 3 cerrada; Fase 4 planificada).** Fases 0, 0.5, 1, 2 y 3 están implementadas y verificadas end-to-end con la API real. Faltan 4, 5 y 6. Detalle exhaustivo y decisiones de implementación en `specs/ESTADO_ACTUAL.md`; spec original en `specs/PLAN_DESARROLLO.md`. Plan detallado de Fase 4 en `specs/FASE_4_SUBFASES.md` (18 sub-fases, listo para ejecutar).
+
 ## Project
 
-Accounts receivable / daily-installment collection system (see `specs/PLAN_DESARROLLO.md`, in Spanish, for the full product spec and phase-by-phase roadmap). Three user profiles: **Admin** (full access), **Cobrador** (collector, scoped to their assigned route(s)), **Cliente final** (read-only, token-based access, no login).
+Accounts receivable / daily-installment collection system. Three user profiles: **Admin** (full access), **Cobrador** (collector, scoped to their assigned route(s)), **Cliente final** (read-only, token-based access, no login). Hoy el portal del cliente es un placeholder; su feature se cierra en Fase 4.
 
-`specs/PLAN_DESARROLLO.md` is the authoritative source for architecture decisions and the phase plan (Fase 0 through Fase 6). Each phase is broken into sub-steps in its own `specs/FASE_<N>_SUBFASES.md`. `specs/DESIGN_SYSTEM.md` has the design tokens (colors, radii, dark/light-mode-per-surface rules); the design system is now built and applied in `apps/web` (Fase 0.5 — shadcn primitives, tokens, GSAP motion, route-group scaffolding).
+`specs/PLAN_DESARROLLO.md` es la spec original (Fase 0 → 6). `specs/ESTADO_ACTUAL.md` documenta lo implementado, decisiones tomadas en el camino y lo que falta. Cada fase está desglosada en `specs/FASE_<N>_SUBFASES.md`. `specs/DESIGN_SYSTEM.md` tiene los tokens; están aplicados en `apps/web` (Fase 0.5).
 
 ## Working conventions
 
-Two project-wide conventions (also in `specs/PLAN_DESARROLLO.md` §5):
+Dos convenciones (también en `specs/PLAN_DESARROLLO.md` §5):
 
-- **Per-phase order: frontend → backend → wiring.** From Fase 1 on, each phase ships in three sub-phase blocks: (A) frontend first, built against mocked services (the design system is already done); (B) backend next (Nest modules, Prisma, guards); (C) wiring last, swapping the mock for the real API and verifying end-to-end. The service that talks to the backend hides behind an interface from the first frontend sub-phase, so the mock→real swap is a single change point. Shared contracts (Zod schema + inferred type in `@repo/types`) are defined in the first frontend sub-phase and **reused** by the backend, never duplicated.
-- **Language: code in English, prose in Spanish.** All code identifiers, filenames, folders, classes, functions, variables, schemas, services, repositories, and new API/frontend routes must use English. Existing Spanish technical names are migration debt and must be renamed when touched. Documentation (`specs/*`), user-facing copy, answers, and code comments remain in Spanish (comments only where they add clarity).
+- **Orden por fase: frontend → backend → wiring.** Desde Fase 1, cada fase se entrega en tres bloques: (A) front contra mocks; (B) back (Nest + Prisma + guards); (C) cableado, swap mock→real. El servicio HTTP se esconde detrás de una interfaz desde el primer bloque. El contrato compartido (Zod + tipo en `@repo/types`) se define en el primer bloque de front y el back lo **reusa** sin duplicar.
+- **Idioma: código en inglés, prosa en español.** Identificadores, filenames, carpetas, clases, funciones, variables, schemas, services, repos, rutas API/front nuevas → inglés. Los nombres técnicos en español son deuda y se renombran al ser tocados. Docs (`specs/*`), copy de usuario, respuestas y comentarios solo donde aporten.
+
+## Estado actual (resumen rápido)
+
+| Fase | Alcance | Estado |
+|---|---|---|
+| **0** Monorepo | Turborepo + pnpm + `apps/web` + `apps/api` + `packages/{types,config}` + `GET /health` | ✅ |
+| **0.5** Design system | Tokens CSS, Inter, modo por superficie, shadcn primitives (23), `ProgressRing`, GSAP motion + galería dev | ✅ |
+| **1** Auth | `Usuario` Prisma + JWT + `JwtAuthGuard` + `RolesGuard` + `@Roles` + `@CurrentUser` + 2 logins + `RouteGuard` | ✅ (DoD tildado en spec) |
+| **2** Clientes/Rutas/Cobradores | `Ruta`, `Cliente` Prisma + 3 módulos + `core/storage` (Supabase) + foto documento (multipart, 2 lados) + shell Admin/Cobrador + 7 pantallas | ✅ |
+| **3** Créditos/Cobros | `Producto`, `Credito`, `Pago` Prisma + 3 módulos + transacción atómica con control de carrera (`updateMany` condicional) + `codigo` por secuencia + anular crédito + 6 pantallas Admin/Cobrador | ✅ |
+| **4** Recibos + portal Cliente | Recibo HTML server-rendered + `auth-cliente` (3er rol JWT) + `client-portal` + `MustChangePasswordGuard` + `@Public()`/`APP_GUARD` global + `@nestjs/throttler` + acciones staff (`/clients/:id/access`) | ⬜ (plan listo en `FASE_4_SUBFASES.md`) |
+| **5** Cierre diario + reportes PDF | — | ⬜ |
+| **6** Hardening + tests | Unit tests + filtros globales + auditoria + CI | ⬜ |
+
+**Tests hoy:** 24 casos e2e en `apps/api/test/` (`app`, `auth`, `clientes`, `rutas`). Cero unit tests. Cero tests en front.
+
+**Endpoints implementados** (en inglés, ver refactor reciente):
+
+| Verbo | Path | Guards | Roles |
+|---|---|---|---|
+| GET | `/health` | — | público |
+| POST | `/auth/login` | — | público |
+| GET | `/auth/me` | Jwt | auth |
+| GET | `/auth/admin-only` | Jwt + Roles | ADMIN |
+| GET, POST | `/users` | Jwt + Roles | ADMIN |
+| PATCH | `/users/:id` | Jwt + Roles | ADMIN |
+| GET | `/clients` | Jwt | scoping por rol |
+| GET | `/clients/summary` | Jwt | scoping |
+| GET | `/clients/:id` | Jwt | scoping |
+| POST | `/clients` | Jwt | scoping |
+| PATCH | `/clients/:id` | Jwt | scoping |
+| DELETE | `/clients/:id` | Jwt + Roles | ADMIN (soft-delete) |
+| POST | `/clients/id-document-photo` | Jwt | multipart, devuelve URL pública |
+| GET | `/routes` | Jwt | scoping |
+| GET | `/routes/:id` | Jwt | scoping |
+| POST | `/routes` | Jwt + Roles | ADMIN |
+| PATCH | `/routes/:id` | Jwt + Roles | ADMIN |
+| DELETE | `/routes/:id` | Jwt + Roles | ADMIN |
+| GET | `/products` | Jwt | auth |
+| POST | `/products` | Jwt + Roles | ADMIN |
+| PATCH | `/products/:id` | Jwt + Roles | ADMIN |
+| GET | `/credits` | Jwt | scoping |
+| GET | `/credits/:id` | Jwt | scoping |
+| POST | `/credits` | Jwt | scoping |
+| PATCH | `/credits/:id` | Jwt | scoping |
+| DELETE | `/credits/:id` | Jwt + Roles | ADMIN (anular, soft) |
+| POST | `/collections` | Jwt | scoping, tx atómica |
+
+**Mock vs real:** TODOS los features están conectados a `httpXxxService`. Los `mockXxxService` siguen implementados (no se borraron) — el swap se hace cambiando una constante en cada `*-service.ts`. `cobros` no tiene mock útil: `mockCobrosService.registrarCobro` solo lanza errores para validar el camino de rollback.
 
 ## Commands
 
-Root-level (Turborepo fans these out to every workspace that defines the script):
-
 ```bash
-pnpm dev         # runs apps/web + apps/api + packages/types (watch build) concurrently
-pnpm build       # builds packages/types first, then api and web (dependsOn: ["^build"])
-pnpm lint        # eslint across all workspaces
-pnpm typecheck   # tsc --noEmit across all workspaces
-pnpm format      # prettier --write . (root Prettier config re-exports packages/config/prettier.config.js)
-```
+# Root (Turborepo fans out a cada workspace)
+pnpm dev         # web + api + types watch build, en paralelo
+pnpm build       # types primero (^build), luego api y web
+pnpm lint        # eslint en todos los workspaces
+pnpm typecheck   # tsc --noEmit en todos los workspaces
+pnpm format      # prettier --write . (root re-exporta packages/config/prettier.config.js)
 
-Target a single workspace with `--filter`:
-
-```bash
+# Workspace único
 pnpm --filter api dev
 pnpm --filter web build
-pnpm --filter @repo/types build   # must run before api/web can resolve @repo/types
+pnpm --filter @repo/types build   # necesario antes de api/web en cold start
+
+# Backend
+pnpm --filter api test           # jest unit tests (no hay *.spec.ts aún)
+pnpm --filter api test:e2e       # jest --config ./test/jest-e2e.json
+pnpm --filter api test:e2e -- -t "auth"
+pnpm --filter api db:generate    # prisma generate (corre en postinstall también)
+pnpm --filter api db:seed        # ts-node prisma/seed.ts — demo data idempotente
 ```
 
-Backend (`apps/api`, run from that directory or via `--filter api`):
-
-```bash
-pnpm test              # jest unit tests (rootDir: src, pattern: *.spec.ts) — none exist yet
-pnpm test -- health.service.spec.ts   # run a single unit test file
-pnpm test:e2e           # jest --config ./test/jest-e2e.json (test/app.e2e-spec.ts, test/auth.e2e-spec.ts)
-pnpm test:e2e -- -t "auth"            # run a single e2e test file/suite by name
-pnpm db:generate         # prisma generate (also runs automatically on postinstall)
-pnpm db:seed             # ts-node prisma/seed.ts — seeds the demo Admin/Cobrador (needed before auth e2e tests or manual login)
-npx prisma generate      # same, direct CLI
-npx prisma studio         # inspect the DB (needs a reachable DATABASE_URL)
-```
-
-No test runner is configured for `apps/web` yet — Fase 6 of the plan decides this.
+Sin test runner en `apps/web` aún (lo decide Fase 6).
 
 ### Local env setup
 
-`apps/api/.env` (gitignored; copy from `apps/api/.env.example`) needs `PORT`, `WEB_ORIGIN`, and `DATABASE_URL`. Env vars are validated at boot with a Zod schema (`apps/api/src/core/config/env.schema.ts`) via `@nestjs/config` — the app throws a clear error on startup if `DATABASE_URL` is missing.
+`apps/api/.env` (gitignored; copiar de `apps/api/.env.example`): `PORT`, `WEB_ORIGIN`, `DATABASE_URL`, `JWT_SECRET`, `JWT_EXPIRES_IN`, `SUPABASE_URL`, `SUPABASE_SERVICE_KEY`, `SUPABASE_STORAGE_BUCKET`. Validados al boot con Zod (`apps/api/src/core/config/env.schema.ts`) vía `ConfigModule.forRoot({ validate })` — falla limpio si falta alguno. `NODE_ENV` también se valida pero **no está en `.env.example`** (agregar si se necesita explícito).
 
-**Supabase gotcha:** Supabase's "Direct connection" host (`db.<project>.supabase.co`) resolves IPv6-only. If the DATABASE_URL uses that host and the run environment has no outbound IPv6 (common in WSL, sandboxes, some CI), Postgres connections fail with `ENETUNREACH`. Use Supabase's **connection pooler** string instead (dashboard → Connect → "Transaction pooler" / "Session pooler"), which is IPv4-compatible.
+**Gotcha Supabase:** el host "Direct connection" (`db.<project>.supabase.co`) es IPv6-only y rompe con `ENETUNREACH` en WSL/sandboxes. Usar el **connection pooler** (dashboard → Connect → "Transaction/Session pooler"), IPv4-compatible. En `.env` actual del repo ya se usa el pooler.
+
+**Gotcha `SUPABASE_SERVICE_KEY`:** debe ser la **`service_role`** real (JWT que empieza con `eyJ...`). El `.env` actual tiene una clave con prefijo `sb_publishable_…` — verificar que no sea la anon; el `StorageService.uploadImagen` requiere permisos de escritura en el bucket.
+
+**`apps/web/.env`:** no existe `.env.example`. Solo se lee `NEXT_PUBLIC_API_URL` (default `http://localhost:3001`).
 
 ## Architecture
 
-Turborepo + pnpm workspaces. `apps/*` are deployables, `packages/*` are shared code.
+Turborepo + pnpm workspaces. `apps/*` deployables, `packages/*` código compartido.
 
 ```
 apps/api      NestJS backend
 apps/web      Next.js (App Router) frontend
-packages/config  shared tsconfig/eslint/prettier base (consumed as source, no build step)
-packages/types    shared Zod schemas + inferred types (@repo/types) — the contract between api and web
+packages/config  shared tsconfig/eslint/prettier base (source, sin build)
+packages/types   shared Zod + tipos (@repo/types) — el contrato api/web
 ```
 
-### Two different architectural styles, deliberately
+### Dos estilos arquitectónicos, deliberadamente
 
-Backend uses **Feature-Based modules** (NestJS's natural module → controller → service → repository pattern under `apps/api/src/modules/*`). Frontend uses **Feature-Sliced Design** (`apps/web/src/{app,pages-fsd,widgets,features,entities,shared}`, layers import only downward — `widgets` can use `shared`, `entities` never imports `features`). These are intentionally different labels for intentionally different ecosystems (FSD's `pages`/`widgets` notion doesn't map cleanly onto Nest, and Nest's DI-module system doesn't map onto a UI layer model). See `specs/PLAN_DESARROLLO.md` §2 for the full reasoning.
+Back: **Feature-Based modules** (NestJS module → controller → service → repository en `apps/api/src/modules/*`). Front: **Feature-Sliced Design** (`apps/web/src/{app,widgets,features,entities,shared}`, las capas importan solo hacia abajo). Distintos a propósito (ver `specs/PLAN_DESARROLLO.md` §2).
 
-The cross-cutting rule that matters most: **no horizontal coupling between features**. A feature module never imports another feature's internals. Anything genuinely shared goes into `core/` (backend infra: Prisma, guards, interceptors) or a `shared`/`packages/*` layer, or is exchanged via typed contracts — never by reaching into a sibling feature's service.
+**Regla transversal:** **no acoplamiento horizontal entre features**. Lo compartido va a `core/` (back), `shared/`/`packages/*` (front), o contratos tipados — nunca importando el service del vecino.
 
-### `@repo/types` — the contract layer
+### `@repo/types` — la capa de contratos
 
-Both apps depend on `@repo/types` for shared shapes, defined once as a Zod schema and consumed identically on both ends (`schema.parse(data)` on the way out of the API, and again on the client after `fetch`). This is meant to be the pattern going forward: new shared DTOs get a Zod schema + inferred type in `packages/types/src/`, exported from `index.ts`, and imported by both `apps/api` and `apps/web`.
+Zod como única fuente de verdad. Convención:
+- `<entidad>Schema` (camelCase) + tipo inferido PascalCase mismo nombre (`rutaSchema` → `Ruta`).
+- Sufijos por rol: `Schema` (shape), `ListItemSchema` (fila), `DetailSchema` (detalle), `RequestSchema` (body), `QuerySchema` (query), `ResponseSchema`.
+- Updates vía `.partial()` cuando el shape coincide; redefinidos a mano cuando se quita un campo requerido.
+- Mensajes de error en español, en imperativo/predicativo para mostrar al usuario final (`"El monto debe ser mayor a 0."`).
+- Decimales: `z.number()` (JS). Prisma persiste `Decimal(12,2)`, el service hace `.toNumber()` antes del `schema.parse(...)`. **Nunca Float para dinero.**
+- Reglas clave: `password min(6)`, `monto positive`, `dias int positive`, `interes min(0)`, `ids: z.string()` (acepta UUIDs y códigos legibles como `CR-XXXX`).
 
-**Non-obvious constraint:** `@repo/types` must build to plain CommonJS (`tsc`, `module: CommonJS`), not ESM. `apps/api` has no `"type": "module"`, so Nest compiles to CJS and `require()`s workspace packages at runtime — an ESM-only shared package breaks at runtime (not at typecheck time, since `import type` is erased) the moment something imports a real value (not just a type) from it. If you add a new shared package, keep it CJS unless you also convert the consuming app to ESM.
+**Constraint no obvio:** `@repo/types` debe compilar a CommonJS (`tsc`, `module: CommonJS`). `apps/api` no tiene `"type": "module"`, así que Nest compila a CJS y `require()` los workspace packages. ESM-only rompe en runtime (no en typecheck) cuando hay imports de valor real.
 
 ### NestJS structure (`apps/api/src`)
 
 ```
-main.ts                        NestFactory bootstrap, CORS (WEB_ORIGIN), PORT
-app.module.ts                  root module — imports ConfigModule, PrismaModule, feature modules
-core/config/env.schema.ts      Zod schema + validateEnv(), passed to ConfigModule.forRoot({ validate })
-core/prisma/                   PrismaService (extends PrismaClient, driver-adapter pattern) + PrismaModule (@Global)
-modules/<feature>/             one module per feature: <feature>.module.ts, .controller.ts, .service.ts
+main.ts                        bootstrap: NestFactory, CORS (WEB_ORIGIN), PORT (default 3001)
+app.module.ts                  imports ConfigModule, PrismaModule, CoreAuthModule, StorageModule, 7 feature modules
+core/
+├── config/env.schema.ts       Zod schema + validateEnv()
+├── prisma/                    PrismaService (driver-adapter pattern) + PrismaModule (@Global)
+├── auth/                      CoreAuthModule (@Global): JwtModule, JwtAuthGuard, RolesGuard, @Roles, @CurrentUser, AuthenticatedUser
+├── storage/                   StorageService (Supabase client + upload a bucket público)
+├── pipes/                     ZodValidationPipe, ImageFileValidationPipe (5MB, JPEG/PNG/WebP)
+└── domain/                    helpers cross-feature (ej: rollupEstadoCliente, mapCreditoListItem) — único punto donde dos features comparten lógica sin acoplarse
+modules/
+├── auth/                      login, /me, /admin-only (referencia mínima)
+├── health/                    GET /health (referencia mínima, query en vivo)
+├── usuarios/                  CRUD ADMIN sobre Usuario (lista filtra COBRADOR por default)
+├── clientes/                  CRUD + summary + upload foto doc (multipart) + soft-delete
+├── rutas/                     CRUD + scoping por cobrador + delete con check de clientes
+├── productos/                 CRUD + Decimal para precioBase
+├── creditos/                  crear/editar/anular + codigo por secuencia + recálculo de saldo
+└── cobros/                    POST /collections con tx atómica + control de carrera
 ```
 
-`HealthModule` (`modules/health/`) is the reference implementation of the module/controller/service pattern — copy its shape for new feature modules. `GET /health` reports `{ status, uptime, timestamp, database }`, where `database` is checked via a live query and never throws (returns `"down"` instead of crashing the app if Postgres is unreachable).
+**Patrón repository (sin interface abstracta):** cada módulo tiene una clase `@Injectable()` concreta (`ClientsRepository`, etc.) con `prisma` inyectado y métodos tipados. El **scoping por rol siempre lo arma el service**, no el repository — `clients.repository.ts:44-46` lo declara explícito: *"Capa de datos pura: solo Prisma, cero reglas de negocio, cero auth."*
 
-**Prisma is on v7**, which changed significantly from earlier versions used in most existing tutorials/training data:
+**Patrón de guards:** se aplican a nivel de clase (`@UseGuards(JwtAuthGuard, RolesGuard)` + `@Roles("ADMIN")`) y se sobreescriben en handlers puntuales. **No hay `@Public()`**: los endpoints públicos son los que no llevan `@UseGuards(JwtAuthGuard)`. No hay `APP_GUARD` global (cada controller decide).
 
-- `PrismaClient` now **requires** an explicit driver adapter (`@prisma/adapter-pg`'s `PrismaPg`, constructed with `connectionString`). The old plain `datasource db { url = env(...) }` + bare `new PrismaClient()` pattern no longer works — Prisma 7 hard-rejects a `url` field inside the `datasource` block in `schema.prisma` (`P1012` validation error). The connection string for the CLI (migrate/studio) lives in `prisma.config.ts`; the connection string for the runtime client is passed explicitly to `PrismaPg` in `PrismaService`.
-- The generator is pinned to `provider = "prisma-client-js"` (the classic generator), not the newer `"prisma-client"` generator. The new one emits TS using `import.meta.url`, which is ESM-only syntax that crashes (`ReferenceError: exports is not defined in ES module scope`) once compiled to CJS and actually loaded by a running Nest app — it only _looks_ fine until something triggers a real (non-type-only) import.
-- `prisma/schema.prisma` has one model so far: `Usuario` (Fase 1, auth only — `id`, `nombre`, `documento` unique, `passwordHash`, `rol` enum, `activo`). The rest of the data model (Cliente, Ruta, Crédito...) is Fase 2's. **`prisma.config.ts` (CLI datasource + migration config) must live at the `apps/api` package root, never inside `src/`** — Prisma's CLI only looks for it there; if it ends up elsewhere, `migrate`/`db seed`/`studio` fail with a misleading "datasource.url is required" instead of "config not found."
+**Manejo de errores:** sin `ExceptionFilter` global. Cada service mapea errores Prisma a HTTP en su `mapError`:
+- `P2002` → `ConflictException` (unique constraint)
+- `P2025` → `NotFoundException` o `BadRequestException` según contexto
+- `P2003` (FK) → `ConflictException` (solo en `Rutas.remove`)
+- Zod → `BadRequestException` con `result.error.issues` (pipe)
+
+**Prisma v7 cambios importantes** (ver `specs/PLAN_DESARROLLO.md` §"stack" + `prisma/schema.prisma:8-10`):
+- `PrismaClient` requiere driver adapter (`@prisma/adapter-pg` + `PrismaPg({ connectionString })`). El schema NO tiene `url` en `datasource` (Prisma 7 lo rechaza con `P1012`).
+- Generator pinned a `provider = "prisma-client-js"` (clásico). El nuevo `"prisma-client"` emite `import.meta.url` (ESM-only) que rompe en runtime CJS.
+- **`prisma.config.ts` DEBE estar en `apps/api` raíz**, no en `src/`. Si no, el CLI falla con "datasource.url is required" engañoso.
+- Modelos actuales: `Usuario`, `Ruta`, `Cliente`, `Producto`, `Credito`, `Pago` + enums `Rol`, `EstadoCredito`. FKs de dinero (`Cliente.rutaId`, `Credito.cliente/producto`, `Pago.credito/cobrador`) son **`onDelete: Restrict`** (auditable). Solo `Ruta.cobradorId` es `SetNull` (cobrador borrado no debe borrar rutas).
+- Secuencia Postgres `credito_codigo_seq` (start 2000) para códigos `CR-XXXX` race-safe.
 
 ### Next.js structure (`apps/web/src`)
 
-App Router, Next 16 (Turbopack by default). `app/` is composition-only per the FSD rule — `app/page.tsx` renders widgets, it doesn't fetch or hold state itself. `shared/api/client.ts` holds the API base URL (`NEXT_PUBLIC_API_URL`, defaults to `http://localhost:3001`). `widgets/health-status/HealthStatus.tsx` is the reference pattern for a data-fetching client component: `"use client"`, fetch, validate the response with the matching Zod schema from `@repo/types`, render based on a discriminated state union (`loading` / `error` / `success`).
+Ver `apps/web/CLAUDE.md` para el detalle del front (FSD, design system, mock swap, etc.).
 
-Ports: web on 3000, api on 3001 (both are Next/Nest defaults here, not overridden beyond `PORT`/`WEB_ORIGIN` env vars).
+Resumen:
+- App Router, Next 16 con Turbopack.
+- `app/` = composición pura (server components que importan de `widgets`/`features`). Route-groups: `(admin)` (dark), `(collector)` (light + bottom tab), `(client)` (light, placeholder), `dev/ui` (galería).
+- `widgets/` = bloques compuestos (shells, login). `features/` = 7 features con `api/ + ui/`. `entities/` = 3 (client, credit, session). `shared/` = api client, motion (GSAP), ui primitives (23 shadcn), icons, lib.
+- `shared/api/client.ts` (`apiFetch` + `uploadFile`): base URL `NEXT_PUBLIC_API_URL` (default `http://localhost:3001`). Token se pasa **explícitamente** en cada llamada (no interceptor) para mantener `shared` libre de imports de capas superiores.
+- Patrón swap mock→real: `export const xxxService: XxxService = httpXxxService` en cada `*-service.ts`. Mocks siguen implementados.
+- Zustand para sesión (`entities/session/model/session-store.ts`, persistido en `localStorage` clave `session-storage`, con flag `hasHydrated` para evitar redirección prematura en SSR).
+- TanStack Query para todo lo demás. Cada feature define `queryKeys` jerárquico y mutaciones invalidan con `<feature>Keys.all`. Sin `defaultOptions` (defaults v5).
+- Validación en cliente: cada `apiFetch(path, schema, opts)` ejecuta `schema.parse(json)` con el MISMO schema Zod de `@repo/types`. Errores de shape lanzan `ZodError`.
+
+**No hay** (intencionalmente hoy): `ExceptionFilter`, interceptors de logging, Swagger/OpenAPI, rate limiting, cron jobs, optimistic updates, test runner en front.
+
+Puertos: web 3000, api 3001 (defaults Nest/Next, override por `PORT`/`WEB_ORIGIN`/`NEXT_PUBLIC_API_URL`).

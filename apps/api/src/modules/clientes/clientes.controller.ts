@@ -18,6 +18,7 @@ import { memoryStorage } from "multer";
 import {
   clienteDetailSchema,
   clienteListItemSchema,
+  clientesSummarySchema,
   createClienteRequestSchema,
   clientesQuerySchema,
   updateClienteRequestSchema,
@@ -25,6 +26,7 @@ import {
   type ClienteDetail,
   type ClienteListItem,
   type ClientesQuery,
+  type ClientesSummary,
   type CreateClienteRequest,
   type UpdateClienteRequest,
   type UploadFotoDocumentoResponse,
@@ -54,6 +56,12 @@ export class ClientesController {
     @CurrentUser() user: AuthenticatedUser,
   ): Promise<ClienteListItem[]> {
     return clienteListItemSchema.array().parse(await this.clientsService.findAll(user, query));
+  }
+
+  // Debe ir ANTES de `:id` — si no, Nest matchea "summary" como el :id.
+  @Get("summary")
+  async summary(@CurrentUser() user: AuthenticatedUser): Promise<ClientesSummary> {
+    return clientesSummarySchema.parse(await this.clientsService.summary(user));
   }
 
   @Get(":id")

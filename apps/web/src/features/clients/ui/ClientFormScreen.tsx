@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect } from "react";
 import { Controller, useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useRouter } from "next/navigation";
@@ -33,6 +34,11 @@ import { ProductoField } from "@/features/creditos/ui/CreditoFields";
 
 import { useCliente, useCreateCliente, useUpdateCliente } from "../api/use-clientes";
 import { DocumentUploader } from "./DocumentUploader";
+
+// Radix Select no admite `value=""`; se usa este centinela para el ítem "Sin
+// ruta" (§3 — cierre de Fase 3, `rutaId` ahora nullable) y se traduce a
+// `null` al leerlo.
+const SIN_RUTA = "__sin_ruta__";
 
 function Field({
   id,
@@ -102,7 +108,12 @@ export function ClientFormScreen({ clienteId }: { clienteId?: string }) {
   const createCredito = useCreateCredito();
 
   const form = useForm<FormValues>({
-    resolver: zodResolver(createClienteRequestSchema) as never,
+    // `raw: true` — sin esto, zodResolver STRIPEA del resultado cualquier
+    // campo que no esté en createClienteRequestSchema (comportamiento por
+    // defecto de z.object().parse()), así que abrirCredito/producto/monto/
+    // interes/dias nunca llegarían a onSubmit aunque el usuario los llene
+    // (bug preexistente: el crédito opcional nunca se creaba).
+    resolver: zodResolver(createClienteRequestSchema, undefined, { raw: true }) as never,
     mode: "onBlur",
     defaultValues: DEFAULTS,
   });
@@ -114,9 +125,31 @@ export function ClientFormScreen({ clienteId }: { clienteId?: string }) {
     setValue,
     getValues,
     watch,
+    reset,
     formState: { errors },
     setError,
   } = form;
+
+  // En edición, precargar el formulario con los datos reales del cliente.
+  // Sin esto, los campos salen en blanco y al guardar sobrescriben datos.
+  useEffect(() => {
+    if (isEdit && cliente) {
+      reset({
+        nombre: cliente.nombre,
+        telefono: cliente.telefono,
+        documento: cliente.documento,
+        direccion: cliente.direccion,
+        rutaId: cliente.rutaId ?? "",
+        fotoDocumentoFrenteUrl: cliente.fotoDocumentoFrenteUrl,
+        fotoDocumentoReversoUrl: cliente.fotoDocumentoReversoUrl,
+        abrirCredito: false,
+        producto: "",
+        monto: undefined,
+        interes: undefined,
+        dias: undefined,
+      });
+    }
+  }, [isEdit, cliente, reset]);
 
   const abrirCredito = watch("abrirCredito");
   const values = watch();
@@ -251,11 +284,15 @@ export function ClientFormScreen({ clienteId }: { clienteId?: string }) {
                 control={control}
                 name="rutaId"
                 render={({ field }) => (
-                  <Select value={field.value || undefined} onValueChange={field.onChange}>
+                  <Select
+                    value={field.value || SIN_RUTA}
+                    onValueChange={(v) => field.onChange(v === SIN_RUTA ? null : v)}
+                  >
                     <SelectTrigger id="ruta" className="w-full">
                       <SelectValue placeholder="Selecciona una ruta" />
                     </SelectTrigger>
                     <SelectContent>
+                      <SelectItem value={SIN_RUTA}>Sin ruta</SelectItem>
                       {rutas.map((route) => (
                         <SelectItem key={route.id} value={route.id}>
                           {route.nombre}

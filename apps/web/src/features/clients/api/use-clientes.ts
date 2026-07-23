@@ -12,6 +12,7 @@ import { clientesService } from "./clientes-service";
 const clientesKeys = {
   all: ["clientes"] as const,
   list: (query?: ClientesQuery) => ["clientes", "list", query ?? {}] as const,
+  summary: ["clientes", "summary"] as const,
   detail: (id: string) => ["clientes", id] as const,
 };
 
@@ -19,6 +20,13 @@ export function useClientes(query?: ClientesQuery) {
   return useQuery({
     queryKey: clientesKeys.list(query),
     queryFn: () => clientesService.listClientes(query),
+  });
+}
+
+export function useClientesSummary() {
+  return useQuery({
+    queryKey: clientesKeys.summary,
+    queryFn: () => clientesService.getClientesSummary(),
   });
 }
 

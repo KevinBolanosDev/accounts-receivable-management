@@ -77,3 +77,11 @@ export type CreateRutaRequest = z.infer<typeof createRutaRequestSchema>;
 
 export const updateRutaRequestSchema = createRutaRequestSchema.partial();
 export type UpdateRutaRequest = z.infer<typeof updateRutaRequestSchema>;
+
+// Body para asignar clientes a una ruta en bloque desde la pantalla de Ruta
+// (§3 — cierre de Fase 3). Quitar un cliente es 1:1 (`DELETE
+// /routes/:id/clients/:clienteId`), no necesita schema propio.
+export const assignClientsRequestSchema = z.object({
+  clienteIds: z.array(z.string()).min(1, "Selecciona al menos un cliente."),
+});
+export type AssignClientsRequest = z.infer<typeof assignClientsRequestSchema>;

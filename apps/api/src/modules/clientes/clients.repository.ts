@@ -3,8 +3,29 @@ import { Prisma } from "@prisma/client";
 
 import { PrismaService } from "../../core/prisma/prisma.service";
 
+// El listado también trae los créditos (select liviano, sin `pagos`) para
+// poder calcular `saldoPendiente`/`porcentajePagado`/`estado` igual que el
+// detalle — antes `toListItem` los dejaba `undefined` porque este include no
+// traía créditos, así que ningún listado (Admin "Clientes", cobrador "Mis
+// clientes") mostraba saldo/estado/avance reales.
 const clientListInclude = {
   ruta: { select: { id: true, nombre: true } },
+  creditos: {
+    select: {
+      id: true,
+      codigo: true,
+      clienteId: true,
+      monto: true,
+      interes: true,
+      dias: true,
+      montoTotal: true,
+      cuotaDiaria: true,
+      saldoPendiente: true,
+      estado: true,
+      fechaInicio: true,
+      producto: { select: { nombre: true } },
+    },
+  },
 } satisfies Prisma.ClienteInclude;
 
 // Fase 3 — el detalle carga los créditos del cliente para llenar
@@ -23,8 +44,16 @@ const clientDetailInclude = {
   },
 } satisfies Prisma.ClienteInclude;
 
+// Resumen (métricas de la vista Clientes del Cobrador): solo necesitamos los
+// montos de cada crédito, no el detalle completo (producto/pagos) que carga
+// `clientDetailInclude`.
+const clientSummaryInclude = {
+  creditos: { select: { montoTotal: true, saldoPendiente: true, estado: true } },
+} satisfies Prisma.ClienteInclude;
+
 export type ClientWithRoute = Prisma.ClienteGetPayload<{ include: typeof clientListInclude }>;
 export type ClientWithDetail = Prisma.ClienteGetPayload<{ include: typeof clientDetailInclude }>;
+export type ClientForSummary = Prisma.ClienteGetPayload<{ include: typeof clientSummaryInclude }>;
 
 @Injectable()
 export class ClientsRepository {
@@ -36,6 +65,10 @@ export class ClientsRepository {
       include: clientListInclude,
       orderBy: { nombre: "asc" },
     });
+  }
+
+  findManyForSummary(where?: Prisma.ClienteWhereInput): Promise<ClientForSummary[]> {
+    return this.prisma.cliente.findMany({ where, include: clientSummaryInclude });
   }
 
   findById(id: string, where?: Prisma.ClienteWhereInput): Promise<ClientWithDetail | null> {

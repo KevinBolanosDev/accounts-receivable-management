@@ -124,7 +124,7 @@ function ClienteCard({
 }) {
   return (
     <Link
-      href={`/collector/clients/payments/${cliente.id}`}
+      href={`/collector/routes/payments/${cliente.id}`}
       aria-label={`Abrir cliente ${cliente.nombre}`}
       className={cn(
         "flex items-center gap-3 rounded-xl border border-border bg-card p-3.5 shadow-sm transition-colors",

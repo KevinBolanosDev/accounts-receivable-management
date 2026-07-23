@@ -74,6 +74,7 @@ export function CreditoDetailScreen({ creditoId }: { creditoId: string }) {
               variant="secondary"
               disabled={tienePagos || credito.estado !== "ACTIVO"}
               title={tienePagos ? "No se puede editar un crédito con pagos." : "Editar crédito"}
+              onClick={() => router.push(`/admin/credits/${credito.id}/edit`)}
             >
               <PencilIcon />
               Editar

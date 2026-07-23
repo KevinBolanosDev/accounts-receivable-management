@@ -11,10 +11,12 @@ import {
   UseGuards,
 } from "@nestjs/common";
 import {
+  assignClientsRequestSchema,
   createRutaRequestSchema,
   rutaDetailSchema,
   rutaListItemSchema,
   updateRutaRequestSchema,
+  type AssignClientsRequest,
   type CreateRutaRequest,
   type RutaDetail,
   type RutaListItem,
@@ -76,5 +78,31 @@ export class RutasController {
   @Roles("ADMIN")
   async remove(@Param("id") id: string): Promise<void> {
     await this.rutasService.remove(id);
+  }
+
+  // Asignar/quitar clientes de una ruta (§3 — cierre de Fase 3, pantalla de
+  // Ruta). ADMIN-only, igual que create/update/delete de la ruta misma.
+  @Post(":id/clients")
+  @UseGuards(RolesGuard)
+  @Roles("ADMIN")
+  async assignClients(
+    @Param("id") id: string,
+    @Body(new ZodValidationPipe(assignClientsRequestSchema)) body: AssignClientsRequest,
+    @CurrentUser() user: AuthenticatedUser,
+  ): Promise<RutaDetail> {
+    const ruta = await this.rutasService.assignClientes(id, body.clienteIds, user);
+    return rutaDetailSchema.parse(ruta);
+  }
+
+  @Delete(":id/clients/:clienteId")
+  @UseGuards(RolesGuard)
+  @Roles("ADMIN")
+  async unassignClient(
+    @Param("id") id: string,
+    @Param("clienteId") clienteId: string,
+    @CurrentUser() user: AuthenticatedUser,
+  ): Promise<RutaDetail> {
+    const ruta = await this.rutasService.unassignCliente(id, clienteId, user);
+    return rutaDetailSchema.parse(ruta);
   }
 }

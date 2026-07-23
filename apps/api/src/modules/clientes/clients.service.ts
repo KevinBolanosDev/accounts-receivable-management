@@ -10,13 +10,19 @@ import type {
   ClienteDetail,
   ClienteListItem,
   ClientesQuery,
+  ClientesSummary,
   CreditoListItem,
   CreateClienteRequest,
+  EstadoCliente,
   UpdateClienteRequest,
 } from "@repo/types";
 
 import type { AuthenticatedUser } from "../../core/auth/auth-request";
-import { mapCreditoListItem, rollupEstadoCliente } from "../../core/domain/credito-cliente.util";
+import {
+  mapCreditoListItem,
+  rollupEstadoCliente,
+  type CreditoRowForMapping,
+} from "../../core/domain/credito-cliente.util";
 import {
   ClientsRepository,
   type ClientWithDetail,
@@ -39,7 +45,9 @@ export class ClientsService {
   }
 
   async create(body: CreateClienteRequest, user: AuthenticatedUser): Promise<ClienteDetail> {
-    await this.assertRouteAccess(body.rutaId, user);
+    if (body.rutaId) {
+      await this.assertRouteAccess(body.rutaId, user);
+    }
 
     try {
       const client = await this.clientsRepository.create({
@@ -47,7 +55,7 @@ export class ClientsService {
         telefono: body.telefono,
         documento: body.documento,
         direccion: body.direccion,
-        ruta: { connect: { id: body.rutaId } },
+        ruta: body.rutaId ? { connect: { id: body.rutaId } } : undefined,
         fotoDocumentoFrenteUrl: body.fotoDocumentoFrenteUrl,
         fotoDocumentoReversoUrl: body.fotoDocumentoReversoUrl,
         tokenAcceso: randomBytes(32).toString("base64url"),
@@ -66,7 +74,9 @@ export class ClientsService {
     const existing = await this.clientsRepository.findById(id, this.scopeWhere(user));
     if (!existing) throw new NotFoundException("Cliente no encontrado.");
 
-    if (body.rutaId !== undefined) {
+    // `rutaId` en el body: `undefined` = no tocar, `null` = quitar de su ruta
+    // (queda "sin asignar"), string = (re)asignar a esa ruta.
+    if (body.rutaId) {
       await this.assertRouteAccess(body.rutaId, user);
     }
 
@@ -76,7 +86,12 @@ export class ClientsService {
         telefono: body.telefono,
         documento: body.documento,
         direccion: body.direccion,
-        ruta: body.rutaId === undefined ? undefined : { connect: { id: body.rutaId } },
+        ruta:
+          body.rutaId === undefined
+            ? undefined
+            : body.rutaId === null
+              ? { disconnect: true }
+              : { connect: { id: body.rutaId } },
         fotoDocumentoFrenteUrl: body.fotoDocumentoFrenteUrl,
         fotoDocumentoReversoUrl: body.fotoDocumentoReversoUrl,
       });
@@ -92,10 +107,40 @@ export class ClientsService {
     await this.clientsRepository.update(id, { activo: false });
   }
 
+  // Métricas de la vista "Clientes" del Cobrador (clientes / cartera /
+  // cobrados / saldo). Agrega sobre los créditos reales del cliente, scoped
+  // igual que `findAll` (COBRADOR solo ve los suyos). Los créditos ANULADOS
+  // no cuentan para la cartera ni el saldo.
+  async summary(user: AuthenticatedUser): Promise<ClientesSummary> {
+    const clients = await this.clientsRepository.findManyForSummary(this.scopeWhere(user));
+
+    let cartera = 0;
+    let saldo = 0;
+    for (const client of clients) {
+      for (const credito of client.creditos) {
+        if (credito.estado === "ANULADO") continue;
+        cartera += Number(credito.montoTotal.toString());
+        saldo += Number(credito.saldoPendiente.toString());
+      }
+    }
+
+    return {
+      clientes: clients.length,
+      cartera: Number(cartera.toFixed(2)),
+      cobrados: Number((cartera - saldo).toFixed(2)),
+      saldo: Number(saldo.toFixed(2)),
+    };
+  }
+
   private scopeWhere(user: AuthenticatedUser): Prisma.ClienteWhereInput {
     return {
       activo: true,
-      ...(user.rol === "COBRADOR" ? { ruta: { cobradorId: user.sub } } : {}),
+      // Igual que en rutas.service: una ruta desactivada no debe filtrar
+      // clientes accesibles al cobrador por ningún camino (ni "Mis rutas" ni
+      // "Clientes").
+      ...(user.rol === "COBRADOR"
+        ? { ruta: { cobradorId: user.sub, activa: true } }
+        : {}),
     };
   }
 
@@ -132,32 +177,22 @@ export class ClientsService {
     return error as Error;
   }
 
-  private toListItem(client: ClientWithRoute): ClienteListItem {
-    return {
-      id: client.id,
-      nombre: client.nombre,
-      telefono: client.telefono,
-      documento: client.documento,
-      direccion: client.direccion,
-      fotoDocumentoFrenteUrl: client.fotoDocumentoFrenteUrl,
-      fotoDocumentoReversoUrl: client.fotoDocumentoReversoUrl,
-      rutaId: client.rutaId,
-      ruta: client.ruta ? { id: client.ruta.id, nombre: client.ruta.nombre } : null,
-    };
-  }
-
-  private toDetail(client: ClientWithDetail): ClienteDetail {
-    // Fase 3 — el detalle del cliente lleva agregados de crédito. Calculamos
-    // saldoPendiente/porcentajePagado/estado aquí (no en Prisma) a partir de
-    // los créditos ya materializados. La separación Activos vs Historial sale
-    // del estado del crédito (ACTIVO/MORA en Activos; PAGADO/ANULADO en
-    // Historial). El rollup `estado` (mora/activo/pagado/proximo-a-vencer)
-    // se deriva aquí también.
-    const hoy = new Date();
-
+  // Fase 3 — agregados de crédito compartidos por listado Y detalle. Antes
+  // solo `toDetail` los calculaba; `toListItem` los dejaba `undefined`
+  // (ningún listado — Admin "Clientes", cobrador "Mis clientes" — mostraba
+  // saldo/estado/avance reales, aunque el include ya cargue los créditos).
+  // La separación Activos vs Historial sale del estado del crédito
+  // (ACTIVO/MORA en Activos; PAGADO/ANULADO en Historial).
+  private computeAgregados(creditos: CreditoRowForMapping[]): {
+    creditosActivos: CreditoListItem[];
+    creditosHistorial: CreditoListItem[];
+    saldoPendiente: number;
+    porcentajePagado: number;
+    estado: EstadoCliente;
+  } {
     const creditosActivos: CreditoListItem[] = [];
     const creditosHistorial: CreditoListItem[] = [];
-    for (const c of client.creditos) {
+    for (const c of creditos) {
       const item = mapCreditoListItem(c);
       if (item.estado === "ACTIVO" || item.estado === "MORA") {
         creditosActivos.push(item);
@@ -177,23 +212,56 @@ export class ClientsService {
     const estado = rollupEstadoCliente({
       creditosActivos,
       creditosHistorial,
-      hoy,
+      hoy: new Date(),
       cuotaSugerida: creditosActivos[0]?.cuotaDiaria ?? 0,
     });
 
-    const listItem: ClienteListItem = {
-      ...this.toListItem(client),
+    return {
+      creditosActivos,
+      creditosHistorial,
       saldoPendiente: Number(saldoActivos.toFixed(2)),
       porcentajePagado,
       estado,
     };
+  }
+
+  private toListItem(client: ClientWithRoute): ClienteListItem {
+    const agregados = this.computeAgregados(client.creditos);
+    return {
+      id: client.id,
+      nombre: client.nombre,
+      telefono: client.telefono,
+      documento: client.documento,
+      direccion: client.direccion,
+      fotoDocumentoFrenteUrl: client.fotoDocumentoFrenteUrl,
+      fotoDocumentoReversoUrl: client.fotoDocumentoReversoUrl,
+      rutaId: client.rutaId,
+      ruta: client.ruta ? { id: client.ruta.id, nombre: client.ruta.nombre } : null,
+      saldoPendiente: agregados.saldoPendiente,
+      porcentajePagado: agregados.porcentajePagado,
+      estado: agregados.estado,
+    };
+  }
+
+  private toDetail(client: ClientWithDetail): ClienteDetail {
+    const agregados = this.computeAgregados(client.creditos);
 
     return {
-      ...listItem,
-      cobradorNombre: client.ruta.cobrador?.nombre ?? null,
-      estado,
-      creditosActivos,
-      creditosHistorial,
+      id: client.id,
+      nombre: client.nombre,
+      telefono: client.telefono,
+      documento: client.documento,
+      direccion: client.direccion,
+      fotoDocumentoFrenteUrl: client.fotoDocumentoFrenteUrl,
+      fotoDocumentoReversoUrl: client.fotoDocumentoReversoUrl,
+      rutaId: client.rutaId,
+      ruta: client.ruta ? { id: client.ruta.id, nombre: client.ruta.nombre } : null,
+      saldoPendiente: agregados.saldoPendiente,
+      porcentajePagado: agregados.porcentajePagado,
+      estado: agregados.estado,
+      cobradorNombre: client.ruta?.cobrador?.nombre ?? null,
+      creditosActivos: agregados.creditosActivos,
+      creditosHistorial: agregados.creditosHistorial,
       historialPagos: client.creditos.flatMap((credito) =>
         credito.pagos.map((pago) => ({
           id: `client-${credito.id}-${pago.fecha.getTime()}-${pago.monto.toString()}`,

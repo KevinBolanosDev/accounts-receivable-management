@@ -17,7 +17,9 @@ export const clienteSchema = z.object({
   direccion: z.string(),
   fotoDocumentoFrenteUrl: z.string().url().nullable(),
   fotoDocumentoReversoUrl: z.string().url().nullable(),
-  rutaId: z.string(),
+  // Nullable desde el cierre de Fase 3: un cliente puede quedar "sin ruta" si
+  // se lo quita desde la pantalla de Ruta (no se borra, solo se desasigna).
+  rutaId: z.string().nullable(),
 });
 export type Cliente = z.infer<typeof clienteSchema>;
 
@@ -59,7 +61,9 @@ export const createClienteRequestSchema = z.object({
   telefono: z.string().min(1, "El teléfono es obligatorio."),
   documento: z.string().min(1, "El documento es obligatorio."),
   direccion: z.string().min(1, "La dirección es obligatoria."),
-  rutaId: z.string().min(1, "Selecciona una ruta."),
+  // Opcional/nullable: el alta puede dejar al cliente "sin ruta" (bucket
+  // "Sin asignar" en Admin); se asigna después desde la pantalla de Ruta.
+  rutaId: z.string().nullable().optional(),
   fotoDocumentoFrenteUrl: z.string().url().nullable().optional(),
   fotoDocumentoReversoUrl: z.string().url().nullable().optional(),
 });
@@ -75,6 +79,19 @@ export const clientesQuerySchema = z.object({
   rutaId: z.string().optional(),
 });
 export type ClientesQuery = z.infer<typeof clientesQuerySchema>;
+
+// Resumen agregado para la tira de métricas de la vista "Clientes" del
+// Cobrador (clientes / total cartera / cobrados / saldo). `cartera` y
+// `cobrados` no se pueden derivar de `clienteListItemSchema` (solo trae
+// `saldoPendiente`), así que el backend los agrega sobre los créditos reales
+// del cliente (excluyendo créditos ANULADOS).
+export const clientesSummarySchema = z.object({
+  clientes: z.number().int(),
+  cartera: z.number(),
+  cobrados: z.number(),
+  saldo: z.number(),
+});
+export type ClientesSummary = z.infer<typeof clientesSummarySchema>;
 
 // Respuesta del endpoint de subida de foto. El request es multipart (lo valida
 // Multer + un file-pipe en el backend), no un schema Zod de body.

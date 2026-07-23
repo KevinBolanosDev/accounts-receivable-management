@@ -1,8 +1,10 @@
 "use client";
 
+import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { PencilIcon } from "lucide-react";
+import { PencilIcon, XIcon } from "lucide-react";
+import { toast } from "sonner";
 
 import { ESTADO_CLIENTE_LABEL, ESTADO_CLIENTE_TEXT, getInitials } from "@/entities/client";
 import { formatCompactCurrency, formatCurrency } from "@/shared/lib/format-currency";
@@ -11,9 +13,10 @@ import { Badge } from "@/shared/ui/badge";
 import { Button } from "@/shared/ui/button";
 import { Skeleton } from "@/shared/ui/skeleton";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/shared/ui/table";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/shared/ui/tooltip";
 import { AdminPageHeader } from "@/widgets/admin-shell/AdminPageHeader";
 
-import { useRuta } from "../api/use-rutas";
+import { useRuta, useUnassignClienteFromRuta } from "../api/use-rutas";
 
 function KpiRow({ label, value, valueClassName }: { label: string; value: string; valueClassName?: string }) {
   return (
@@ -27,6 +30,16 @@ function KpiRow({ label, value, valueClassName }: { label: string; value: string
 export function RouteDetailScreen({ rutaId }: { rutaId: string }) {
   const router = useRouter();
   const { data: ruta, isLoading } = useRuta(rutaId);
+  const unassignCliente = useUnassignClienteFromRuta(rutaId);
+  const [removingId, setRemovingId] = useState<string | null>(null);
+
+  function handleQuitar(clienteId: string) {
+    setRemovingId(clienteId);
+    unassignCliente.mutate(clienteId, {
+      onSettled: () => setRemovingId(null),
+      onError: () => toast.error("No se pudo quitar el cliente de la ruta."),
+    });
+  }
 
   if (isLoading || !ruta) {
     return (
@@ -111,6 +124,7 @@ export function RouteDetailScreen({ rutaId }: { rutaId: string }) {
                 <TableHead className="text-right">Saldo</TableHead>
                 <TableHead className="text-right">Avance</TableHead>
                 <TableHead className="text-right">Estado</TableHead>
+                <TableHead className="text-right">Quitar</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -143,6 +157,22 @@ export function RouteDetailScreen({ rutaId }: { rutaId: string }) {
                     {cliente.estado ? (
                       <Badge status={cliente.estado}>{ESTADO_CLIENTE_LABEL[cliente.estado]}</Badge>
                     ) : null}
+                  </TableCell>
+                  <TableCell className="text-right" onClick={(e) => e.stopPropagation()}>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          aria-label={`Quitar ${cliente.nombre} de la ruta`}
+                          loading={removingId === cliente.id}
+                          onClick={() => handleQuitar(cliente.id)}
+                        >
+                          <XIcon />
+                        </Button>
+                      </TooltipTrigger>
+                      <TooltipContent>Quitar de la ruta</TooltipContent>
+                    </Tooltip>
                   </TableCell>
                 </TableRow>
               ))}

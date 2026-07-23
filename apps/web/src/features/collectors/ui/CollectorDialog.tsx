@@ -42,7 +42,7 @@ export function CollectorDialog({ open, onOpenChange, cobrador }: CollectorDialo
     formState: { errors },
   } = useForm<CreateCobradorRequest>({
     resolver: zodResolver(createCobradorRequestSchema),
-    defaultValues: { nombre: "", documento: "", password: "", rutaId: null },
+    defaultValues: { nombre: "", telefono: "", documento: "", password: "", rutaId: null },
   });
 
   useEffect(() => {
@@ -51,11 +51,12 @@ export function CollectorDialog({ open, onOpenChange, cobrador }: CollectorDialo
         cobrador
           ? {
               nombre: cobrador.nombre,
+              telefono: cobrador.telefono ?? "",
               documento: cobrador.documento,
               password: "",
               rutaId: cobrador.rutas[0]?.id ?? null,
             }
-          : { nombre: "", documento: "", password: "", rutaId: null },
+          : { nombre: "", telefono: "", documento: "", password: "", rutaId: null },
       );
     }
   }, [open, cobrador, reset]);
@@ -65,7 +66,7 @@ export function CollectorDialog({ open, onOpenChange, cobrador }: CollectorDialo
        if (isEdit && cobrador) {
          await updateCobrador.mutateAsync({
            id: cobrador.id,
-           body: { nombre: values.nombre, rutaId: values.rutaId },
+           body: { nombre: values.nombre, telefono: values.telefono, rutaId: values.rutaId },
          });
 
         toast.success("Cobrador actualizado");
@@ -95,6 +96,16 @@ export function CollectorDialog({ open, onOpenChange, cobrador }: CollectorDialo
             {errors.nombre ? (
               <p className="text-body-sm text-destructive" role="alert">
                 {errors.nombre.message}
+              </p>
+            ) : null}
+          </div>
+
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="cobrador-telefono">Teléfono</Label>
+            <Input id="cobrador-telefono" placeholder="Ej. 300 123 4567" {...register("telefono")} />
+            {errors.telefono ? (
+              <p className="text-body-sm text-destructive" role="alert">
+                {errors.telefono.message}
               </p>
             ) : null}
           </div>

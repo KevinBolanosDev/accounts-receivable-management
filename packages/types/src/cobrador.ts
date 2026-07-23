@@ -13,6 +13,7 @@ export type CobradorListItem = z.infer<typeof cobradorListItemSchema>;
 
 export const createCobradorRequestSchema = z.object({
   nombre: z.string().min(1, "El nombre es obligatorio."),
+  telefono: z.string().min(1, "El teléfono es obligatorio."),
   documento: z.string().min(1, "El documento es obligatorio."),
   password: z.string().min(6, "Mínimo 6 caracteres."),
   rutaId: z.string().nullable().optional(),

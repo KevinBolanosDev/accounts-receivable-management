@@ -2,10 +2,12 @@ import {
   clienteDetailSchema,
   clienteListItemSchema,
   clienteSchema,
+  clientesSummarySchema,
   type Cliente,
   type ClienteDetail,
   type ClienteListItem,
   type ClientesQuery,
+  type ClientesSummary,
   type CreateClienteRequest,
   type UpdateClienteRequest,
   type UploadFotoDocumentoResponse,
@@ -17,6 +19,7 @@ import { apiFetch, uploadFile } from "@/shared/api/client";
 
 export interface ClientesService {
   listClientes(query?: ClientesQuery): Promise<ClienteListItem[]>;
+  getClientesSummary(): Promise<ClientesSummary>;
   getCliente(id: string): Promise<ClienteDetail>;
   createCliente(body: CreateClienteRequest): Promise<Cliente>;
   updateCliente(id: string, body: UpdateClienteRequest): Promise<Cliente>;
@@ -153,6 +156,17 @@ export const mockClientesService: ClientesService = {
       );
     return items.map((c) => clienteListItemSchema.parse(toListItem(c)));
   },
+  async getClientesSummary() {
+    await delay();
+    const cartera = MOCK_CLIENTES.length * MONTO_TOTAL;
+    const saldo = MOCK_CLIENTES.reduce((sum, c) => sum + c.saldoPendiente, 0);
+    return clientesSummarySchema.parse({
+      clientes: MOCK_CLIENTES.length,
+      cartera,
+      cobrados: cartera - saldo,
+      saldo,
+    });
+  },
   async getCliente(id) {
     await delay();
     const c = MOCK_CLIENTES.find((x) => x.id === id) ?? MOCK_CLIENTES[0]!;
@@ -206,6 +220,11 @@ export const httpClientesService: ClientesService = {
     if (query?.rutaId) params.set("rutaId", query.rutaId);
     const qs = params.toString();
     return apiFetch(`/clients${qs ? `?${qs}` : ""}`, clienteListItemSchema.array(), { token });
+  },
+  getClientesSummary() {
+    return apiFetch("/clients/summary", clientesSummarySchema, {
+      token: useSessionStore.getState().token,
+    });
   },
   getCliente(id) {
     return apiFetch(`/clients/${id}`, clienteDetailSchema, { token: useSessionStore.getState().token });

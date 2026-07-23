@@ -36,8 +36,9 @@ export class CobrosService {
     }
 
     // Scoping por cobrador: la ruta del cliente del crédito debe ser del
-    // cobrador (ADMIN pasa sin chequeo).
-    if (user.rol === "COBRADOR" && credito.cliente.ruta.cobradorId !== user.sub) {
+    // cobrador (ADMIN pasa sin chequeo). Un cliente "sin ruta" (§3 — cierre de
+    // Fase 3) no tiene cobrador asignado, así que ningún COBRADOR pasa.
+    if (user.rol === "COBRADOR" && credito.cliente.ruta?.cobradorId !== user.sub) {
       throw new ForbiddenException("Solo puedes cobrar créditos de clientes de tus rutas.");
     }
 

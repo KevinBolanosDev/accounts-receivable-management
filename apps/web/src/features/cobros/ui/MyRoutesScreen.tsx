@@ -4,7 +4,7 @@ import Link from "next/link";
 import { ChevronRightIcon, MapPinIcon } from "lucide-react";
 
 import { useSessionStore } from "@/entities/session";
-import { useRutas } from "@/features/routes-collectors/api/use-rutas";
+import { useRutas, useRutasSummary } from "@/features/routes-collectors/api/use-rutas";
 import { formatCurrency } from "@/shared/lib/format-currency";
 import { cn } from "@/shared/lib/utils";
 import { ProgressRing } from "@/shared/ui/progress-ring";
@@ -16,11 +16,14 @@ import { CollectorHero } from "@/widgets/collector-shell/CollectorHero";
 // (clientes, avance y cobrado hoy) y cada tarjeta abre el detalle de ruta
 // (/collector/routes/[id], screenshot 15c). Reusa `useRutas()` — el mismo
 // hook real que usa el Admin (6c), ya scoped por cobrador en el backend
-// (`GET /routes` con `cobradorId = user.sub` para rol COBRADOR).
+// (`GET /routes` con `cobradorId = user.sub` para rol COBRADOR). La tira de
+// métricas arriba (§7 — cierre de Fase 3) reusa `useRutasSummary()`, ya
+// existente y consumido por el Admin.
 
 export function MyRoutesScreen() {
   const usuario = useSessionStore((state) => state.usuario);
   const { data: rutas, isLoading } = useRutas();
+  const { data: summary } = useRutasSummary();
 
   return (
     <div className="flex flex-col pb-6">
@@ -29,7 +32,22 @@ export function MyRoutesScreen() {
         subtitle={`${usuario?.nombre ?? "Cobrador"} · hoy, ${fechaHoyCorta()}`}
       />
 
-      <div className="-mt-9 flex flex-col gap-3 px-4 z-10">
+      {/* Tira de métricas superpuesta al hero. */}
+      <div className="relative z-10 -mt-9 px-4">
+        <div className="grid grid-cols-3 divide-x divide-border rounded-xl border border-border bg-card shadow-md">
+          <MetricTile
+            value={summary ? `${summary.rutasAbiertas}/${summary.rutasTotal}` : "—"}
+            label="Rutas abiertas"
+          />
+          <MetricTile
+            value={summary ? formatCurrency(summary.cobradoHoy) : "—"}
+            label="Cobrado hoy"
+          />
+          <MetricTile value={summary ? String(summary.clientesEnRuta) : "—"} label="Clientes" />
+        </div>
+      </div>
+
+      <div className="flex flex-col gap-3 px-4 pt-4">
         {isLoading ? (
           Array.from({ length: 2 }).map((_, i) => (
             <Skeleton key={i} className="h-21 w-full rounded-xl" />
@@ -76,6 +94,15 @@ export function MyRoutesScreen() {
           ))
         )}
       </div>
+    </div>
+  );
+}
+
+function MetricTile({ value, label }: { value: string; label: string }) {
+  return (
+    <div className="flex flex-col items-center justify-center gap-0.5 px-2 py-3.5">
+      <span className="text-lg font-bold tabular-nums">{value}</span>
+      <span className="text-caption text-muted-foreground">{label}</span>
     </div>
   );
 }

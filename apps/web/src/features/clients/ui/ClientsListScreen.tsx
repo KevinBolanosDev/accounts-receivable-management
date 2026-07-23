@@ -106,7 +106,7 @@ function ClientPreview({ cliente }: { cliente: ClienteDetail }) {
             key={`${pago.creditoId}-${pago.fecha}-${pago.monto}`}
             className="flex items-center justify-between border-b border-border/60 py-2 last:border-0"
           >
-            <span className="text-sm text-muted-foreground">{pago.fecha}</span>
+            <span className="text-sm text-muted-foreground">{fmtFecha(pago.fecha)}</span>
             <span className="text-sm font-medium tabular-nums">{formatCurrency(pago.monto)}</span>
           </div>
         ))}
@@ -131,10 +131,12 @@ export function ClientsListScreen() {
   const { data: rutas = [] } = useRutas();
   const { data: clientes, isLoading } = useClientes({
     ...(search ? { search } : {}),
-    ...(routeId !== "all" ? { rutaId: routeId } : {}),
+    ...(routeId !== "all" && routeId !== "sin-ruta" ? { rutaId: routeId } : {}),
   });
+  const clientesFiltrados =
+    routeId === "sin-ruta" ? (clientes ?? []).filter((c) => !c.rutaId) : clientes;
 
-  const activeId = selectedId ?? clientes?.[0]?.id ?? "";
+  const activeId = selectedId ?? clientesFiltrados?.[0]?.id ?? "";
   const { data: cliente } = useCliente(activeId);
 
   return (
@@ -168,6 +170,7 @@ export function ClientsListScreen() {
              </SelectTrigger>
              <SelectContent>
                <SelectItem value="all">Todas las rutas</SelectItem>
+               <SelectItem value="sin-ruta">Sin ruta</SelectItem>
                {rutas.map((route) => (
                  <SelectItem key={route.id} value={route.id}>
                    {route.nombre}
@@ -184,9 +187,9 @@ export function ClientsListScreen() {
                   <Skeleton key={i} className="h-12 w-full" />
                 ))}
               </div>
-            ) : clientes && clientes.length > 0 ? (
+            ) : clientesFiltrados && clientesFiltrados.length > 0 ? (
               <div className="flex flex-col divide-y divide-border">
-                {clientes.map((c) => (
+                {clientesFiltrados.map((c) => (
                   <ClientRow
                     key={c.id}
                     cliente={c}
@@ -216,4 +219,12 @@ export function ClientsListScreen() {
       </div>
     </>
   );
+}
+
+function fmtFecha(iso: string): string {
+  return new Date(iso).toLocaleDateString("es-CO", {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+  });
 }

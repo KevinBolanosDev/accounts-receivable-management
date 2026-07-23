@@ -58,8 +58,14 @@ model Cliente {
   direccion               String
   fotoDocumentoFrenteUrl  String?
   fotoDocumentoReversoUrl String?
-  rutaId                  String
-  ruta                    Ruta     @relation(fields: [rutaId], references: [id], onDelete: Restrict)
+  // Nullable desde el cierre de Fase 3 (§3 del plan de pulido): un cliente
+  // puede quedar "sin ruta" al quitarlo desde la pantalla de Ruta, sin dejar
+  // de existir. Sin ruta, el scoping por cobrador (`ruta.cobradorId`) lo
+  // excluye de la app del cobrador — solo Admin lo ve, en el bucket "Sin
+  // asignar". `onDelete: Restrict` se mantiene: no se puede borrar una ruta
+  // que todavía tiene clientes asignados.
+  rutaId                  String?
+  ruta                    Ruta?    @relation(fields: [rutaId], references: [id], onDelete: Restrict)
   tokenAcceso             String   @unique
   activo                  Boolean  @default(true)
   createdAt               DateTime @default(now())

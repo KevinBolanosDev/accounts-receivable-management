@@ -12,10 +12,12 @@ import { Button } from "@/shared/ui/button";
 import { MetricCard } from "@/shared/ui/metric-card";
 import { ProgressBar } from "@/shared/ui/progress-bar";
 import { Skeleton } from "@/shared/ui/skeleton";
+import { Switch } from "@/shared/ui/switch";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/shared/ui/table";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/shared/ui/tooltip";
 import { AdminPageHeader } from "@/widgets/admin-shell/AdminPageHeader";
 
-import { useRutas, useRutasSummary } from "../api/use-rutas";
+import { useRutas, useRutasSummary, useUpdateRuta } from "../api/use-rutas";
 
 function avanceColor(value: number): string {
   if (value >= 100) return "text-success";
@@ -25,6 +27,7 @@ function avanceColor(value: number): string {
 
 function RutaRow({ ruta }: { ruta: RutaListItem }) {
   const router = useRouter();
+  const updateRuta = useUpdateRuta(ruta.id);
   const sinAbrir = ruta.totalCobradoHoy === 0 && ruta.estadoDia === "cerrada";
 
   return (
@@ -50,10 +53,26 @@ function RutaRow({ ruta }: { ruta: RutaListItem }) {
           </span>
         </div>
       </TableCell>
-      <TableCell className="text-right">
+      <TableCell>
         <Badge status={ruta.estadoDia === "abierta" ? "ruta-abierta" : "ruta-cerrada"}>
           {ruta.estadoDia === "abierta" ? "Abierta" : "Cerrada"}
         </Badge>
+      </TableCell>
+      <TableCell className="text-right" onClick={(e) => e.stopPropagation()}>
+        <Tooltip>
+          {/* Span intermedio: ver nota en CollectorsScreen — asChild directo
+              sobre Switch pisa su `data-state` con el del Tooltip. */}
+          <TooltipTrigger asChild>
+            <span className="inline-flex">
+              <Switch
+                checked={ruta.activa}
+                aria-label={ruta.activa ? "Desactivar ruta" : "Activar ruta"}
+                onCheckedChange={(checked) => updateRuta.mutate({ activa: checked })}
+              />
+            </span>
+          </TooltipTrigger>
+          <TooltipContent>{ruta.activa ? "Desactivar ruta" : "Activar ruta"}</TooltipContent>
+        </Tooltip>
       </TableCell>
     </TableRow>
   );
@@ -110,14 +129,15 @@ export function RoutesListScreen() {
                 <TableHead>Clientes</TableHead>
                 <TableHead>Cobrado hoy</TableHead>
                 <TableHead>Avance del día</TableHead>
-                <TableHead className="text-right">Estado</TableHead>
+                <TableHead>Estado</TableHead>
+                <TableHead className="text-right">Ruta activa</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {isLoading
                 ? Array.from({ length: 6 }).map((_, i) => (
                     <TableRow key={i}>
-                      <TableCell colSpan={6}>
+                      <TableCell colSpan={7}>
                         <Skeleton className="h-6 w-full" />
                       </TableCell>
                     </TableRow>

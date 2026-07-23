@@ -72,6 +72,30 @@ export class RutasService {
     }
   }
 
+  // Asignar/quitar clientes de una ruta (§3 — cierre de Fase 3). Ambos son
+  // ADMIN-only (gate en el controller); no hay scoping de cobrador que
+  // aplicar aquí. Devuelven el detalle ya refrescado para que el frontend no
+  // tenga que hacer un segundo round-trip.
+  async assignClientes(
+    id: string,
+    clienteIds: string[],
+    user: AuthenticatedUser,
+  ): Promise<RutaDetail> {
+    await this.assertExists(id);
+    await this.rutasRepository.assignClientes(id, clienteIds);
+    return this.findOne(id, user);
+  }
+
+  async unassignCliente(
+    id: string,
+    clienteId: string,
+    user: AuthenticatedUser,
+  ): Promise<RutaDetail> {
+    await this.assertExists(id);
+    await this.rutasRepository.unassignCliente(id, clienteId);
+    return this.findOne(id, user);
+  }
+
   async remove(id: string): Promise<void> {
     await this.assertExists(id);
 
@@ -89,8 +113,11 @@ export class RutasService {
     }
   }
 
+  // Una ruta desactivada no debe "aparecer en la app del cobrador" (ni en su
+  // lista ni por acceso directo a /routes/:id) — ADMIN sigue viendo todas,
+  // activas e inactivas, para poder gestionarlas.
   private scopeWhere(user: AuthenticatedUser): Prisma.RutaWhereInput | undefined {
-    return user.rol === "COBRADOR" ? { cobradorId: user.sub } : undefined;
+    return user.rol === "COBRADOR" ? { cobradorId: user.sub, activa: true } : undefined;
   }
 
   private cobradorUpdate(

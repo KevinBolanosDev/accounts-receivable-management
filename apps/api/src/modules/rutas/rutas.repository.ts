@@ -84,4 +84,21 @@ export class RutasRepository {
   async delete(id: string): Promise<void> {
     await this.prisma.ruta.delete({ where: { id } });
   }
+
+  // Asignar/quitar clientes de una ruta (§3 — cierre de Fase 3, pantalla de
+  // Ruta). `unassignCliente` solo toca el cliente si de verdad pertenece a
+  // ESTA ruta (evita una carrera con una reasignación concurrente a otra ruta).
+  assignClientes(rutaId: string, clienteIds: string[]): Promise<Prisma.BatchPayload> {
+    return this.prisma.cliente.updateMany({
+      where: { id: { in: clienteIds } },
+      data: { rutaId },
+    });
+  }
+
+  unassignCliente(rutaId: string, clienteId: string): Promise<Prisma.BatchPayload> {
+    return this.prisma.cliente.updateMany({
+      where: { id: clienteId, rutaId },
+      data: { rutaId: null },
+    });
+  }
 }

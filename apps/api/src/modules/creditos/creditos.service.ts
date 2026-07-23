@@ -56,8 +56,9 @@ export class CreditosService {
       throw new NotFoundException("El cliente no existe.");
     }
 
-    // 2. Scoping por cobrador.
-    if (user.rol === "COBRADOR" && cliente.ruta.cobradorId !== user.sub) {
+    // 2. Scoping por cobrador. Un cliente "sin ruta" (§3 — cierre de Fase 3)
+    // no tiene cobrador asignado, así que ningún COBRADOR pasa.
+    if (user.rol === "COBRADOR" && cliente.ruta?.cobradorId !== user.sub) {
       throw new ForbiddenException("Solo puedes crear créditos para clientes de tus rutas.");
     }
 

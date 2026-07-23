@@ -53,3 +53,32 @@ export function useDeleteRuta() {
     onSuccess: () => queryClient.invalidateQueries({ queryKey: rutasKeys.all }),
   });
 }
+
+// Asignar/quitar clientes de una ruta (pantalla de Ruta, §3 — cierre de Fase
+// 3). Ambas mutaciones devuelven el `RutaDetail` ya refrescado — lo
+// escribimos directo en la cache de `useRuta(id)` para no pedir un segundo
+// round-trip — e invalidan `["clientes"]` porque cambia el `rutaId` de cada
+// cliente afectado (lo ven `ClientFormScreen`/`ClientsListScreen`).
+export function useAssignClientesToRuta(rutaId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (clienteIds: string[]) => rutasService.assignClientes(rutaId, clienteIds),
+    onSuccess: (ruta) => {
+      queryClient.setQueryData(rutasKeys.detail(rutaId), ruta);
+      queryClient.invalidateQueries({ queryKey: rutasKeys.all });
+      queryClient.invalidateQueries({ queryKey: ["clientes"] });
+    },
+  });
+}
+
+export function useUnassignClienteFromRuta(rutaId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (clienteId: string) => rutasService.unassignCliente(rutaId, clienteId),
+    onSuccess: (ruta) => {
+      queryClient.setQueryData(rutasKeys.detail(rutaId), ruta);
+      queryClient.invalidateQueries({ queryKey: rutasKeys.all });
+      queryClient.invalidateQueries({ queryKey: ["clientes"] });
+    },
+  });
+}
