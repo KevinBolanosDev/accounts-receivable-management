@@ -218,4 +218,6 @@ export const httpCreditosService: CreditosService = {
 };
 
 // Bloque A (Fase 3.2) — mock. El swap a http se hace en 3.10 en un solo punto.
-export const creditosService: CreditosService = mockCreditosService;
+// Bloque C (Fase 3.10) — swap activo. Los hooks de TanStack Query ya apuntan
+// a `creditosService`, así que el cambio es **un solo punto** por feature.
+export const creditosService: CreditosService = httpCreditosService;

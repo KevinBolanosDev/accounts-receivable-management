@@ -1,8 +1,6 @@
 // This is your Prisma schema file,
 // learn more about it in the docs: https://pris.ly/d/prisma-schema
 
-// Get a free hosted Postgres database in seconds: `npx create-db`
-
 generator client {
   provider = "prisma-client-js"
 }
@@ -16,26 +14,32 @@ enum Rol {
   COBRADOR
 }
 
-// Modelo base de la Fase 1 (login), extendido en la Fase 2 con el resto del
-// dominio (Cliente, Ruta). Crédito llega en la Fase 3.
+// Fase 3 — Crédito tiene 4 estados. ACTIVO/PAGADO/ANULADO son event-driven;
+// MORA depende del tiempo y se cierra en la Fase 5 (cierre diario).
+enum EstadoCredito {
+  ACTIVO
+  PAGADO
+  MORA
+  ANULADO
+}
+
 model Usuario {
   id           String   @id @default(uuid())
   nombre       String
   documento    String   @unique
   passwordHash String
   rol          Rol
-  // Nullable: el Admin sembrado en la Fase 1 no tiene teléfono. Lo usan
-  // cobradorListItemSchema (Fase 2.11) y RutaDetail.cobradorTelefono (2.10).
   telefono     String?
   activo       Boolean  @default(true)
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
-  rutas        Ruta[] // back-relation: un cobrador tiene 0..N rutas
+  rutas        Ruta[]
+  pagos        Pago[] // back-relation Fase 3 (cobrador persiste pagos)
 }
 
 model Ruta {
   id         String    @id @default(uuid())
-  nombre     String    @unique // unique → upsert idempotente del seed
+  nombre     String    @unique
   activa     Boolean   @default(true)
   cobradorId String?
   cobrador   Usuario?  @relation(fields: [cobradorId], references: [id], onDelete: SetNull)
@@ -52,16 +56,71 @@ model Cliente {
   telefono                String
   documento               String   @unique
   direccion               String
-  // Documento de identidad por ambos lados; cada uno sube por separado
-  // (ver uploadFotoDocumentoResponseSchema en @repo/types).
   fotoDocumentoFrenteUrl  String?
   fotoDocumentoReversoUrl String?
-  rutaId                  String // requerido: un cliente siempre vive en una ruta
+  rutaId                  String
   ruta                    Ruta     @relation(fields: [rutaId], references: [id], onDelete: Restrict)
-  tokenAcceso             String   @unique // generado en el service (crypto), NO @default
-  activo                  Boolean  @default(true) // soft-delete
+  tokenAcceso             String   @unique
+  activo                  Boolean  @default(true)
   createdAt               DateTime @default(now())
-  updatedAt               DateTime @updatedAt
+  updatedAt               DateTime  @updatedAt
+
+  // Fase 3 — back-relation: 1 cliente → N créditos (varios activos posibles)
+  creditos Credito[]
 
   @@index([rutaId])
+}
+
+// Fase 3 — catálogo de productos. Nombre único → upsert idempotente del seed.
+// Dinero siempre en Decimal, jamás Float (ver §3.6 del plan).
+model Producto {
+  id         String   @id @default(uuid())
+  nombre     String   @unique
+  precioBase Decimal  @db.Decimal(12, 2)
+  activo     Boolean  @default(true)
+  creditos   Credito[]
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+}
+
+// Fase 3 — Crédito. `codigo` legible y único (CR-XXXX), generado en el service
+// desde una secuencia de Postgres (`credito_codigo_seq`; race-safe).
+// `saldoPendiente` se materializa al crear (= montoTotal) y se recalcula dentro
+// de la transacción del cobro (ver §3.9 del plan). `estado` cambia por evento,
+// excepto MORA que se deriva en lectura y se cierra con el cierre diario (Fase 5).
+model Credito {
+  id             String        @id @default(uuid())
+  codigo         String        @unique
+  clienteId      String
+  cliente        Cliente       @relation(fields: [clienteId], references: [id], onDelete: Restrict)
+  productoId     String
+  producto       Producto      @relation(fields: [productoId], references: [id], onDelete: Restrict)
+  montoTotal     Decimal       @db.Decimal(12, 2)
+  cuotaDiaria    Decimal       @db.Decimal(12, 2)
+  saldoPendiente Decimal       @db.Decimal(12, 2)
+  estado         EstadoCredito @default(ACTIVO)
+  fechaInicio    DateTime      @default(now())
+  pagos          Pago[]
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+
+  @@index([clienteId])
+  @@index([estado])
+}
+
+// Fase 3 — Pago. Auditable: los registros de dinero no se borran (onDelete: Restrict).
+// `reciboUrl` queda NULL en Fase 3; la Fase 4 lo llena (recibos).
+model Pago {
+  id         String   @id @default(uuid())
+  creditoId  String
+  credito    Credito  @relation(fields: [creditoId], references: [id], onDelete: Restrict)
+  monto      Decimal  @db.Decimal(12, 2)
+  fecha      DateTime @default(now())
+  cobradorId String
+  cobrador   Usuario  @relation(fields: [cobradorId], references: [id], onDelete: Restrict)
+  reciboUrl  String?
+  createdAt  DateTime @default(now())
+
+  @@index([creditoId])
+  @@index([cobradorId])
 }

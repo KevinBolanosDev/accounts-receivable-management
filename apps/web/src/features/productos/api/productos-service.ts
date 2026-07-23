@@ -72,4 +72,7 @@ export const httpProductosService: ProductosService = {
 };
 
 // Bloque A (Fase 3.2) — mock. El swap a http se hace en 3.10 en un solo punto.
-export const productosService: ProductosService = mockProductosService;
+// Bloque C (Fase 3.10) — se activa `httpProductosService` para hablar con el
+// backend real de `apps/api`. Los hooks de TanStack Query ya apuntan a este
+// `productosService`, así que el cambio es **un solo punto** por feature.
+export const productosService: ProductosService = httpProductosService;

@@ -1,12 +1,14 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { PackageIcon, PencilIcon, Trash2Icon } from "lucide-react";
+import { PencilIcon, PlusIcon, Trash2Icon } from "lucide-react";
 import { toast } from "sonner";
 
-import { ESTADO_CLIENTE_LABEL, getInitials } from "@/entities/client";
+import { CreditCard } from "@/entities/credit";
+import { ESTADO_CLIENTE_LABEL } from "@/entities/client";
+import { getInitials } from "@/shared/lib/initials";
 import { formatCurrency } from "@/shared/lib/format-currency";
 import { cn } from "@/shared/lib/utils";
 import { Badge } from "@/shared/ui/badge";
@@ -19,13 +21,23 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/shared/ui/dialog";
-import { ProgressBar } from "@/shared/ui/progress-bar";
 import { ProgressRing } from "@/shared/ui/progress-ring";
 import { Skeleton } from "@/shared/ui/skeleton";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/shared/ui/table";
+import {
+  TabsContent,
+  TabsList,
+  TabsRoot,
+  TabsTrigger,
+} from "@/shared/ui/tabs";
 import { AdminPageHeader } from "@/widgets/admin-shell/AdminPageHeader";
 
 import { useCliente, useDeleteCliente } from "../api/use-clientes";
+
+// DESIGN_SYSTEM.md §3.3 — enriquecimiento del detalle de cliente (#5c).
+// Header con saldo **agregado** (suma de los créditos activos) y badge de
+// rollup; botón "Agregar crédito" lleva a la pantalla Crear (#9c) con el
+// `clienteId` preseleccionado. Cuerpo: Tabs Activo / Historial con CreditCard
+// en cada (el cliente puede tener VARIOS activos a la vez).
 
 function StatCard({
   label,
@@ -42,7 +54,9 @@ function StatCard({
     <div className="flex flex-col gap-1 rounded-lg border border-border bg-card p-5">
       <span className="text-caption text-muted-foreground uppercase">{label}</span>
       <span className="text-h1 font-semibold tabular-nums">{value}</span>
-      {sub ? <span className={cn("text-body-sm text-muted-foreground", subClassName)}>{sub}</span> : null}
+      {sub ? (
+        <span className={cn("text-body-sm text-muted-foreground", subClassName)}>{sub}</span>
+      ) : null}
     </div>
   );
 }
@@ -52,6 +66,32 @@ export function ClientDetailScreen({ clienteId }: { clienteId: string }) {
   const { data: cliente, isLoading } = useCliente(clienteId);
   const deleteCliente = useDeleteCliente();
   const [confirmOpen, setConfirmOpen] = useState(false);
+
+  const saldoAgregado = useMemo(
+    () =>
+      (cliente?.creditosActivos ?? []).reduce(
+        (sum, c) => sum + (c.saldoPendiente ?? 0),
+        0,
+      ),
+    [cliente?.creditosActivos],
+  );
+  const montoTotalAgregado = useMemo(
+    () =>
+      (cliente?.creditosActivos ?? []).reduce((sum, c) => sum + c.montoTotal, 0),
+    [cliente?.creditosActivos],
+  );
+  const porcentajeAgregado = useMemo(() => {
+    if (montoTotalAgregado <= 0) return 0;
+    return Math.min(
+      100,
+      Math.max(
+        0,
+        Math.round(
+          ((montoTotalAgregado - saldoAgregado) / montoTotalAgregado) * 100,
+        ),
+      ),
+    );
+  }, [montoTotalAgregado, saldoAgregado]);
 
   if (isLoading || !cliente) {
     return (
@@ -63,8 +103,6 @@ export function ClientDetailScreen({ clienteId }: { clienteId: string }) {
       </>
     );
   }
-
-  const credito = cliente.creditosActivos[0] ?? null;
 
   async function handleDelete() {
     try {
@@ -78,29 +116,26 @@ export function ClientDetailScreen({ clienteId }: { clienteId: string }) {
 
   return (
     <>
-      <AdminPageHeader eyebrow={`Clientes / ${cliente.nombre}`} title="Detalle de cliente" />
-
-      <div className="flex flex-col gap-6 p-4 sm:p-6">
-        {/* Identidad + acciones */}
-        <div className="flex flex-wrap items-start justify-between gap-4">
-          <div className="flex items-center gap-4">
-            <span className="flex size-14 shrink-0 items-center justify-center rounded-full bg-secondary text-lg font-semibold">
-              {getInitials(cliente.nombre)}
-            </span>
-            <div className="flex flex-col gap-1">
-              <div className="flex items-center gap-2">
-                <span className="text-h2 font-semibold">{cliente.nombre}</span>
-                {cliente.estado ? (
-                  <Badge status={cliente.estado}>{ESTADO_CLIENTE_LABEL[cliente.estado]}</Badge>
-                ) : null}
-              </div>
-              <span className="text-body-sm text-muted-foreground">
-                {cliente.ruta?.nombre ?? "Sin ruta"} · Cobrador {cliente.cobradorNombre ?? "Sin asignar"} ·
-                Doc {cliente.documento}
-              </span>
-            </div>
-          </div>
-          <div className="flex gap-3">
+      <AdminPageHeader
+        eyebrow={`Clientes / ${cliente.nombre}`}
+        title="Detalle de cliente"
+        actions={
+          <>
+            <Button
+              asChild
+              variant="secondary"
+              aria-label={`Agregar crédito a ${cliente.nombre}`}
+            >
+              <Link
+                href={{
+                  pathname: "/admin/credits/new",
+                  query: { clienteId: cliente.id },
+                }}
+              >
+                <PlusIcon />
+                Agregar crédito
+              </Link>
+            </Button>
             <Button asChild variant="secondary">
               <Link href={`/admin/clients/${cliente.id}/edit`}>
                 <PencilIcon />
@@ -111,118 +146,121 @@ export function ClientDetailScreen({ clienteId }: { clienteId: string }) {
               <Trash2Icon />
               Eliminar
             </Button>
-          </div>
-        </div>
+          </>
+        }
+      />
 
-        {/* Tira de métricas */}
-        {credito ? (
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-            <StatCard
-              label="Saldo pendiente"
-              value={formatCurrency(credito.saldoPendiente)}
-              sub={`de ${formatCurrency(credito.montoTotal)}`}
-            />
-            <StatCard
-              label="Cuota diaria"
-              value={formatCurrency(credito.cuotaDiaria)}
-              sub="Cobro diario"
-            />
-            <StatCard
-              label="Cuotas restantes"
-              value={String(credito.cuotasTotal - credito.cuotasPagadas)}
-              sub={`${credito.cuotasPagadas} de ${credito.cuotasTotal} pagadas`}
-            />
-            <div className="flex items-center gap-4 rounded-lg border border-border bg-card p-5">
-              <ProgressRing value={credito.porcentajePagado} size="md" />
-              <div className="flex flex-col">
-                <span className="text-caption text-muted-foreground uppercase">Avance</span>
-                <span className="text-body-sm text-muted-foreground">Pagado del crédito total</span>
+      <div className="flex flex-col gap-6 p-4 sm:p-6">
+        {/* Identidad + saldo agregado + badge de rollup */}
+        <div className="flex flex-wrap items-start justify-between gap-4">
+          <div className="flex items-center gap-4">
+            <span className="flex size-14 shrink-0 items-center justify-center rounded-full bg-secondary text-lg font-semibold">
+              {getInitials(cliente.nombre)}
+            </span>
+            <div className="flex flex-col gap-1">
+              <div className="flex items-center gap-2">
+                <span className="text-h2 font-semibold">{cliente.nombre}</span>
+                {cliente.estado ? (
+                  <Badge status={cliente.estado}>
+                    {ESTADO_CLIENTE_LABEL[cliente.estado]}
+                  </Badge>
+                ) : null}
               </div>
-            </div>
-          </div>
-        ) : null}
-
-        {/* Crédito + historial */}
-        <div className="grid gap-6 lg:grid-cols-2">
-          {/* Crédito activo */}
-          <div className="flex flex-col gap-5 rounded-lg border border-border bg-card p-6">
-            <p className="text-caption text-muted-foreground uppercase">Crédito activo</p>
-            {credito ? (
-              <>
-            <div className="flex items-center gap-3">
-              <span className="flex size-11 shrink-0 items-center justify-center rounded-lg bg-secondary text-muted-foreground [&_svg]:size-5">
-                <PackageIcon />
+              <span className="text-body-sm text-muted-foreground">
+                {cliente.ruta?.nombre ?? "Sin ruta"} · Cobrador {cliente.cobradorNombre ?? "Sin asignar"} ·
+                Doc {cliente.documento}
               </span>
-              <div className="flex flex-col">
-                <span className="text-h3 font-semibold">{credito.producto.nombre}</span>
-                <span className="text-caption text-muted-foreground">
-                  Crédito {credito.codigo} · abierto {credito.fechaInicio}
-                </span>
-              </div>
             </div>
-
-                <div className="flex flex-col gap-2">
-                  <div className="flex items-baseline justify-between">
-                    <span className="text-sm text-muted-foreground">Progreso</span>
-                    <span className="text-sm font-medium text-accent tabular-nums">
-                      {credito.porcentajePagado}% pagado
-                    </span>
-                  </div>
-                  <ProgressBar value={credito.porcentajePagado} />
-                </div>
-
-                <div className="flex flex-col gap-2 text-sm">
-                  <div className="flex justify-between">
-                    <span className="text-muted-foreground">Monto total</span>
-                    <span className="font-semibold tabular-nums">{formatCurrency(credito.montoTotal)}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-muted-foreground">Total pagado</span>
-                    <span className="font-semibold text-success tabular-nums">
-                      {formatCurrency(credito.totalPagado)}
-                    </span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-muted-foreground">Saldo pendiente</span>
-                    <span className="font-semibold tabular-nums">{formatCurrency(credito.saldoPendiente)}</span>
-                  </div>
-                </div>
-              </>
-            ) : (
-              <p className="text-body-sm text-muted-foreground">Este cliente no tiene un crédito activo.</p>
-            )}
-          </div>
-
-          {/* Historial de pagos */}
-          <div className="flex flex-col gap-3 rounded-lg border border-border bg-card p-6">
-            <div className="flex items-center justify-between">
-              <p className="text-caption text-muted-foreground uppercase">Historial de pagos</p>
-              {credito ? (
-                <span className="text-caption text-muted-foreground">{credito.cuotasPagadas} pagos</span>
-              ) : null}
-            </div>
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Fecha</TableHead>
-                  <TableHead className="text-right">Monto</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {(cliente.historialPagos ?? []).map((pago) => (
-                  <TableRow key={pago.id}>
-                    <TableCell className="text-muted-foreground">
-                      {new Date(pago.fecha).toLocaleDateString("es-CO")}
-                    </TableCell>
-                    <TableCell className="text-right tabular-nums">
-                      {formatCurrency(pago.monto)}
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
           </div>
         </div>
+
+        {/* Tira de métricas (saldo agregado) */}
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          <StatCard
+            label="Saldo pendiente"
+            value={formatCurrency(saldoAgregado)}
+            sub={
+              cliente.creditosActivos.length > 0
+                ? `de ${formatCurrency(montoTotalAgregado)}`
+                : "Sin créditos activos"
+            }
+          />
+          <StatCard
+            label="Créditos activos"
+            value={String(cliente.creditosActivos.length)}
+            sub={
+              cliente.creditosActivos.length > 1 ? "varios productos" : "un producto"
+            }
+          />
+          <StatCard
+            label="Créditos en historial"
+            value={String(cliente.creditosHistorial.length)}
+            sub="pagados / anulados"
+          />
+          <div className="flex items-center gap-4 rounded-lg border border-border bg-card p-5">
+            <ProgressRing value={porcentajeAgregado} size="md" />
+            <div className="flex flex-col">
+              <span className="text-caption text-muted-foreground uppercase">Avance</span>
+              <span className="text-body-sm text-muted-foreground">
+                Pagado del total agregado
+              </span>
+            </div>
+          </div>
+        </div>
+
+        {/* Tabs Activo / Historial (Fase 3 — 1:N con varios activos) */}
+        <TabsRoot defaultValue="activos">
+          <TabsList>
+            <TabsTrigger value="activos">
+              Activo ({cliente.creditosActivos.length})
+            </TabsTrigger>
+            <TabsTrigger value="historial">
+              Historial ({cliente.creditosHistorial.length})
+            </TabsTrigger>
+          </TabsList>
+
+          <TabsContent value="activos">
+            {cliente.creditosActivos.length === 0 ? (
+              <EmptyState
+                title="Este cliente no tiene créditos activos."
+                description="Puedes crear uno desde el botón “Agregar crédito”."
+              />
+            ) : (
+              <div className="grid gap-4 md:grid-cols-2">
+                {cliente.creditosActivos.map((credito) => (
+                  <Link
+                    key={credito.id}
+                    href={`/admin/credits/${credito.id}`}
+                    className="block focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-lg"
+                  >
+                    <CreditCard credito={credito} clienteNombre={cliente.nombre} />
+                  </Link>
+                ))}
+              </div>
+            )}
+          </TabsContent>
+
+          <TabsContent value="historial">
+            {cliente.creditosHistorial.length === 0 ? (
+              <EmptyState
+                title="Aún no hay créditos saldados."
+                description="Aquí aparecerán los créditos PAGADOS y ANULADOS."
+              />
+            ) : (
+              <div className="grid gap-4 md:grid-cols-2">
+                {cliente.creditosHistorial.map((credito) => (
+                  <Link
+                    key={credito.id}
+                    href={`/admin/credits/${credito.id}`}
+                    className="block focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-lg"
+                  >
+                    <CreditCard credito={credito} clienteNombre={cliente.nombre} />
+                  </Link>
+                ))}
+              </div>
+            )}
+          </TabsContent>
+        </TabsRoot>
       </div>
 
       <Dialog open={confirmOpen} onOpenChange={setConfirmOpen}>
@@ -244,5 +282,20 @@ export function ClientDetailScreen({ clienteId }: { clienteId: string }) {
         </DialogContent>
       </Dialog>
     </>
+  );
+}
+
+function EmptyState({
+  title,
+  description,
+}: {
+  title: string;
+  description: string;
+}) {
+  return (
+    <div className="flex flex-col items-center gap-2 rounded-lg border border-dashed border-border bg-card p-8 text-center">
+      <p className="text-sm font-medium">{title}</p>
+      <p className="text-caption text-muted-foreground">{description}</p>
+    </div>
   );
 }

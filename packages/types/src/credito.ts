@@ -57,6 +57,9 @@ export type CreditosQuery = z.infer<typeof creditosQuerySchema>;
 
 export const cobroResponseSchema = z.object({
   pago: pagoSchema,
-  credito: creditoSchema,
+  // El crédito recalculado se devuelve en su forma completa
+  // (producto + cuotasPagadas/cuotasTotal) para que el front (16c) pueda
+  // pintar el CreditCard sin un round-trip extra.
+  credito: creditoListItemSchema,
 });
 export type CobroResponse = z.infer<typeof cobroResponseSchema>;

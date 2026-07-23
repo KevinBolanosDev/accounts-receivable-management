@@ -91,6 +91,11 @@ export const mockCobrosService: CobrosService = {
   },
   async registrarCobro({ creditoId, monto }) {
     await delay(450);
+    // Demo del rollback optimista (3.5): un monto "999999" simula un fallo del
+    // server para que se vea la reversión del saldo + toast de error.
+    if (monto === 999_999) {
+      throw new Error("Simulated server failure");
+    }
     // Stub coherente: devuelve el CobroResponse con el crédito recalculado.
     // En 3.10 el swap a http consume el endpoint real, sin tocar este cliente.
     const credito = MOCK_CREDITOS_BY_ID.get(creditoId) ?? MOCK_CREDITOS[0]!;
@@ -138,4 +143,7 @@ export const httpCobrosService: CobrosService = {
 };
 
 // Bloque A (Fase 3.2) — mock. El swap a http se hace en 3.10 en un solo punto.
-export const cobrosService: CobrosService = mockCobrosService;
+// Bloque C (Fase 3.10) — swap activo. La actualización optimista (`onMutate`)
+// reconcilia con el `CobroResponse` real (pago + crédito recalculado) y
+// `onSettled` invalida las queries dependientes. Ver `use-cobros.ts`.
+export const cobrosService: CobrosService = httpCobrosService;

@@ -13,5 +13,9 @@ export const createProductoRequestSchema = z.object({
 });
 export type CreateProductoRequest = z.infer<typeof createProductoRequestSchema>;
 
-export const updateProductoRequestSchema = createProductoRequestSchema.partial();
+export const updateProductoRequestSchema = z.object({
+  nombre: z.string().min(1).optional(),
+  precioBase: z.number().nonnegative().optional(),
+  activo: z.boolean().optional(),
+});
 export type UpdateProductoRequest = z.infer<typeof updateProductoRequestSchema>;

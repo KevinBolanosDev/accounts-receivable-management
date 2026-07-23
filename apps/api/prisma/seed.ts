@@ -1,10 +1,11 @@
-// Script de seed (Fase 1 + Fase 2): siembra usuarios, rutas y clientes demo.
-// Se ejecuta fuera de Nest, así que arma su propio PrismaClient con el driver
-// adapter (igual que PrismaService) en vez de recibirlo por inyección.
+// Script de seed (Fase 1 + Fase 2 + Fase 3): usuarios, rutas, clientes, y
+// ahora productos + créditos + pagos demo. Idempotente — usa upsert por
+// nombre/codigo para que corra dos veces sin duplicar (requisito del seed).
 import "dotenv/config";
 import { randomBytes } from "node:crypto";
 import bcrypt from "bcrypt";
 import { PrismaPg } from "@prisma/adapter-pg";
+import { Prisma } from "@prisma/client";
 import { PrismaClient } from "@prisma/client";
 
 const prisma = new PrismaClient({
@@ -15,10 +16,10 @@ function generarTokenAcceso(): string {
   return randomBytes(32).toString("base64url");
 }
 
-// Mismas credenciales que ya usaba mockAuthService en el frontend (1.2), para
-// que el swap mock → real de la sub-fase 1.8 no cambie nada del lado del navegador.
-// El segundo cobrador (Fase 2) existe para que el e2e de scoping tenga sentido:
-// necesita a alguien con rutas/clientes propios y distintos a los del primero.
+// Mismas credenciales que el mockAuthService del frontend (1.2), para que el
+// swap mock → real no cambie nada del lado del navegador. El segundo cobrador
+// (Fase 2) sirve para el e2e de scoping; los productos/créditos (Fase 3) le
+// dan al primero clientes ACTIVOS para que "Mi ruta de hoy" tenga datos.
 const USERS = [
   { documento: "1000000001", nombre: "Admin Demo", password: "admin123", rol: "ADMIN" as const },
   {
@@ -37,7 +38,7 @@ const USERS = [
   },
 ];
 
-// rutaId se resuelve en tiempo de ejecución (después de sembrar las rutas).
+// rutaId se resuelve en runtime (después de sembrar rutas).
 const CLIENTES = [
   {
     documento: "3001112222",
@@ -83,6 +84,15 @@ const CLIENTES = [
   },
 ];
 
+// Productos del catálogo (Fase 3). Coherentes con los usados por los créditos.
+const PRODUCTOS = [
+  { nombre: "Nevera", precioBase: "1800000.00" },
+  { nombre: "Televisor", precioBase: "1200000.00" },
+  { nombre: "Estufa", precioBase: "950000.00" },
+  { nombre: "Lavadora", precioBase: "1450000.00" },
+  { nombre: "Licuadora", precioBase: "380000.00" },
+];
+
 async function seedUsuarios(): Promise<void> {
   for (const user of USERS) {
     const passwordHash = await bcrypt.hash(user.password, 10);
@@ -107,9 +117,6 @@ async function seedRutas(): Promise<void> {
   const cobrador1 = await prisma.usuario.findUniqueOrThrow({ where: { documento: "1000000002" } });
   const cobrador2 = await prisma.usuario.findUniqueOrThrow({ where: { documento: "1000000003" } });
 
-  // Centro y Norte quedan con el primer cobrador; Sur queda SIN cobrador (para
-  // probar que solo el Admin la ve); Oeste es la ruta propia del segundo
-  // cobrador (necesaria para el e2e de aislamiento de scoping).
   const RUTAS = [
     { nombre: "Ruta Centro", cobradorId: cobrador1.id },
     { nombre: "Ruta Norte", cobradorId: cobrador1.id },
@@ -156,10 +163,151 @@ async function seedClientes(): Promise<void> {
   }
 }
 
+async function seedProductos(): Promise<void> {
+  for (const producto of PRODUCTOS) {
+    await prisma.producto.upsert({
+      where: { nombre: producto.nombre },
+      update: { precioBase: new Prisma.Decimal(producto.precioBase), activo: true },
+      create: {
+        nombre: producto.nombre,
+        precioBase: new Prisma.Decimal(producto.precioBase),
+        activo: true,
+      },
+    });
+
+    console.log(`Producto sembrado: ${producto.nombre}`);
+  }
+}
+
+interface CreditoSeed {
+  codigo: string;
+  clienteDocumento: string;
+  productoNombre: string;
+  montoTotal: string;
+  cuotaDiaria: string;
+  pagos: { monto: string; cobradorDocumento: string }[];
+}
+
+// Créditos demo. `saldoPendiente` se materializa al final como
+// `montoTotal - Σ pagos` (no se deja al server derivarlo en lectura: es
+// evento-driven). El cobrador demo (1000000002) tiene varios clientes de su
+// ruta (María + Carlos) con créditos ACTIVOS → es el set que usará "Mi ruta
+// de hoy". También sembramos un PAGADO para que aparezca en pestaña Historial
+// del detalle de cliente.
+const CREDITOS: CreditoSeed[] = [
+  {
+    codigo: "CR-2041",
+    clienteDocumento: "3001112222",
+    productoNombre: "Nevera",
+    montoTotal: "1000000.00",
+    cuotaDiaria: "20000.00",
+    pagos: [
+      { monto: "20000.00", cobradorDocumento: "1000000002" },
+      { monto: "20000.00", cobradorDocumento: "1000000002" },
+    ],
+  },
+  {
+    codigo: "CR-2050",
+    clienteDocumento: "3002223333",
+    productoNombre: "Lavadora",
+    montoTotal: "1200000.00",
+    cuotaDiaria: "25000.00",
+    pagos: [{ monto: "25000.00", cobradorDocumento: "1000000002" }],
+  },
+  {
+    // Crédito PAGADO: 5 pagos de 200k = 1000000 → saldo 0 → estado PAGADO.
+    codigo: "CR-2060",
+    clienteDocumento: "3006667777",
+    productoNombre: "Televisor",
+    montoTotal: "1000000.00",
+    cuotaDiaria: "200000.00",
+    pagos: [
+      { monto: "200000.00", cobradorDocumento: "1000000003" },
+      { monto: "200000.00", cobradorDocumento: "1000000003" },
+      { monto: "200000.00", cobradorDocumento: "1000000003" },
+      { monto: "200000.00", cobradorDocumento: "1000000003" },
+      { monto: "200000.00", cobradorDocumento: "1000000003" },
+    ],
+  },
+  {
+    // Crédito recién creado, aún sin pagos (→ ACTIVO, saldo = montoTotal).
+    codigo: "CR-2070",
+    clienteDocumento: "3004445555",
+    productoNombre: "Estufa",
+    montoTotal: "600000.00",
+    cuotaDiaria: "15000.00",
+    pagos: [],
+  },
+];
+
+async function seedCreditos(): Promise<void> {
+  for (const c of CREDITOS) {
+    const cliente = await prisma.cliente.findUniqueOrThrow({
+      where: { documento: c.clienteDocumento },
+    });
+    const producto = await prisma.producto.findUniqueOrThrow({
+      where: { nombre: c.productoNombre },
+    });
+    const montoTotal = new Prisma.Decimal(c.montoTotal);
+    const totalPagado = c.pagos.reduce(
+      (acc, p) => acc.add(new Prisma.Decimal(p.monto)),
+      new Prisma.Decimal(0),
+    );
+    const saldoPendiente = montoTotal.sub(totalPagado);
+    const estado = saldoPendiente.lte(0) ? "PAGADO" : "ACTIVO";
+
+    const credito = await prisma.credito.upsert({
+      where: { codigo: c.codigo },
+      update: {
+        clienteId: cliente.id,
+        productoId: producto.id,
+        montoTotal,
+        cuotaDiaria: new Prisma.Decimal(c.cuotaDiaria),
+        saldoPendiente,
+        estado,
+      },
+      create: {
+        id: undefined, // deja que Prisma genere el UUID (los códigos son únicos por índice)
+        codigo: c.codigo,
+        clienteId: cliente.id,
+        productoId: producto.id,
+        montoTotal,
+        cuotaDiaria: new Prisma.Decimal(c.cuotaDiaria),
+        saldoPendiente,
+        estado,
+      },
+    });
+
+    // Pagos: idempotente (mismo monto+credito+cobrador → borrar y reinsertar los
+    // del set). Como son demo y queremos que los IDs no cambien entre seeds,
+    // barremos los existentes del crédito antes de sembrar.
+    await prisma.pago.deleteMany({ where: { creditoId: credito.id } });
+    for (const pago of c.pagos) {
+      const cobrador = await prisma.usuario.findUniqueOrThrow({
+        where: { documento: pago.cobradorDocumento },
+      });
+      await prisma.pago.create({
+        data: {
+          creditoId: credito.id,
+          monto: new Prisma.Decimal(pago.monto),
+          cobradorId: cobrador.id,
+        },
+      });
+    }
+
+    console.log(
+      `Crédito sembrado: ${c.codigo} · ${cliente.nombre} · ${c.productoNombre} · ` +
+        `saldo ${saldoPendiente.toFixed(2)} (${estado})`,
+    );
+  }
+}
+
 async function main(): Promise<void> {
   await seedUsuarios();
   await seedRutas();
   await seedClientes();
+  await seedProductos();
+  await seedCreditos();
 }
 
 main()

@@ -7,8 +7,20 @@ const clientListInclude = {
   ruta: { select: { id: true, nombre: true } },
 } satisfies Prisma.ClienteInclude;
 
+// Fase 3 — el detalle carga los créditos del cliente para llenar
+// `creditosActivos` (ACTIVO/MORA) y `creditosHistorial` (PAGADO/ANULADO) del
+// `ClienteDetail`. Esto se hace en Prisma (no en service), respetando el
+// principio de no-acoplamiento: clientes y créditos comparten MODELOS
+// (Prisma global) pero nunca se importan los services entre sí.
 const clientDetailInclude = {
   ruta: { select: { id: true, nombre: true, cobrador: { select: { nombre: true } } } },
+  creditos: {
+    include: {
+      producto: { select: { id: true, nombre: true } },
+      pagos: { select: { monto: true, fecha: true } },
+    },
+    orderBy: { fechaInicio: "desc" },
+  },
 } satisfies Prisma.ClienteInclude;
 
 export type ClientWithRoute = Prisma.ClienteGetPayload<{ include: typeof clientListInclude }>;

@@ -24,7 +24,7 @@ export const ADMIN_NAV: AdminNavItem[] = [
   { label: "Dashboard", href: "/admin", icon: LayoutDashboardIcon, enabled: true },
   { label: "Clientes", href: "/admin/clients", icon: UserIcon, enabled: true },
   { label: "Rutas", href: "/admin/routes-collectors", icon: MapPinIcon, enabled: true },
-  { label: "Créditos", href: "/admin/credits", icon: CreditCardIcon, enabled: false },
+  { label: "Créditos", href: "/admin/credits/new", icon: CreditCardIcon, enabled: true },
   { label: "Cierres", href: "/admin/closures", icon: SquareCheckBigIcon, enabled: false },
   { label: "Cobradores", href: "/admin/collectors", icon: UsersRoundIcon, enabled: true },
   { label: "Reportes", href: "/admin/reports", icon: BarChart3Icon, enabled: false },

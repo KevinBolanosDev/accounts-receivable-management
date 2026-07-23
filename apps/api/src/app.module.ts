@@ -9,6 +9,9 @@ import { RutasModule } from "./modules/rutas/rutas.module";
 import { UsuariosModule } from "./modules/usuarios/usuarios.module";
 import { StorageModule } from "./core/storage/storage.module";
 import { ClientesModule } from "./modules/clientes/clientes.module";
+import { ProductosModule } from "./modules/productos/productos.module";
+import { CreditosModule } from "./modules/creditos/creditos.module";
+import { CobrosModule } from "./modules/cobros/cobros.module";
 
 @Module({
   imports: [
@@ -24,6 +27,9 @@ import { ClientesModule } from "./modules/clientes/clientes.module";
     UsuariosModule,
     StorageModule,
     ClientesModule,
+    ProductosModule,
+    CreditosModule,
+    CobrosModule,
   ],
 })
 export class AppModule {}
