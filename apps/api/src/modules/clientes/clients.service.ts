@@ -148,6 +148,8 @@ export class ClientsService {
     return {
       ...this.toListItem(client),
       cobradorNombre: client.ruta.cobrador?.nombre ?? null,
+      creditosActivos: [],
+      creditosHistorial: [],
     };
   }
 }

@@ -1,11 +1,10 @@
 "use client";
 
-import { useState, type ComponentProps } from "react";
+import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { PackageIcon, PencilIcon, Trash2Icon } from "lucide-react";
 import { toast } from "sonner";
-import type { EstadoPago } from "@repo/types";
 
 import { ESTADO_CLIENTE_LABEL, getInitials } from "@/entities/client";
 import { formatCurrency } from "@/shared/lib/format-currency";
@@ -27,14 +26,6 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { AdminPageHeader } from "@/widgets/admin-shell/AdminPageHeader";
 
 import { useCliente, useDeleteCliente } from "../api/use-clientes";
-
-type BadgeStatus = ComponentProps<typeof Badge>["status"];
-
-const PAGO_BADGE: Record<EstadoPago, { status: BadgeStatus; label: string }> = {
-  pagado: { status: "pagado", label: "Pagado" },
-  tarde: { status: "proximo-a-vencer", label: "Tarde" },
-  pendiente: { status: "ruta-cerrada", label: "Pendiente" },
-};
 
 function StatCard({
   label,
@@ -73,7 +64,7 @@ export function ClientDetailScreen({ clienteId }: { clienteId: string }) {
     );
   }
 
-  const credito = cliente.creditoActivo;
+  const credito = cliente.creditosActivos[0] ?? null;
 
   async function handleDelete() {
     try {
@@ -134,8 +125,7 @@ export function ClientDetailScreen({ clienteId }: { clienteId: string }) {
             <StatCard
               label="Cuota diaria"
               value={formatCurrency(credito.cuotaDiaria)}
-              sub={credito.proximoPagoHoy ? "Próximo pago hoy" : "Al día"}
-              subClassName={credito.proximoPagoHoy ? "text-accent" : undefined}
+              sub="Cobro diario"
             />
             <StatCard
               label="Cuotas restantes"
@@ -159,17 +149,17 @@ export function ClientDetailScreen({ clienteId }: { clienteId: string }) {
             <p className="text-caption text-muted-foreground uppercase">Crédito activo</p>
             {credito ? (
               <>
-                <div className="flex items-center gap-3">
-                  <span className="flex size-11 shrink-0 items-center justify-center rounded-lg bg-secondary text-muted-foreground [&_svg]:size-5">
-                    <PackageIcon />
-                  </span>
-                  <div className="flex flex-col">
-                    <span className="text-h3 font-semibold">{credito.producto}</span>
-                    <span className="text-caption text-muted-foreground">
-                      Crédito #{credito.id} · abierto {credito.fechaApertura}
-                    </span>
-                  </div>
-                </div>
+            <div className="flex items-center gap-3">
+              <span className="flex size-11 shrink-0 items-center justify-center rounded-lg bg-secondary text-muted-foreground [&_svg]:size-5">
+                <PackageIcon />
+              </span>
+              <div className="flex flex-col">
+                <span className="text-h3 font-semibold">{credito.producto.nombre}</span>
+                <span className="text-caption text-muted-foreground">
+                  Crédito {credito.codigo} · abierto {credito.fechaInicio}
+                </span>
+              </div>
+            </div>
 
                 <div className="flex flex-col gap-2">
                   <div className="flex items-baseline justify-between">
@@ -216,22 +206,19 @@ export function ClientDetailScreen({ clienteId }: { clienteId: string }) {
                 <TableRow>
                   <TableHead>Fecha</TableHead>
                   <TableHead className="text-right">Monto</TableHead>
-                  <TableHead className="text-right">Estado</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {(cliente.historialPagos ?? []).map((pago) => {
-                  const badge = PAGO_BADGE[pago.estado];
-                  return (
-                    <TableRow key={pago.fecha}>
-                      <TableCell className="text-muted-foreground">{pago.fecha}</TableCell>
-                      <TableCell className="text-right tabular-nums">{formatCurrency(pago.monto)}</TableCell>
-                      <TableCell className="text-right">
-                        <Badge status={badge.status}>{badge.label}</Badge>
-                      </TableCell>
-                    </TableRow>
-                  );
-                })}
+                {(cliente.historialPagos ?? []).map((pago) => (
+                  <TableRow key={pago.id}>
+                    <TableCell className="text-muted-foreground">
+                      {new Date(pago.fecha).toLocaleDateString("es-CO")}
+                    </TableCell>
+                    <TableCell className="text-right tabular-nums">
+                      {formatCurrency(pago.monto)}
+                    </TableCell>
+                  </TableRow>
+                ))}
               </TableBody>
             </Table>
           </div>

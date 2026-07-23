@@ -81,19 +81,44 @@ function toListItem(c: MockCliente): ClienteListItem {
 }
 
 // Historial de pagos reciente (mock, pantalla 5c). Datos de Crédito → Fase 3.
-const HISTORIAL_PAGOS: ClienteDetail["historialPagos"] = [
-  { fecha: "21 jul 2026", monto: 20000, estado: "pagado" },
-  { fecha: "20 jul 2026", monto: 20000, estado: "pagado" },
-  { fecha: "19 jul 2026", monto: 20000, estado: "pagado" },
-  { fecha: "18 jul 2026", monto: 20000, estado: "tarde" },
-  { fecha: "17 jul 2026", monto: 20000, estado: "pagado" },
-  { fecha: "16 jul 2026", monto: 20000, estado: "pagado" },
-  { fecha: "15 jul 2026", monto: 20000, estado: "pagado" },
+const HISTORIAL_PAGOS: NonNullable<ClienteDetail["historialPagos"]> = [
+  { id: "pg-h-1", creditoId: "cr-2041", cobradorId: "u-1000000002", reciboUrl: null, monto: 20000, fecha: "2026-07-21T08:00:00.000Z" },
+  { id: "pg-h-2", creditoId: "cr-2041", cobradorId: "u-1000000002", reciboUrl: null, monto: 20000, fecha: "2026-07-20T08:00:00.000Z" },
+  { id: "pg-h-3", creditoId: "cr-2041", cobradorId: "u-1000000002", reciboUrl: null, monto: 20000, fecha: "2026-07-19T08:00:00.000Z" },
+  { id: "pg-h-4", creditoId: "cr-2041", cobradorId: "u-1000000002", reciboUrl: null, monto: 20000, fecha: "2026-07-18T08:00:00.000Z" },
+  { id: "pg-h-5", creditoId: "cr-2041", cobradorId: "u-1000000002", reciboUrl: null, monto: 20000, fecha: "2026-07-17T08:00:00.000Z" },
+  { id: "pg-h-6", creditoId: "cr-2041", cobradorId: "u-1000000002", reciboUrl: null, monto: 20000, fecha: "2026-07-16T08:00:00.000Z" },
+  { id: "pg-h-7", creditoId: "cr-2041", cobradorId: "u-1000000002", reciboUrl: null, monto: 20000, fecha: "2026-07-15T08:00:00.000Z" },
 ];
 
-function toDetail(c: MockCliente): ClienteDetail {
+function toCreditoListItem(
+  c: MockCliente,
+): ClienteDetail["creditosActivos"][number] {
   const totalPagado = MONTO_TOTAL - c.saldoPendiente;
-  const cuotasPagadas = Math.round((c.porcentajePagado / 100) * CUOTAS_TOTAL);
+  const porcentajePagado = c.porcentajePagado;
+  const cuotasPagadas = Math.round((porcentajePagado / 100) * CUOTAS_TOTAL);
+  return {
+    id: "cr-2041",
+    codigo: "CR-2041",
+    clienteId: c.id,
+    productoId: `prod-${c.producto.toLowerCase()}`,
+    montoTotal: MONTO_TOTAL,
+    cuotaDiaria: CUOTA_DIARIA,
+    saldoPendiente: c.saldoPendiente,
+    totalPagado,
+    porcentajePagado,
+    estado: c.estado === "pagado" ? "PAGADO" : "ACTIVO",
+    fechaInicio: "2026-06-18T00:00:00.000Z",
+    producto: { id: `prod-${c.producto.toLowerCase()}`, nombre: c.producto },
+    cuotasPagadas,
+    cuotasTotal: CUOTAS_TOTAL,
+  };
+}
+
+function toDetail(c: MockCliente): ClienteDetail {
+  const credito = toCreditoListItem(c);
+  const creditosActivos = c.estado === "pagado" ? [] : [credito];
+  const creditosHistorial = c.estado === "pagado" ? [credito] : [];
   return {
     id: c.id,
     nombre: c.nombre,
@@ -106,34 +131,8 @@ function toDetail(c: MockCliente): ClienteDetail {
     ruta: { id: c.rutaId, nombre: c.rutaNombre },
     cobradorNombre: RUTA_COBRADOR[c.rutaId] ?? null,
     estado: c.estado,
-    creditoActivo:
-      c.estado === "pagado"
-        ? {
-            id: "CR-2041",
-            producto: c.producto,
-            montoTotal: MONTO_TOTAL,
-            totalPagado: MONTO_TOTAL,
-            saldoPendiente: 0,
-            porcentajePagado: 100,
-            cuotaDiaria: CUOTA_DIARIA,
-            cuotasPagadas: CUOTAS_TOTAL,
-            cuotasTotal: CUOTAS_TOTAL,
-            fechaApertura: "18 jun 2026",
-            proximoPagoHoy: false,
-          }
-        : {
-            id: "CR-2041",
-            producto: c.producto,
-            montoTotal: MONTO_TOTAL,
-            totalPagado,
-            saldoPendiente: c.saldoPendiente,
-            porcentajePagado: c.porcentajePagado,
-            cuotaDiaria: CUOTA_DIARIA,
-            cuotasPagadas,
-            cuotasTotal: CUOTAS_TOTAL,
-            fechaApertura: "18 jun 2026",
-            proximoPagoHoy: true,
-          },
+    creditosActivos,
+    creditosHistorial,
     historialPagos: HISTORIAL_PAGOS,
   };
 }

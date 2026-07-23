@@ -60,7 +60,7 @@ function ClientRow({
 }
 
 function ClientPreview({ cliente }: { cliente: ClienteDetail }) {
-  const credito = cliente.creditoActivo;
+  const credito = cliente.creditosActivos[0] ?? null;
   const ultimosPagos = (cliente.historialPagos ?? []).slice(0, 3);
 
   return (
@@ -83,7 +83,7 @@ function ClientPreview({ cliente }: { cliente: ClienteDetail }) {
           <div className="flex flex-1 flex-col gap-2 text-sm">
             <div className="flex justify-between">
               <span className="text-muted-foreground">Producto</span>
-              <span className="font-medium">{credito.producto}</span>
+              <span className="font-medium">{credito.producto.nombre}</span>
             </div>
             <div className="flex justify-between">
               <span className="text-muted-foreground">Saldo pendiente</span>
@@ -103,7 +103,7 @@ function ClientPreview({ cliente }: { cliente: ClienteDetail }) {
         <p className="mb-1 text-caption text-muted-foreground uppercase">Últimos pagos</p>
         {ultimosPagos.map((pago) => (
           <div
-            key={pago.fecha}
+            key={`${pago.creditoId}-${pago.fecha}-${pago.monto}`}
             className="flex items-center justify-between border-b border-border/60 py-2 last:border-0"
           >
             <span className="text-sm text-muted-foreground">{pago.fecha}</span>

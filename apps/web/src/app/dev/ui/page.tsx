@@ -17,6 +17,8 @@ import {
 import { toast } from "sonner";
 
 import { ClientCard } from "@/entities/client";
+import { CreditCard } from "@/entities/credit";
+import type { CreditoListItem } from "@repo/types";
 import { formatCurrency } from "@/shared/lib/format-currency";
 import {
   animateProgressRing,
@@ -72,6 +74,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/shared/ui/popover";
 import { ProgressRing } from "@/shared/ui/progress-ring";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/shared/ui/select";
 import { Switch } from "@/shared/ui/switch";
+import { TabsContent, TabsList, TabsRoot, TabsTrigger } from "@/shared/ui/tabs";
 import {
   Sheet,
   SheetClose,
@@ -189,6 +192,50 @@ function FormDemo() {
 }
 
 const COBRADORES_DEMO = ["Carlos Ramírez", "Ana Torres", "Luis Pardo", "Diana Gómez"];
+
+const CREDIT_DEMO_HERO: CreditoListItem = {
+  id: "cr-2041",
+  codigo: "CR-2041",
+  clienteId: "cl1",
+  productoId: "prod-nevera",
+  montoTotal: 1_000_000,
+  cuotaDiaria: 20_000,
+  saldoPendiente: 320_000,
+  totalPagado: 680_000,
+  porcentajePagado: 68,
+  estado: "ACTIVO",
+  fechaInicio: "2026-06-18T00:00:00.000Z",
+  producto: { id: "prod-nevera", nombre: "Nevera Mabe 360L" },
+  cuotasPagadas: 34,
+  cuotasTotal: 50,
+};
+
+const CREDIT_DEMO_PAGADO: CreditoListItem = {
+  ...CREDIT_DEMO_HERO,
+  id: "cr-2052",
+  codigo: "CR-2052",
+  clienteId: "cl4",
+  saldoPendiente: 0,
+  totalPagado: 1_000_000,
+  porcentajePagado: 100,
+  estado: "PAGADO",
+  cuotasPagadas: 50,
+};
+
+const CREDIT_DEMO_MORA: CreditoListItem = {
+  ...CREDIT_DEMO_HERO,
+  id: "cr-2050",
+  codigo: "CR-2050",
+  clienteId: "cl2",
+  productoId: "prod-lavadora",
+  producto: { id: "prod-lavadora", nombre: "Lavadora Samsung 19kg" },
+  montoTotal: 1_200_000,
+  cuotaDiaria: 25_000,
+  saldoPendiente: 540_000,
+  totalPagado: 660_000,
+  porcentajePagado: 55,
+  estado: "MORA",
+};
 
 function ComboboxDemo() {
   const [open, setOpen] = useState(false);
@@ -505,6 +552,60 @@ export default function UiGalleryPage() {
             porcentajePagado={62}
           />
         </div>
+      </Section>
+
+      <Section
+        title="Credit card"
+        description="entities/credit — densidades hero (10a/5c) y compacta (16c móvil)"
+      >
+        <div className="grid max-w-2xl gap-4">
+          <CreditCard credito={CREDIT_DEMO_HERO} clienteNombre="María Fernández" />
+          <CreditCard credito={CREDIT_DEMO_PAGADO} clienteNombre="José Martínez" />
+          <CreditCard credito={CREDIT_DEMO_MORA} density="compact" clienteNombre="Carmen López" />
+          <CreditCard credito={CREDIT_DEMO_HERO} density="compact" />
+        </div>
+      </Section>
+
+      <Section
+        title="Tabs"
+        description="Primitiva agnóstica usada para Activo/Historial (5c) y vistas de crédito"
+      >
+        <TabsRoot defaultValue="activos" className="max-w-2xl">
+          <TabsList>
+            <TabsTrigger value="activos">Activo</TabsTrigger>
+            <TabsTrigger value="historial">Historial</TabsTrigger>
+          </TabsList>
+          <TabsContent value="activos">
+            <div className="flex flex-col gap-4">
+              <CreditCard credito={CREDIT_DEMO_HERO} clienteNombre="María Fernández" />
+              <CreditCard credito={CREDIT_DEMO_HERO} density="compact" clienteNombre="Carmen López" />
+            </div>
+          </TabsContent>
+          <TabsContent value="historial">
+            <div className="flex flex-col gap-4">
+              <CreditCard credito={CREDIT_DEMO_PAGADO} clienteNombre="José Martínez" />
+            </div>
+          </TabsContent>
+        </TabsRoot>
+
+        <TabsRoot defaultValue="tab-a" className="max-w-2xl">
+          <TabsList variant="underline">
+            <TabsTrigger value="tab-a">General</TabsTrigger>
+            <TabsTrigger value="tab-b">Pagos</TabsTrigger>
+            <TabsTrigger value="tab-c">Notas</TabsTrigger>
+          </TabsList>
+          <TabsContent value="tab-a">
+            <p className="text-body-sm text-muted-foreground">
+              Contenido de “General”.
+            </p>
+          </TabsContent>
+          <TabsContent value="tab-b">
+            <p className="text-body-sm text-muted-foreground">Contenido de “Pagos”.</p>
+          </TabsContent>
+          <TabsContent value="tab-c">
+            <p className="text-body-sm text-muted-foreground">Contenido de “Notas”.</p>
+          </TabsContent>
+        </TabsRoot>
       </Section>
 
       <Section title="Switch" description="Toggle activa/inactiva (pantalla 7b)">

@@ -1,5 +1,8 @@
 import { z } from "zod";
 
+import { creditoListItemSchema } from "./credito";
+import { pagoSchema } from "./cobro";
+
 // Estado de crédito derivado (badges §2.3). Es dato de Crédito → Fase 3.
 export const estadoClienteSchema = z.enum(["activo", "proximo-a-vencer", "mora", "pagado"]);
 export type EstadoCliente = z.infer<typeof estadoClienteSchema>;
@@ -12,8 +15,6 @@ export const clienteSchema = z.object({
   telefono: z.string(),
   documento: z.string(),
   direccion: z.string(),
-  // El documento se guarda por ambos lados (frente y reverso). Cada uno es la
-  // URL en Supabase Storage; se suben por separado (ver uploadFotoDocumento).
   fotoDocumentoFrenteUrl: z.string().url().nullable(),
   fotoDocumentoReversoUrl: z.string().url().nullable(),
   rutaId: z.string(),
@@ -21,8 +22,8 @@ export const clienteSchema = z.object({
 export type Cliente = z.infer<typeof clienteSchema>;
 
 // Fila de la tabla (pantalla 3c) y forma que consume la Client card.
-// `saldoPendiente`/`estado`/`porcentajePagado` son datos de Crédito (Fase 3):
-// opcionales, el backend real los omite en la Fase 2; el mock los provee.
+// `saldoPendiente`/`estado`/`porcentajePagado` son opcionales por compatibilidad
+// con la Fase 2; el backend de la Fase 3 los puebla de verdad.
 export const clienteListItemSchema = clienteSchema.extend({
   ruta: z.object({ id: z.string(), nombre: z.string() }).nullable(),
   saldoPendiente: z.number().optional(),
@@ -35,37 +36,16 @@ export type ClienteListItem = z.infer<typeof clienteListItemSchema>;
 export const estadoPagoSchema = z.enum(["pagado", "tarde", "pendiente"]);
 export type EstadoPago = z.infer<typeof estadoPagoSchema>;
 
-export const pagoSchema = z.object({
-  fecha: z.string(),
-  monto: z.number(),
-  estado: estadoPagoSchema,
-});
-export type Pago = z.infer<typeof pagoSchema>;
-
-// Crédito activo del cliente (Credit card de 3c/5c). Todo esto es de Crédito
-// (Fase 3): el backend real lo entrega vacío en la Fase 2, el mock lo llena.
-export const creditoActivoSchema = z.object({
-  id: z.string(),
-  producto: z.string(),
-  montoTotal: z.number(),
-  totalPagado: z.number(),
-  saldoPendiente: z.number(),
-  porcentajePagado: z.number(),
-  cuotaDiaria: z.number(),
-  cuotasPagadas: z.number(),
-  cuotasTotal: z.number(),
-  fechaApertura: z.string(),
-  proximoPagoHoy: z.boolean(),
-});
-export type CreditoActivo = z.infer<typeof creditoActivoSchema>;
-
-// Detalle de cliente (pantalla 5c) y preview de 3c. El crédito y el historial
-// de pagos se enriquecen en la Fase 3 (aquí son opcionales, mock).
+// Detalle de cliente (pantalla 5c) y preview de 3c. Refinado en la Fase 3: un
+// cliente tiene 1:N créditos (puede tener varios activos a la vez), por lo que
+// el detalle expone arrays `creditosActivos`/`creditosHistorial` en vez del
+// `creditoActivo` singular de la Fase 2.
 export const clienteDetailSchema = clienteSchema.extend({
   ruta: z.object({ id: z.string(), nombre: z.string() }).nullable(),
   cobradorNombre: z.string().nullable(),
   estado: estadoClienteSchema.optional(),
-  creditoActivo: creditoActivoSchema.nullable().optional(),
+  creditosActivos: z.array(creditoListItemSchema),
+  creditosHistorial: z.array(creditoListItemSchema),
   historialPagos: z.array(pagoSchema).optional(),
 });
 export type ClienteDetail = z.infer<typeof clienteDetailSchema>;
