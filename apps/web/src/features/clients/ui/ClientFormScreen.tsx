@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect } from "react";
-import { Controller, useForm } from "react-hook-form";
+import { Controller, useForm, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useRouter } from "next/navigation";
 import {
@@ -124,7 +124,6 @@ export function ClientFormScreen({ clienteId }: { clienteId?: string }) {
     control,
     setValue,
     getValues,
-    watch,
     reset,
     formState: { errors },
     setError,
@@ -151,8 +150,8 @@ export function ClientFormScreen({ clienteId }: { clienteId?: string }) {
     }
   }, [isEdit, cliente, reset]);
 
-  const abrirCredito = watch("abrirCredito");
-  const values = watch();
+  const abrirCredito = useWatch({ control, name: "abrirCredito" });
+  const values = useWatch({ control });
   const rutaNombre =
     rutas.find((route) => route.id === values.rutaId)?.nombre ?? "Sin ruta";
 

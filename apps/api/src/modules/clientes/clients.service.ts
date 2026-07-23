@@ -138,9 +138,7 @@ export class ClientsService {
       // Igual que en rutas.service: una ruta desactivada no debe filtrar
       // clientes accesibles al cobrador por ningún camino (ni "Mis rutas" ni
       // "Clientes").
-      ...(user.rol === "COBRADOR"
-        ? { ruta: { cobradorId: user.sub, activa: true } }
-        : {}),
+      ...(user.rol === "COBRADOR" ? { ruta: { cobradorId: user.sub, activa: true } } : {}),
     };
   }
 

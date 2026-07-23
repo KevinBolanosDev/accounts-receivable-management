@@ -53,7 +53,6 @@ export function FieldClientCreateScreen() {
     control,
     setValue,
     getValues,
-    watch,
     formState: { errors },
     setError,
   } = useForm<FormValues>({
@@ -79,8 +78,8 @@ export function FieldClientCreateScreen() {
   });
 
   const fotos = useWatch({ control, name: ["fotoDocumentoFrenteUrl", "fotoDocumentoReversoUrl"] });
-  const abrirCredito = watch("abrirCredito");
-  const values = watch();
+  const abrirCredito = useWatch({ control, name: "abrirCredito" });
+  const values = useWatch({ control });
   const rutaSeleccionada = rutas.find((r) => r.id === values.rutaId) ?? activeRoute;
 
   async function onSubmit(v: FormValues) {

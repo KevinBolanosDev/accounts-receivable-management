@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { useForm } from "react-hook-form";
+import { useForm, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import {
   createCobroRequestSchema,
@@ -76,8 +76,8 @@ export function RegistrarCobroSheet({
     },
   });
 
-  const creditoId = form.watch("creditoId");
-  const monto = form.watch("monto");
+  const creditoId = useWatch({ control: form.control, name: "creditoId" });
+  const monto = useWatch({ control: form.control, name: "monto" });
   const creditoElegido = creditos.find((c) => c.id === creditoId) ?? null;
   const saldo = creditoElegido?.saldoPendiente ?? 0;
   const montoNum = Number.isFinite(monto) ? monto : 0;

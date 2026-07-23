@@ -2,7 +2,7 @@
 
 import { useEffect, useState, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
-import { Controller, useForm } from "react-hook-form";
+import { Controller, useForm, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import {
   createCreditoRequestSchema,
@@ -93,7 +93,7 @@ export function CreateCreditoScreen({ clienteIdInicial, creditoId }: CreateCredi
   const { data: clientes = [] } = useClientes();
   const { data: rutas = [] } = useRutas();
   const { data: cobradores = [] } = useCobradores();
-  const watchedClienteId = form.watch("clienteId");
+  const watchedClienteId = useWatch({ control, name: "clienteId" });
   const updateCliente = useUpdateCliente(watchedClienteId || "");
   const clienteSeleccionado = clientes.find((c) => c.id === watchedClienteId) ?? null;
   const [rutaParaAsignar, setRutaParaAsignar] = useState<string | null>(null);
@@ -112,7 +112,7 @@ export function CreateCreditoScreen({ clienteIdInicial, creditoId }: CreateCredi
     }
   }, [isEdit, credito, reset]);
 
-  const watched = form.watch();
+  const watched = useWatch({ control });
 
   const calc = calcularCredito(
     Number(watched.monto ?? 0),
