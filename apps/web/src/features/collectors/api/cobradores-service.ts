@@ -77,10 +77,10 @@ export const mockCobradoresService: CobradoresService = {
 
 export const httpCobradoresService: CobradoresService = {
   listCobradores() {
-    return apiFetch("/usuarios?rol=COBRADOR", cobradorListItemSchema.array(), { token: useSessionStore.getState().token });
+    return apiFetch("/users?rol=COBRADOR", cobradorListItemSchema.array(), { token: useSessionStore.getState().token });
   },
   async getCobradoresSummary() {
-    const cobradores = await apiFetch("/usuarios?rol=COBRADOR", cobradorListItemSchema.array(), { token: useSessionStore.getState().token });
+    const cobradores = await apiFetch("/users?rol=COBRADOR", cobradorListItemSchema.array(), { token: useSessionStore.getState().token });
     return {
       cobradoresActivos: cobradores.filter((c) => c.activo).length,
       cobradoresTotal: cobradores.length,
@@ -89,10 +89,10 @@ export const httpCobradoresService: CobradoresService = {
     };
   },
   createCobrador(body) {
-    return apiFetch("/usuarios", cobradorListItemSchema, { method: "POST", body, token: useSessionStore.getState().token });
+    return apiFetch("/users", cobradorListItemSchema, { method: "POST", body, token: useSessionStore.getState().token });
   },
   updateCobrador(id, body) {
-    return apiFetch(`/usuarios/${id}`, cobradorListItemSchema, { method: "PATCH", body, token: useSessionStore.getState().token });
+    return apiFetch(`/users/${id}`, cobradorListItemSchema, { method: "PATCH", body, token: useSessionStore.getState().token });
   },
 };
 

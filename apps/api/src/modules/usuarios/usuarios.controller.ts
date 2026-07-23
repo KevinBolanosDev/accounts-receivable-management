@@ -16,7 +16,7 @@ import { RolesGuard } from "../../core/auth/roles.guard";
 import { ZodValidationPipe } from "../../core/pipes/zod-validation.pipe";
 import { UsuariosService } from "./usuarios.service";
 
-@Controller("usuarios")
+@Controller("users")
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Roles("ADMIN")
 export class UsuariosController {

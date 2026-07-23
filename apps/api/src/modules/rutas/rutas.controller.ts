@@ -29,7 +29,7 @@ import { ZodValidationPipe } from "../../core/pipes/zod-validation.pipe";
 import type { AuthenticatedUser } from "../../core/auth/auth-request";
 import { RutasService } from "./rutas.service";
 
-@Controller("rutas")
+@Controller("routes")
 @UseGuards(JwtAuthGuard)
 export class RutasController {
   constructor(private readonly rutasService: RutasService) {}

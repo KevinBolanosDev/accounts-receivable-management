@@ -34,7 +34,7 @@ import { ZodValidationPipe } from "../../core/pipes/zod-validation.pipe";
 
 import { CreditosService } from "./creditos.service";
 
-@Controller("creditos")
+@Controller("credits")
 @UseGuards(JwtAuthGuard)
 export class CreditosController {
   constructor(private readonly creditosService: CreditosService) {}

@@ -13,7 +13,7 @@ import { ZodValidationPipe } from "../../core/pipes/zod-validation.pipe";
 
 import { CobrosService } from "./cobros.service";
 
-@Controller("cobros")
+@Controller("collections")
 @UseGuards(JwtAuthGuard)
 export class CobrosController {
   constructor(private readonly cobrosService: CobrosService) {}

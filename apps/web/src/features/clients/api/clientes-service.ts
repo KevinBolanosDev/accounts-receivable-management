@@ -205,30 +205,30 @@ export const httpClientesService: ClientesService = {
     if (query?.search) params.set("search", query.search);
     if (query?.rutaId) params.set("rutaId", query.rutaId);
     const qs = params.toString();
-    return apiFetch(`/clientes${qs ? `?${qs}` : ""}`, clienteListItemSchema.array(), { token });
+    return apiFetch(`/clients${qs ? `?${qs}` : ""}`, clienteListItemSchema.array(), { token });
   },
   getCliente(id) {
-    return apiFetch(`/clientes/${id}`, clienteDetailSchema, { token: useSessionStore.getState().token });
+    return apiFetch(`/clients/${id}`, clienteDetailSchema, { token: useSessionStore.getState().token });
   },
   createCliente(body) {
-    return apiFetch("/clientes", clienteDetailSchema, {
+    return apiFetch("/clients", clienteDetailSchema, {
       method: "POST",
       body,
       token: useSessionStore.getState().token,
     });
   },
   updateCliente(id, body) {
-    return apiFetch(`/clientes/${id}`, clienteDetailSchema, {
+    return apiFetch(`/clients/${id}`, clienteDetailSchema, {
       method: "PATCH",
       body,
       token: useSessionStore.getState().token,
     });
   },
   async deleteCliente(id) {
-    await apiFetch(`/clientes/${id}`, clienteSchema, { method: "DELETE", token: useSessionStore.getState().token });
+    await apiFetch(`/clients/${id}`, clienteSchema, { method: "DELETE", token: useSessionStore.getState().token });
   },
   uploadFotoDocumento(file) {
-    return uploadFile("/clientes/foto-documento", uploadFotoDocumentoResponseSchema, {
+    return uploadFile("/clients/id-document-photo", uploadFotoDocumentoResponseSchema, {
       file,
       token: useSessionStore.getState().token,
     });

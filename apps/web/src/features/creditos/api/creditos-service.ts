@@ -210,31 +210,31 @@ export const httpCreditosService: CreditosService = {
     if (query?.clienteId) params.set("clienteId", query.clienteId);
     if (query?.estado) params.set("estado", query.estado);
     const qs = params.toString();
-    return apiFetch(`/creditos${qs ? `?${qs}` : ""}`, creditoListArraySchema, {
+    return apiFetch(`/credits${qs ? `?${qs}` : ""}`, creditoListArraySchema, {
       token: useSessionStore.getState().token,
     });
   },
   getCredito(id) {
-    return apiFetch(`/creditos/${id}`, creditoDetailSchema, {
+    return apiFetch(`/credits/${id}`, creditoDetailSchema, {
       token: useSessionStore.getState().token,
     });
   },
   createCredito(body) {
-    return apiFetch("/creditos", creditoListItemSchema, {
+    return apiFetch("/credits", creditoListItemSchema, {
       method: "POST",
       body,
       token: useSessionStore.getState().token,
     });
   },
   updateCredito(id, body) {
-    return apiFetch(`/creditos/${id}`, creditoListItemSchema, {
+    return apiFetch(`/credits/${id}`, creditoListItemSchema, {
       method: "PATCH",
       body,
       token: useSessionStore.getState().token,
     });
   },
   async anularCredito(id) {
-    return apiFetch(`/creditos/${id}`, creditoListItemSchema, {
+    return apiFetch(`/credits/${id}`, creditoListItemSchema, {
       method: "DELETE",
       token: useSessionStore.getState().token,
     });

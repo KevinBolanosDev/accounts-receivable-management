@@ -40,7 +40,7 @@ import { StorageService } from "../../core/storage/storage.service";
 import { ZodValidationPipe } from "../../core/pipes/zod-validation.pipe";
 import { ClientsService } from "./clients.service";
 
-@Controller("clientes")
+@Controller("clients")
 @UseGuards(JwtAuthGuard)
 export class ClientesController {
   constructor(
@@ -89,7 +89,7 @@ export class ClientesController {
     await this.clientsService.remove(id);
   }
 
-  @Post("foto-documento")
+  @Post("id-document-photo")
   @HttpCode(HttpStatus.CREATED)
   @UseInterceptors(
     FileInterceptor("file", {

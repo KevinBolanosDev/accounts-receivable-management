@@ -140,10 +140,10 @@ export const mockRutasService: RutasService = {
 
 export const httpRutasService: RutasService = {
   listRutas() {
-    return apiFetch("/rutas", rutaListItemSchema.array(), { token: useSessionStore.getState().token });
+    return apiFetch("/routes", rutaListItemSchema.array(), { token: useSessionStore.getState().token });
   },
   async getRutasSummary() {
-    const rutas = await apiFetch("/rutas", rutaListItemSchema.array(), { token: useSessionStore.getState().token });
+    const rutas = await apiFetch("/routes", rutaListItemSchema.array(), { token: useSessionStore.getState().token });
     const abiertas = rutas.filter((r) => r.estadoDia === "abierta");
     return {
       rutasAbiertas: abiertas.length,
@@ -153,16 +153,16 @@ export const httpRutasService: RutasService = {
     };
   },
   getRuta(id) {
-    return apiFetch(`/rutas/${id}`, rutaDetailSchema, { token: useSessionStore.getState().token });
+    return apiFetch(`/routes/${id}`, rutaDetailSchema, { token: useSessionStore.getState().token });
   },
   createRuta(body) {
-    return apiFetch("/rutas", rutaSchema, { method: "POST", body, token: useSessionStore.getState().token });
+    return apiFetch("/routes", rutaSchema, { method: "POST", body, token: useSessionStore.getState().token });
   },
   updateRuta(id, body) {
-    return apiFetch(`/rutas/${id}`, rutaSchema, { method: "PATCH", body, token: useSessionStore.getState().token });
+    return apiFetch(`/routes/${id}`, rutaSchema, { method: "PATCH", body, token: useSessionStore.getState().token });
   },
   async deleteRuta(id) {
-    await apiFetch(`/rutas/${id}`, rutaSchema, { method: "DELETE", token: useSessionStore.getState().token });
+    await apiFetch(`/routes/${id}`, rutaSchema, { method: "DELETE", token: useSessionStore.getState().token });
   },
 };
 

@@ -131,12 +131,12 @@ export const httpCobrosService: CobrosService = {
   getRutaHoy() {
     // La forma exacta se cierra en 3.5; aquí dejamos la respuesta cruda.
     const rutaHoyListSchema = creditoListItemSchema.array();
-    return apiFetch("/cobros/ruta-hoy", rutaHoyListSchema, {
+    return apiFetch("/collections/today-route", rutaHoyListSchema, {
       token: useSessionStore.getState().token,
     }) as unknown as Promise<RutaHoyItem[]>;
   },
   registrarCobro(body) {
-    return apiFetch("/cobros", cobroResponseSchema, {
+    return apiFetch("/collections", cobroResponseSchema, {
       method: "POST",
       body,
       token: useSessionStore.getState().token,

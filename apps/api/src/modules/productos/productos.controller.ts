@@ -16,7 +16,7 @@ import { ZodValidationPipe } from "../../core/pipes/zod-validation.pipe";
 
 import { ProductosService } from "./productos.service";
 
-@Controller("productos")
+@Controller("products")
 @UseGuards(JwtAuthGuard)
 export class ProductosController {
   constructor(private readonly productosService: ProductosService) {}

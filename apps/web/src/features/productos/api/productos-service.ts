@@ -51,19 +51,19 @@ export const mockProductosService: ProductosService = {
 
 export const httpProductosService: ProductosService = {
   listProductos() {
-    return apiFetch("/productos", productoSchema.array(), {
+    return apiFetch("/products", productoSchema.array(), {
       token: useSessionStore.getState().token,
     });
   },
   createProducto(body) {
-    return apiFetch("/productos", productoSchema, {
+    return apiFetch("/products", productoSchema, {
       method: "POST",
       body,
       token: useSessionStore.getState().token,
     });
   },
   updateProducto(id, body) {
-    return apiFetch(`/productos/${id}`, productoSchema, {
+    return apiFetch(`/products/${id}`, productoSchema, {
       method: "PATCH",
       body,
       token: useSessionStore.getState().token,
