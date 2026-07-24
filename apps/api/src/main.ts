@@ -1,6 +1,7 @@
 import { NestFactory } from "@nestjs/core";
 import { AppModule } from "./app.module";
 
+// Testing
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
   const allowedOrigins = (process.env.WEB_ORIGIN ?? "http://localhost:3000")

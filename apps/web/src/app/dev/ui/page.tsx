@@ -179,7 +179,6 @@ function FormDemo() {
                 <Input placeholder="María Fernández" {...field} />
               </FormControl>
               <FormDescription>Se muestra en la ficha y en los recibos.</FormDescription>
-              {/* Testing */}
               <FormMessage />
             </FormItem>
           )}
