@@ -3,6 +3,7 @@
 import * as React from "react";
 import { useForm, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
+import { useRouter } from "next/navigation";
 import {
   createCobroRequestSchema,
   type CobroResponse,
@@ -62,6 +63,7 @@ export function RegistrarCobroSheet({
   children,
   onCobrado,
 }: RegistrarCobroSheetProps) {
+  const router = useRouter();
   const [open, setOpen] = React.useState(false);
   const [editandoMonto, setEditandoMonto] = React.useState(false);
   const initialCreditoId =
@@ -115,6 +117,11 @@ export function RegistrarCobroSheet({
       toast.success("Cobro registrado");
       setOpen(false);
       setEditandoMonto(false);
+      // 4.7 — Navega al recibo fresco. El store efímero (`useLastCobroStore`)
+      // ya tiene el `CobroResponse` seteado por `useRegistrarCobro.onSuccess`.
+      // `?fromCobro=true` le dice a la pantalla del recibo que use el store
+      // antes de pegarle al back (4.9 ya distingue ambos caminos).
+      router.push(`/collector/receipts/${result.pago.id}?fromCobro=true`);
     } catch (error) {
       // El backend puede rechazar por carrera de saldo (409), scoping (403) o
       // validación (400/404) — dejamos el sheet abierto para que el cobrador

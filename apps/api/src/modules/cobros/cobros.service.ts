@@ -5,6 +5,7 @@ import {
   Injectable,
   NotFoundException,
 } from "@nestjs/common";
+import { ConfigService } from "@nestjs/config";
 import { Prisma, type PrismaClient } from "@prisma/client";
 import type { CobroResponse, CreateCobroRequest, CreditoListItem, Pago } from "@repo/types";
 
@@ -21,6 +22,7 @@ export class CobrosService {
   constructor(
     private readonly cobrosRepository: CobrosRepository,
     private readonly prisma: PrismaService,
+    private readonly config: ConfigService,
   ) {}
 
   async registrar(body: CreateCobroRequest, user: AuthenticatedUser): Promise<CobroResponse> {
@@ -102,6 +104,10 @@ export class CobrosService {
         result = {
           pago: toPago(pago),
           credito: toCredito(creditoFinal),
+          // Fase 4 — el recibo HTML lo sirve `GET /payments/:pagoId/receipt`
+          // (módulo `receipts`). Construimos la URL absoluta con
+          // `PUBLIC_APP_URL` para que el front pueda compartir por WhatsApp.
+          recibo: buildReciboInfo(this.config.getOrThrow<string>("PUBLIC_APP_URL"), pago.id),
         };
       });
     } catch (error) {
@@ -122,6 +128,18 @@ export class CobrosService {
 }
 
 // === toDto: Decimal → number, Date → ISO string (re-parseo vía schema) ======
+
+// Construye la URL y el código del recibo. El código es legible y derivado
+// del `pagoId` (los primeros 8 chars en mayúscula). No hay tabla `Recibo`
+// separada — la URL es determinística y el back sirve el HTML on-demand en
+// `GET /payments/:pagoId/receipt`. Es la URL del BACK (no del front) porque
+// el back sirve HTML standalone que el cliente abre desde WhatsApp sin auth.
+function buildReciboInfo(publicAppUrl: string, pagoId: string) {
+  return {
+    url: `${publicAppUrl.replace(/\/$/, "")}/payments/${pagoId}/receipt`,
+    codigo: `R-${pagoId.slice(0, 8).toUpperCase()}`,
+  };
+}
 
 function decimalToNumber(d: Prisma.Decimal): number {
   return Number(d.toString());

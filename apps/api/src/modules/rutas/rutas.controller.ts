@@ -8,7 +8,6 @@ import {
   Param,
   Patch,
   Post,
-  UseGuards,
 } from "@nestjs/common";
 import {
   assignClientsRequestSchema,
@@ -24,15 +23,12 @@ import {
 } from "@repo/types";
 
 import { CurrentUser } from "../../core/auth/current-user.decorator";
-import { JwtAuthGuard } from "../../core/auth/jwt-auth.guard";
 import { Roles } from "../../core/auth/roles.decorator";
-import { RolesGuard } from "../../core/auth/roles.guard";
 import { ZodValidationPipe } from "../../core/pipes/zod-validation.pipe";
 import type { AuthenticatedUser } from "../../core/auth/auth-request";
 import { RutasService } from "./rutas.service";
 
 @Controller("routes")
-@UseGuards(JwtAuthGuard)
 export class RutasController {
   constructor(private readonly rutasService: RutasService) {}
 
@@ -52,7 +48,6 @@ export class RutasController {
   }
 
   @Post()
-  @UseGuards(RolesGuard)
   @Roles("ADMIN")
   async create(
     @Body(new ZodValidationPipe(createRutaRequestSchema)) body: CreateRutaRequest,
@@ -62,7 +57,6 @@ export class RutasController {
   }
 
   @Patch(":id")
-  @UseGuards(RolesGuard)
   @Roles("ADMIN")
   async update(
     @Param("id") id: string,
@@ -74,7 +68,6 @@ export class RutasController {
 
   @Delete(":id")
   @HttpCode(HttpStatus.NO_CONTENT)
-  @UseGuards(RolesGuard)
   @Roles("ADMIN")
   async remove(@Param("id") id: string): Promise<void> {
     await this.rutasService.remove(id);
@@ -83,7 +76,6 @@ export class RutasController {
   // Asignar/quitar clientes de una ruta (§3 — cierre de Fase 3, pantalla de
   // Ruta). ADMIN-only, igual que create/update/delete de la ruta misma.
   @Post(":id/clients")
-  @UseGuards(RolesGuard)
   @Roles("ADMIN")
   async assignClients(
     @Param("id") id: string,
@@ -95,7 +87,6 @@ export class RutasController {
   }
 
   @Delete(":id/clients/:clienteId")
-  @UseGuards(RolesGuard)
   @Roles("ADMIN")
   async unassignClient(
     @Param("id") id: string,

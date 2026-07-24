@@ -6,3 +6,5 @@ export * from "./producto";
 export * from "./cobro";
 export * from "./credito";
 export * from "./client";
+export * from "./client-auth";
+export * from "./receipt";

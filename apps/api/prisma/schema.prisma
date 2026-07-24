@@ -12,6 +12,7 @@ datasource db {
 enum Rol {
   ADMIN
   COBRADOR
+  CLIENTE
 }
 
 // Fase 3 — Crédito tiene 4 estados. ACTIVO/PAGADO/ANULADO son event-driven;
@@ -51,10 +52,10 @@ model Ruta {
 }
 
 model Cliente {
-  id                      String   @id @default(uuid())
+  id                      String    @id @default(uuid())
   nombre                  String
   telefono                String
-  documento               String   @unique
+  documento               String    @unique
   direccion               String
   fotoDocumentoFrenteUrl  String?
   fotoDocumentoReversoUrl String?
@@ -65,10 +66,20 @@ model Cliente {
   // asignar". `onDelete: Restrict` se mantiene: no se puede borrar una ruta
   // que todavía tiene clientes asignados.
   rutaId                  String?
-  ruta                    Ruta?    @relation(fields: [rutaId], references: [id], onDelete: Restrict)
-  tokenAcceso             String   @unique
-  activo                  Boolean  @default(true)
-  createdAt               DateTime @default(now())
+  ruta                    Ruta?     @relation(fields: [rutaId], references: [id], onDelete: Restrict)
+  // Fase 4 — acceso opcional al portal del cliente. `passwordHash` null =
+  // el staff aún no le generó credenciales (caso normal al dar de alta).
+  // Cuando el staff genera/resetea el acceso, `passwordHash` se llena y
+  // `mustChangePassword` se fuerza a true para que la temporal se cambie
+  // en el primer ingreso. `passwordExpiresAt` caduca la temporal tras 24h.
+  passwordHash            String?
+  mustChangePassword      Boolean   @default(false)
+  passwordExpiresAt       DateTime?
+  failedLoginAttempts     Int       @default(0)
+  lockedUntil             DateTime?
+  lastLoginAt             DateTime?
+  activo                  Boolean   @default(true)
+  createdAt               DateTime  @default(now())
   updatedAt               DateTime  @updatedAt
 
   // Fase 3 — back-relation: 1 cliente → N créditos (varios activos posibles)

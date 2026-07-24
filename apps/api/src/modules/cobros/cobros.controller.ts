@@ -1,4 +1,4 @@
-import { Body, Controller, Post, UseGuards } from "@nestjs/common";
+import { Body, Controller, Post } from "@nestjs/common";
 import {
   cobroResponseSchema,
   createCobroRequestSchema,
@@ -8,13 +8,11 @@ import {
 
 import type { AuthenticatedUser } from "../../core/auth/auth-request";
 import { CurrentUser } from "../../core/auth/current-user.decorator";
-import { JwtAuthGuard } from "../../core/auth/jwt-auth.guard";
 import { ZodValidationPipe } from "../../core/pipes/zod-validation.pipe";
 
 import { CobrosService } from "./cobros.service";
 
 @Controller("collections")
-@UseGuards(JwtAuthGuard)
 export class CobrosController {
   constructor(private readonly cobrosService: CobrosService) {}
 

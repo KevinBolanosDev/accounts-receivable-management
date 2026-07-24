@@ -1,7 +1,6 @@
 import "dotenv/config";
 import { Test, TestingModule } from "@nestjs/testing";
 import { INestApplication } from "@nestjs/common";
-import { randomBytes } from "node:crypto";
 import request from "supertest";
 import { App } from "supertest/types";
 import { PrismaPg } from "@prisma/adapter-pg";
@@ -116,7 +115,6 @@ describe("ClientsController (e2e)", () => {
         documento: `client-e2e-${Date.now()}`,
         direccion: "Test",
         rutaId: routeA.id,
-        tokenAcceso: randomBytes(32).toString("base64url"),
       },
     });
     const collector = await login(app, COLLECTOR_B);
@@ -136,7 +134,6 @@ describe("ClientsController (e2e)", () => {
         documento: `client-e2e-${Date.now()}`,
         direccion: "Test",
         rutaId: routeA.id,
-        tokenAcceso: randomBytes(32).toString("base64url"),
       },
     });
     const collector = await login(app, COLLECTOR_A);
@@ -161,7 +158,6 @@ describe("ClientsController (e2e)", () => {
         documento: `client-e2e-${Date.now()}`,
         direccion: "Test",
         rutaId: routeA.id,
-        tokenAcceso: randomBytes(32).toString("base64url"),
       },
     });
     const response = await request(app.getHttpServer())

@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Patch, Post, Query, UseGuards } from "@nestjs/common";
+import { Body, Controller, Get, Param, Patch, Post, Query } from "@nestjs/common";
 import {
   cobradorListItemSchema,
   createCobradorRequestSchema,
@@ -10,14 +10,11 @@ import {
   type UsuariosQuery,
 } from "@repo/types";
 
-import { JwtAuthGuard } from "../../core/auth/jwt-auth.guard";
 import { Roles } from "../../core/auth/roles.decorator";
-import { RolesGuard } from "../../core/auth/roles.guard";
 import { ZodValidationPipe } from "../../core/pipes/zod-validation.pipe";
 import { UsuariosService } from "./usuarios.service";
 
 @Controller("users")
-@UseGuards(JwtAuthGuard, RolesGuard)
 @Roles("ADMIN")
 export class UsuariosController {
   constructor(private readonly usuariosService: UsuariosService) {}

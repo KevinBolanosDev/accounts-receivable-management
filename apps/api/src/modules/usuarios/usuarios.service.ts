@@ -6,7 +6,12 @@ import {
 } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
 import * as bcrypt from "bcrypt";
-import type { CobradorListItem, CreateCobradorRequest, UpdateCobradorRequest } from "@repo/types";
+import type {
+  CobradorListItem,
+  CreateCobradorRequest,
+  Rol,
+  UpdateCobradorRequest,
+} from "@repo/types";
 
 import { UsuariosRepository, type CobradorWithRelations } from "./usuarios.repository";
 
@@ -14,8 +19,11 @@ import { UsuariosRepository, type CobradorWithRelations } from "./usuarios.repos
 export class UsuariosService {
   constructor(private readonly usuariosRepository: UsuariosRepository) {}
 
-  async findAll(rol?: "ADMIN" | "COBRADOR"): Promise<CobradorListItem[]> {
-    const usuarios = await this.usuariosRepository.findMany({ rol: rol ?? "COBRADOR" });
+  async findAll(rol?: Rol): Promise<CobradorListItem[]> {
+    // El listado de `/users` es solo para gestión de staff (Cobradores). Si
+    // llega un rol no-staff (`CLIENTE`) lo descartamos al default "COBRADOR".
+    const rolStaff = rol === "ADMIN" ? "ADMIN" : "COBRADOR";
+    const usuarios = await this.usuariosRepository.findMany({ rol: rolStaff });
     return usuarios.map((usuario) => this.toListItem(usuario));
   }
 

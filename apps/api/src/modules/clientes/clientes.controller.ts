@@ -10,7 +10,6 @@ import {
   Post,
   Query,
   UploadedFile,
-  UseGuards,
   UseInterceptors,
 } from "@nestjs/common";
 import { FileInterceptor } from "@nestjs/platform-express";
@@ -34,16 +33,13 @@ import {
 
 import type { AuthenticatedUser } from "../../core/auth/auth-request";
 import { CurrentUser } from "../../core/auth/current-user.decorator";
-import { JwtAuthGuard } from "../../core/auth/jwt-auth.guard";
 import { Roles } from "../../core/auth/roles.decorator";
-import { RolesGuard } from "../../core/auth/roles.guard";
 import { ImageFileValidationPipe } from "../../core/pipes/image-file-validation.pipe";
 import { StorageService } from "../../core/storage/storage.service";
 import { ZodValidationPipe } from "../../core/pipes/zod-validation.pipe";
 import { ClientsService } from "./clients.service";
 
 @Controller("clients")
-@UseGuards(JwtAuthGuard)
 export class ClientesController {
   constructor(
     private readonly clientsService: ClientsService,
@@ -91,7 +87,6 @@ export class ClientesController {
 
   @Delete(":id")
   @HttpCode(HttpStatus.NO_CONTENT)
-  @UseGuards(RolesGuard)
   @Roles("ADMIN")
   async remove(@Param("id") id: string): Promise<void> {
     await this.clientsService.remove(id);

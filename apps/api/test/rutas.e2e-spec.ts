@@ -205,7 +205,6 @@ describe("RutasController (e2e)", () => {
           documento: `e2e-${randomBytes(4).toString("hex")}`,
           direccion: "Dirección de prueba",
           rutaId: ruta.id,
-          tokenAcceso: randomBytes(32).toString("base64url"),
         },
       });
 

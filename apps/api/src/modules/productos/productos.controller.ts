@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Patch, Post, UseGuards } from "@nestjs/common";
+import { Body, Controller, Get, Param, Patch, Post } from "@nestjs/common";
 import {
   createProductoRequestSchema,
   productoSchema,
@@ -9,15 +9,12 @@ import {
 } from "@repo/types";
 
 import { CurrentUser } from "../../core/auth/current-user.decorator";
-import { JwtAuthGuard } from "../../core/auth/jwt-auth.guard";
 import { Roles } from "../../core/auth/roles.decorator";
-import { RolesGuard } from "../../core/auth/roles.guard";
 import { ZodValidationPipe } from "../../core/pipes/zod-validation.pipe";
 
 import { ProductosService } from "./productos.service";
 
 @Controller("products")
-@UseGuards(JwtAuthGuard)
 export class ProductosController {
   constructor(private readonly productosService: ProductosService) {}
 
@@ -28,7 +25,6 @@ export class ProductosController {
   }
 
   @Post()
-  @UseGuards(RolesGuard)
   @Roles("ADMIN")
   async create(
     @Body(new ZodValidationPipe(createProductoRequestSchema)) body: CreateProductoRequest,
@@ -38,7 +34,6 @@ export class ProductosController {
   }
 
   @Patch(":id")
-  @UseGuards(RolesGuard)
   @Roles("ADMIN")
   async update(
     @Param("id") id: string,

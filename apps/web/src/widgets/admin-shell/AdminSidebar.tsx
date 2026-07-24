@@ -27,6 +27,9 @@ interface AdminSidebarProps {
 const ROL_LABEL: Record<Rol, string> = {
   ADMIN: "Administrador",
   COBRADOR: "Cobrador",
+  // El cliente nunca llega al AdminShell (el `RouteGuard` lo bloquea), pero
+  // el tipo exige cubrir el caso — mantener el `Record<Rol, string>` exhaustivo.
+  CLIENTE: "Cliente",
 };
 
 // Marca "anillo + CobroDiario" (DESIGN_SYSTEM.md §1.7, elemento de firma).

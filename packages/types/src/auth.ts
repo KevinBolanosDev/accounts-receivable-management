@@ -1,7 +1,12 @@
 import { z } from "zod";
 
-// Rol del usuario del sistema (el cliente final no es un Usuario, no tiene login).
-export const rolSchema = z.enum(["ADMIN", "COBRADOR"]);
+// Rol del principal autenticado por JWT.
+// - ADMIN/COBRADOR: usuarios del staff (modelo `Usuario`).
+// - CLIENTE: cliente final autenticado por credenciales (modelo `Cliente`).
+// El cliente NO es un `Usuario` (vive en su propia tabla), pero comparte el
+// mismo esquema JWT y los mismos Guards; el `RolesGuard` lee este rol y el
+// `MustChangePasswordGuard` aplica solo a `CLIENTE`.
+export const rolSchema = z.enum(["ADMIN", "COBRADOR", "CLIENTE"]);
 export type Rol = z.infer<typeof rolSchema>;
 
 // Credenciales que envía el formulario de login.

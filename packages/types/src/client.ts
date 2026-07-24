@@ -7,8 +7,11 @@ import { pagoSchema } from "./cobro";
 export const estadoClienteSchema = z.enum(["activo", "proximo-a-vencer", "mora", "pagado"]);
 export type EstadoCliente = z.infer<typeof estadoClienteSchema>;
 
-// Cliente expuesto al frontend. NUNCA incluye `tokenAcceso` (se genera en el
-// servidor con cripto y es del acceso público del cliente final, Fase 4).
+// Cliente expuesto al frontend. NUNCA incluye `passwordHash`,
+// `failedLoginAttempts`, `lockedUntil` ni `passwordExpiresAt` (datos
+// sensibles del acceso al portal del cliente, Fase 4). El personal del staff
+// accede al cliente vía `useCliente(id)`; el cliente se autentica por sí
+// mismo vía `clientAuthUserSchema` (auth-cliente.ts).
 export const clienteSchema = z.object({
   id: z.string(),
   nombre: z.string(),
@@ -54,8 +57,10 @@ export const clienteDetailSchema = clienteListItemSchema.extend({
 });
 export type ClienteDetail = z.infer<typeof clienteDetailSchema>;
 
-// Body del alta de cliente (pantalla 4c / 17c). Sin `tokenAcceso` (server) y
-// con la foto opcional (se sube aparte, ver `uploadFotoDocumentoResponseSchema`).
+// Body del alta de cliente (pantalla 4c / 17c). La foto del documento se
+// sube aparte (ver `uploadFotoDocumentoResponseSchema`). El acceso al portal
+// (password temporal) lo genera el staff por separado, en una acción
+// explícita (`POST /clients/:id/access`, Fase 4).
 export const createClienteRequestSchema = z.object({
   nombre: z.string().min(1, "El nombre es obligatorio."),
   telefono: z.string().min(1, "El teléfono es obligatorio."),

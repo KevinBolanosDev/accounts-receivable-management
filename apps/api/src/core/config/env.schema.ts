@@ -10,6 +10,12 @@ export const envSchema = z.object({
   SUPABASE_URL: z.string().url("SUPABASE_URL debe ser una URL válida"),
   SUPABASE_SERVICE_KEY: z.string().min(1, "SUPABASE_SERVICE_KEY es requerida"),
   SUPABASE_STORAGE_BUCKET: z.string().min(1, "SUPABASE_STORAGE_BUCKET es requerido"),
+  // Fase 4 — URL pública del back (este servidor). El back la usa para
+  // construir el enlace compartible del recibo (wa.me →
+  // ${PUBLIC_APP_URL}/payments/:pagoId/receipt). Como el back sirve el HTML
+  // del recibo directamente (ver módulo `receipts`), esta URL es la del back,
+  // no la del front.
+  PUBLIC_APP_URL: z.string().url().default("http://localhost:3001"),
 });
 
 export type Env = z.infer<typeof envSchema>;

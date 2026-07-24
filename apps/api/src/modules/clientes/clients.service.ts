@@ -5,7 +5,6 @@ import {
   NotFoundException,
 } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
-import { randomBytes } from "node:crypto";
 import type {
   ClienteDetail,
   ClienteListItem,
@@ -58,7 +57,6 @@ export class ClientsService {
         ruta: body.rutaId ? { connect: { id: body.rutaId } } : undefined,
         fotoDocumentoFrenteUrl: body.fotoDocumentoFrenteUrl,
         fotoDocumentoReversoUrl: body.fotoDocumentoReversoUrl,
-        tokenAcceso: randomBytes(32).toString("base64url"),
       });
       return this.toDetail(client);
     } catch (error) {

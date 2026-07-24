@@ -15,6 +15,10 @@ const prisma = new PrismaClient({
 function generarTokenAcceso(): string {
   return randomBytes(32).toString("base64url");
 }
+// (La generación de `tokenAcceso` quedó obsoleta en Fase 4 — el acceso del
+// cliente ahora es por credenciales, no por token. Se conserva solo como
+// helper interno por si se reactiva en el futuro.)
+void generarTokenAcceso;
 
 // Mismas credenciales que el mockAuthService del frontend (1.2), para que el
 // swap mock → real no cambie nada del lado del navegador. El segundo cobrador
@@ -40,19 +44,29 @@ const USERS = [
 
 // rutaId se resuelve en runtime (después de sembrar rutas).
 const CLIENTES = [
+  // Fase 4 — María y Carlos son los dos clientes demo del portal (Ruta Centro).
+  // Reciben `passwordHash` + `mustChangePassword=true` + `passwordExpiresAt=now+24h`
+  // para probar el flujo end-to-end: el cliente entra con `cliente123` y el
+  // sistema fuerza el cambio de contraseña en el primer ingreso.
   {
-    documento: "3001112222",
+    documento: "1000000010",
     nombre: "María Fernández",
     telefono: "3011112222",
     direccion: "Cra 12 #34-56, Centro",
     rutaNombre: "Ruta Centro",
+    passwordHash: bcrypt.hashSync("cliente123", 10),
+    mustChangePassword: true,
+    passwordExpiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
   },
   {
-    documento: "3002223333",
+    documento: "1000000011",
     nombre: "Carlos Ramírez",
     telefono: "3012223333",
     direccion: "Cll 45 #10-20, Centro",
     rutaNombre: "Ruta Centro",
+    passwordHash: bcrypt.hashSync("cliente123", 10),
+    mustChangePassword: true,
+    passwordExpiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
   },
   {
     documento: "3003334444",
@@ -146,6 +160,11 @@ async function seedClientes(): Promise<void> {
         telefono: cliente.telefono,
         direccion: cliente.direccion,
         rutaId: ruta.id,
+        passwordHash: cliente.passwordHash ?? null,
+        mustChangePassword: cliente.mustChangePassword ?? false,
+        passwordExpiresAt: cliente.passwordExpiresAt ?? null,
+        failedLoginAttempts: 0,
+        lockedUntil: null,
       },
       create: {
         documento: cliente.documento,
@@ -153,7 +172,11 @@ async function seedClientes(): Promise<void> {
         telefono: cliente.telefono,
         direccion: cliente.direccion,
         rutaId: ruta.id,
-        tokenAcceso: generarTokenAcceso(),
+        passwordHash: cliente.passwordHash ?? null,
+        mustChangePassword: cliente.mustChangePassword ?? false,
+        passwordExpiresAt: cliente.passwordExpiresAt ?? null,
+        failedLoginAttempts: 0,
+        lockedUntil: null,
         fotoDocumentoFrenteUrl: null,
         fotoDocumentoReversoUrl: null,
       },

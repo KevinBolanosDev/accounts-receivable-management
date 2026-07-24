@@ -74,11 +74,8 @@ export const creditosQuerySchema = z.object({
 });
 export type CreditosQuery = z.infer<typeof creditosQuerySchema>;
 
-// Respuesta del cobro: el pago creado + el crédito ya recalculado (para el update
-// optimista). Vive aquí (no en cobro.ts) para mantener el import acíclico:
-// necesita creditoListItemSchema.
-export const cobroResponseSchema = z.object({
-  pago: pagoSchema,
-  credito: creditoListItemSchema, // saldo/estado recalculados tras el pago
-});
-export type CobroResponse = z.infer<typeof cobroResponseSchema>;
+// NOTA: `cobroResponseSchema` y `CobroResponse` viven en `./cobro` desde
+// Fase 4.8 (incluyen `recibo: ReciboInfo`). El original aquí quedó obsoleto
+// al extender la respuesta con el recibo; la app/web sigue importando
+// `cobroResponseSchema` desde el barrel `index.ts` que reexporta `./cobro`.
+void pagoSchema;

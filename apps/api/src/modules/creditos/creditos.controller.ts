@@ -9,7 +9,6 @@ import {
   Patch,
   Post,
   Query,
-  UseGuards,
 } from "@nestjs/common";
 import {
   createCreditoRequestSchema,
@@ -27,15 +26,12 @@ import {
 
 import type { AuthenticatedUser } from "../../core/auth/auth-request";
 import { CurrentUser } from "../../core/auth/current-user.decorator";
-import { JwtAuthGuard } from "../../core/auth/jwt-auth.guard";
 import { Roles } from "../../core/auth/roles.decorator";
-import { RolesGuard } from "../../core/auth/roles.guard";
 import { ZodValidationPipe } from "../../core/pipes/zod-validation.pipe";
 
 import { CreditosService } from "./creditos.service";
 
 @Controller("credits")
-@UseGuards(JwtAuthGuard)
 export class CreditosController {
   constructor(private readonly creditosService: CreditosService) {}
 
@@ -77,7 +73,6 @@ export class CreditosController {
 
   @Delete(":id")
   @HttpCode(HttpStatus.OK)
-  @UseGuards(RolesGuard)
   @Roles("ADMIN")
   async anular(@Param("id") id: string): Promise<Credito> {
     const result = await this.creditosService.anular(id);
