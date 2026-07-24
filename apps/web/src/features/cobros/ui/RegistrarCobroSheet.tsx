@@ -117,11 +117,9 @@ export function RegistrarCobroSheet({
       toast.success("Cobro registrado");
       setOpen(false);
       setEditandoMonto(false);
-      // 4.7 — Navega al recibo fresco. El store efímero (`useLastCobroStore`)
-      // ya tiene el `CobroResponse` seteado por `useRegistrarCobro.onSuccess`.
-      // `?fromCobro=true` le dice a la pantalla del recibo que use el store
-      // antes de pegarle al back (4.9 ya distingue ambos caminos).
-      router.push(`/collector/receipts/${result.pago.id}?fromCobro=true`);
+      // Navega al recibo fresco. El back lo sirve siempre en vivo
+      // (GET /payments/:pagoId/receipt) — sin cache local.
+      router.push(`/collector/receipts/${result.pago.id}`);
     } catch (error) {
       // El backend puede rechazar por carrera de saldo (409), scoping (403) o
       // validación (400/404) — dejamos el sheet abierto para que el cobrador

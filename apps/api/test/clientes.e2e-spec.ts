@@ -71,7 +71,7 @@ describe("ClientsController (e2e)", () => {
   it("scopes the client list to the authenticated collector", async () => {
     const admin = await login(app, ADMIN);
     const created = await request(app.getHttpServer())
-      .post("/clientes")
+      .post("/clients")
       .set("Authorization", `Bearer ${admin.token}`)
       .send({
         nombre: "Client A",
@@ -84,7 +84,7 @@ describe("ClientsController (e2e)", () => {
     const clientId = clienteDetailSchema.parse(created.body).id;
     const collector = await login(app, COLLECTOR_B);
     const response = await request(app.getHttpServer())
-      .get("/clientes")
+      .get("/clients")
       .set("Authorization", `Bearer ${collector.token}`)
       .expect(200);
     const clients = clienteListItemSchema.array().parse(response.body);
@@ -94,7 +94,7 @@ describe("ClientsController (e2e)", () => {
   it("rejects a collector creating a client outside their route", async () => {
     const collector = await login(app, COLLECTOR_A);
     await request(app.getHttpServer())
-      .post("/clientes")
+      .post("/clients")
       .set("Authorization", `Bearer ${collector.token}`)
       .send({
         nombre: "Forbidden Client",
@@ -119,7 +119,7 @@ describe("ClientsController (e2e)", () => {
     });
     const collector = await login(app, COLLECTOR_B);
     await request(app.getHttpServer())
-      .get(`/clientes/${client.id}`)
+      .get(`/clients/${client.id}`)
       .set("Authorization", `Bearer ${collector.token}`)
       .expect(404);
     void admin;
@@ -138,11 +138,11 @@ describe("ClientsController (e2e)", () => {
     });
     const collector = await login(app, COLLECTOR_A);
     await request(app.getHttpServer())
-      .delete(`/clientes/${client.id}`)
+      .delete(`/clients/${client.id}`)
       .set("Authorization", `Bearer ${collector.token}`)
       .expect(403);
     await request(app.getHttpServer())
-      .delete(`/clientes/${client.id}`)
+      .delete(`/clients/${client.id}`)
       .set("Authorization", `Bearer ${admin.token}`)
       .expect(204);
     const deleted = await prisma.cliente.findUniqueOrThrow({ where: { id: client.id } });
@@ -161,7 +161,7 @@ describe("ClientsController (e2e)", () => {
       },
     });
     const response = await request(app.getHttpServer())
-      .get(`/clientes/${client.id}`)
+      .get(`/clients/${client.id}`)
       .set("Authorization", `Bearer ${admin.token}`)
       .expect(200);
     expect(clienteDetailSchema.parse(response.body).id).toBe(client.id);

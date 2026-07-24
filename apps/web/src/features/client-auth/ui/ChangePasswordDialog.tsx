@@ -42,6 +42,14 @@ const FIELD_CLASS = "h-11 bg-muted";
 // `/client/change-password`. Mismo formulario, distinto wrapper — el modal
 // bloquea cuando viene del flag `mustChangePassword=true`; la pantalla
 // permite cierre porque es voluntaria.
+// Campo `confirmNewPassword` solo vive en el form — no viaja al backend ni
+// está en `changePasswordRequestSchema`. La validación cruzada se hace a mano
+// en `onSubmit` con `setError` (convención del repo, ver apps/web/CLAUDE.md
+// §Formularios), no con un `.refine` en el schema compartido.
+interface ChangePasswordFormValues extends ChangePasswordRequest {
+  confirmNewPassword: string;
+}
+
 export function ChangePasswordDialog({ open, blocking }: ChangePasswordDialogProps) {
   const [submitError, setSubmitError] = useState<string | null>(null);
 
@@ -50,16 +58,26 @@ export function ChangePasswordDialog({ open, blocking }: ChangePasswordDialogPro
     handleSubmit,
     formState: { errors, isSubmitting },
     reset,
-  } = useForm<ChangePasswordRequest>({
-    resolver: zodResolver(changePasswordRequestSchema),
+    setError,
+  } = useForm<ChangePasswordFormValues>({
+    // { raw: true } evita que el resolver stripee `confirmNewPassword` (no
+    // está en el schema compartido con el back).
+    resolver: zodResolver(changePasswordRequestSchema, undefined, { raw: true }) as never,
     mode: "onBlur",
-    defaultValues: { currentPassword: "", newPassword: "" },
+    defaultValues: { currentPassword: "", newPassword: "", confirmNewPassword: "" },
   });
 
   const changePasswordMutation = useClientChangePassword();
 
-  async function onSubmit(values: ChangePasswordRequest) {
+  async function onSubmit(values: ChangePasswordFormValues) {
     setSubmitError(null);
+    if (values.newPassword !== values.confirmNewPassword) {
+      setError("confirmNewPassword", {
+        type: "manual",
+        message: "Las contraseñas no coinciden.",
+      });
+      return;
+    }
     try {
       await changePasswordMutation.mutateAsync({
         currentPassword: values.currentPassword,
@@ -137,6 +155,24 @@ export function ChangePasswordDialog({ open, blocking }: ChangePasswordDialogPro
             />
             {errors.newPassword && (
               <p className="text-xs text-destructive">{errors.newPassword.message}</p>
+            )}
+          </div>
+
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="confirmNewPassword" className="text-muted-foreground">
+              Confirma la nueva contraseña
+            </Label>
+            <Input
+              id="confirmNewPassword"
+              type="password"
+              autoComplete="new-password"
+              placeholder="Repite la nueva contraseña"
+              aria-invalid={!!errors.confirmNewPassword || undefined}
+              className={FIELD_CLASS}
+              {...register("confirmNewPassword")}
+            />
+            {errors.confirmNewPassword && (
+              <p className="text-xs text-destructive">{errors.confirmNewPassword.message}</p>
             )}
           </div>
 

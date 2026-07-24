@@ -1,7 +1,6 @@
 import { NestFactory } from "@nestjs/core";
 import { AppModule } from "./app.module";
 
-// Testing
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
   const allowedOrigins = (process.env.WEB_ORIGIN ?? "http://localhost:3000")
@@ -9,6 +8,6 @@ async function bootstrap() {
     .map((origin) => origin.trim().replace(/\/$/, ""))
     .filter(Boolean);
   app.enableCors({ origin: allowedOrigins });
-  await app.listen(process.env.PORT ?? 3002);
+  await app.listen(process.env.PORT ?? 3001);
 }
 void bootstrap();

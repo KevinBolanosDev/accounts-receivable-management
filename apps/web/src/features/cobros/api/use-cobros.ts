@@ -3,7 +3,6 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import type { CobroResponse, CreateCobroRequest } from "@repo/types";
 
-import { useLastCobroStore } from "../model/last-cobro-store";
 import { cobrosService } from "./cobros-service";
 
 // Registrar un cobro es la única mutación propia de esta feature — la lectura
@@ -15,19 +14,18 @@ import { cobrosService } from "./cobros-service";
 // depende del saldo/estado de un Crédito y dejamos que cada query se
 // refetchee con datos reales.
 //
-// En éxito, además de invalidar queries, guardamos el `CobroResponse` en
-// `useLastCobroStore` (store efímero, NO persistido) y devolvemos la
-// respuesta. La pantalla que llamó al hook decide si navegar al recibo
-// (típicamente `RegistrarCobroSheet` lo hace — ver `RegistrarCobroSheet.tsx`).
+// La pantalla que llamó al hook decide si navegar al recibo (típicamente
+// `RegistrarCobroSheet` lo hace — ver `RegistrarCobroSheet.tsx`). El recibo
+// siempre lo sirve el back (`GET /payments/:pagoId/receipt`, HTML
+// server-rendered) — no hay cache local que duplique esa plantilla.
 export function useRegistrarCobro() {
   const queryClient = useQueryClient();
   return useMutation<CobroResponse, Error, CreateCobroRequest>({
     mutationFn: (body) => cobrosService.registrarCobro(body),
-    onSuccess: (response) => {
+    onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["creditos"] });
       queryClient.invalidateQueries({ queryKey: ["clientes"] });
       queryClient.invalidateQueries({ queryKey: ["rutas"] });
-      useLastCobroStore.getState().setLastCobro(response);
     },
   });
 }

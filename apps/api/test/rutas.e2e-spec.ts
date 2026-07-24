@@ -79,7 +79,7 @@ describe("RutasController (e2e)", () => {
       const { token } = await login(app, ADMIN);
 
       const res = await request(app.getHttpServer())
-        .get("/rutas")
+        .get("/routes")
         .set("Authorization", `Bearer ${token}`)
         .expect(200);
 
@@ -97,7 +97,7 @@ describe("RutasController (e2e)", () => {
       const me = usuarioSchema.parse(meRes.body);
 
       const res = await request(app.getHttpServer())
-        .get("/rutas")
+        .get("/routes")
         .set("Authorization", `Bearer ${token}`)
         .expect(200);
 
@@ -109,7 +109,7 @@ describe("RutasController (e2e)", () => {
     });
 
     it("responde 401 sin token", () => {
-      return request(app.getHttpServer()).get("/rutas").expect(401);
+      return request(app.getHttpServer()).get("/routes").expect(401);
     });
   });
 
@@ -119,13 +119,13 @@ describe("RutasController (e2e)", () => {
       const { token: tokenA } = await login(app, COBRADOR_A);
 
       const misRutas = await request(app.getHttpServer())
-        .get("/rutas")
+        .get("/routes")
         .set("Authorization", `Bearer ${tokenA}`)
         .expect(200);
       const [rutaDeA] = rutaListItemSchema.array().parse(misRutas.body);
 
       return request(app.getHttpServer())
-        .get(`/rutas/${rutaDeA!.id}`)
+        .get(`/routes/${rutaDeA!.id}`)
         .set("Authorization", `Bearer ${tokenB}`)
         .expect(404);
     });
@@ -134,7 +134,7 @@ describe("RutasController (e2e)", () => {
       const { token } = await login(app, ADMIN);
 
       const listRes = await request(app.getHttpServer())
-        .get("/rutas")
+        .get("/routes")
         .set("Authorization", `Bearer ${token}`)
         .expect(200);
       const rutas = rutaListItemSchema.array().parse(listRes.body);
@@ -142,7 +142,7 @@ describe("RutasController (e2e)", () => {
       expect(ruta).toBeDefined();
 
       const res = await request(app.getHttpServer())
-        .get(`/rutas/${ruta!.id}`)
+        .get(`/routes/${ruta!.id}`)
         .set("Authorization", `Bearer ${token}`)
         .expect(200);
 
@@ -160,7 +160,7 @@ describe("RutasController (e2e)", () => {
       const { token } = await login(app, COBRADOR_A);
 
       return request(app.getHttpServer())
-        .post("/rutas")
+        .post("/routes")
         .set("Authorization", `Bearer ${token}`)
         .send({ nombre: "Ruta E2E Prohibida" })
         .expect(403);
@@ -170,7 +170,7 @@ describe("RutasController (e2e)", () => {
       const { token } = await login(app, ADMIN);
 
       const res = await request(app.getHttpServer())
-        .post("/rutas")
+        .post("/routes")
         .set("Authorization", `Bearer ${token}`)
         .send({ nombre: "Ruta E2E Creada" })
         .expect(201);
@@ -186,7 +186,7 @@ describe("RutasController (e2e)", () => {
       const { token } = await login(app, ADMIN);
 
       return request(app.getHttpServer())
-        .post("/rutas")
+        .post("/routes")
         .set("Authorization", `Bearer ${token}`)
         .send({})
         .expect(400);
@@ -210,7 +210,7 @@ describe("RutasController (e2e)", () => {
 
       try {
         await request(app.getHttpServer())
-          .delete(`/rutas/${ruta.id}`)
+          .delete(`/routes/${ruta.id}`)
           .set("Authorization", `Bearer ${token}`)
           .expect(409);
       } finally {
@@ -227,7 +227,7 @@ describe("RutasController (e2e)", () => {
       const ruta = await prisma.ruta.create({ data: { nombre: "Ruta E2E Vacía" } });
 
       await request(app.getHttpServer())
-        .delete(`/rutas/${ruta.id}`)
+        .delete(`/routes/${ruta.id}`)
         .set("Authorization", `Bearer ${token}`)
         .expect(204);
 
@@ -239,7 +239,7 @@ describe("RutasController (e2e)", () => {
       const { token } = await login(app, COBRADOR_A);
 
       return request(app.getHttpServer())
-        .delete("/rutas/no-importa")
+        .delete("/routes/no-importa")
         .set("Authorization", `Bearer ${token}`)
         .expect(403);
     });

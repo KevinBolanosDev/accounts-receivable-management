@@ -1,7 +1,7 @@
 import { Module } from "@nestjs/common";
 import { ConfigModule } from "@nestjs/config";
 import { APP_GUARD } from "@nestjs/core";
-import { ThrottlerModule } from "@nestjs/throttler";
+import { ThrottlerGuard, ThrottlerModule } from "@nestjs/throttler";
 import { validateEnv } from "./core/config/env.schema";
 import { PrismaModule } from "./core/prisma/prisma.module";
 import { CoreAuthModule } from "./core/auth/core-auth.module";
@@ -45,6 +45,11 @@ import { ReceiptsModule } from "./modules/receipts/receipts.module";
     ReceiptsModule,
   ],
   providers: [
+    // Orden de ejecución = orden de registro. El throttler corre primero
+    // (no depende de `request.user`); antes solo estaba configurado el
+    // `ThrottlerModule` sin el guard, así que `@Throttle(...)` no se
+    // aplicaba en ningún endpoint (bug detectado en revisión de Fase 4).
+    { provide: APP_GUARD, useClass: ThrottlerGuard },
     { provide: APP_GUARD, useClass: JwtAuthGuard },
     { provide: APP_GUARD, useClass: RolesGuard },
   ],
