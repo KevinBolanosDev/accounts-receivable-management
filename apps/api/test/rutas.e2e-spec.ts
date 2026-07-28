@@ -6,7 +6,9 @@ import request from "supertest";
 import { App } from "supertest/types";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "@prisma/client";
+import bcrypt from "bcrypt";
 import {
+  clientLoginResponseSchema,
   loginResponseSchema,
   rutaDetailSchema,
   rutaListItemSchema,
@@ -110,6 +112,36 @@ describe("RutasController (e2e)", () => {
 
     it("responde 401 sin token", () => {
       return request(app.getHttpServer()).get("/routes").expect(401);
+    });
+
+    it("responde 403 con un token de CLIENTE (portal)", async () => {
+      const password = "clienteE2e123";
+      const cliente = await prisma.cliente.create({
+        data: {
+          nombre: "Cliente Roles E2E",
+          telefono: "3000000000",
+          documento: `rutas-e2e-client-${Date.now()}`,
+          direccion: "Test",
+          passwordHash: await bcrypt.hash(password, 10),
+          mustChangePassword: true,
+          passwordExpiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
+        },
+      });
+      const loginRes = await request(app.getHttpServer())
+        .post("/client-auth/login")
+        .send({ documento: cliente.documento, password })
+        .expect(200);
+      const clientToken = clientLoginResponseSchema.parse(loginRes.body).token;
+
+      // Antes de este fix, `RutasController` no tenía `@Roles` en los GET —
+      // un cliente del portal podía listar todas las rutas (hallazgo de
+      // auditoría, ver PLAN_DESARROLLO §1.1).
+      await request(app.getHttpServer())
+        .get("/routes")
+        .set("Authorization", `Bearer ${clientToken}`)
+        .expect(403);
+
+      await prisma.cliente.delete({ where: { id: cliente.id } });
     });
   });
 

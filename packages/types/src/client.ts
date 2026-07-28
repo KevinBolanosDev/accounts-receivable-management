@@ -1,7 +1,7 @@
 import { z } from "zod";
 
 import { creditoListItemSchema } from "./credito";
-import { pagoSchema } from "./cobro";
+import { paymentHistoryItemSchema } from "./payment-history";
 
 // Estado de crédito derivado (badges §2.3). Es dato de Crédito → Fase 3.
 export const estadoClienteSchema = z.enum(["activo", "proximo-a-vencer", "mora", "pagado"]);
@@ -23,6 +23,10 @@ export const clienteSchema = z.object({
   // Nullable desde el cierre de Fase 3: un cliente puede quedar "sin ruta" si
   // se lo quita desde la pantalla de Ruta (no se borra, solo se desasigna).
   rutaId: z.string().nullable(),
+  // Contacto de referencia (persona a la que llamar si no se ubica al cliente).
+  // Opcional: la enorme mayoría de los clientes ya dados de alta no lo tienen.
+  contactoNombre: z.string().nullable().optional(),
+  contactoTelefono: z.string().nullable().optional(),
 });
 export type Cliente = z.infer<typeof clienteSchema>;
 
@@ -53,7 +57,17 @@ export const clienteDetailSchema = clienteListItemSchema.extend({
   cobradorNombre: z.string().nullable(),
   creditosActivos: z.array(creditoListItemSchema),
   creditosHistorial: z.array(creditoListItemSchema),
-  historialPagos: z.array(pagoSchema).optional(),
+  // Enriquecido (numeroCuota/estado/reciboCodigo/reciboPublicUrl) desde el
+  // historial modular del Cobrador: es el MISMO shape que consume el portal del
+  // cliente, así ambas superficies comparten los componentes de historial.
+  historialPagos: z.array(paymentHistoryItemSchema).optional(),
+  // Fase 4.14 — estado de acceso al Portal Cliente, visible para ADMIN/
+  // COBRADOR en el detalle. Deriva de `passwordHash` sin exponerlo nunca
+  // (ni `failedLoginAttempts`/`lockedUntil`/`passwordExpiresAt` — esos siguen
+  // siendo exclusivos de `clientAuthUserSchema`, la vista del propio cliente).
+  tieneAccesoPortal: z.boolean(),
+  mustChangePassword: z.boolean(),
+  lastLoginAt: z.string().nullable(),
 });
 export type ClienteDetail = z.infer<typeof clienteDetailSchema>;
 
@@ -71,6 +85,9 @@ export const createClienteRequestSchema = z.object({
   rutaId: z.string().nullable().optional(),
   fotoDocumentoFrenteUrl: z.string().url().nullable().optional(),
   fotoDocumentoReversoUrl: z.string().url().nullable().optional(),
+  // Contacto de referencia: ambos opcionales e independientes entre sí.
+  contactoNombre: z.string().nullable().optional(),
+  contactoTelefono: z.string().nullable().optional(),
 });
 export type CreateClienteRequest = z.infer<typeof createClienteRequestSchema>;
 
@@ -104,3 +121,13 @@ export const uploadFotoDocumentoResponseSchema = z.object({
   fotoDocumentoUrl: z.string().url(),
 });
 export type UploadFotoDocumentoResponse = z.infer<typeof uploadFotoDocumentoResponseSchema>;
+
+// Fase 4.13 — respuesta de `POST /clients/:id/access` (genera/resetea la
+// contraseña temporal del portal). `temporaryPassword` se muestra UNA vez al
+// staff (no se persiste en claro, solo el hash) — el dialog del front debe
+// copiarla antes de cerrar.
+export const generateAccessResponseSchema = z.object({
+  temporaryPassword: z.string(),
+  expiresAt: z.string(),
+});
+export type GenerateAccessResponse = z.infer<typeof generateAccessResponseSchema>;

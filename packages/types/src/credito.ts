@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-import { pagoSchema } from "./cobro";
+import { pagoSchema } from "./payment";
 
 export const estadoCreditoSchema = z.enum(["ACTIVO", "PAGADO", "MORA", "ANULADO"]);
 export type EstadoCredito = z.infer<typeof estadoCreditoSchema>;
@@ -75,7 +75,5 @@ export const creditosQuerySchema = z.object({
 export type CreditosQuery = z.infer<typeof creditosQuerySchema>;
 
 // NOTA: `cobroResponseSchema` y `CobroResponse` viven en `./cobro` desde
-// Fase 4.8 (incluyen `recibo: ReciboInfo`). El original aquí quedó obsoleto
-// al extender la respuesta con el recibo; la app/web sigue importando
-// `cobroResponseSchema` desde el barrel `index.ts` que reexporta `./cobro`.
-void pagoSchema;
+// Fase 4.8 (incluyen `recibo: ReciboInfo`). La app/web los importa desde el
+// barrel `index.ts`, que reexporta `./cobro`.

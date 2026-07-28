@@ -1,10 +1,13 @@
 import {
+  BadRequestException,
   ConflictException,
   ForbiddenException,
   Injectable,
   NotFoundException,
 } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
+import * as bcrypt from "bcrypt";
+import * as crypto from "crypto";
 import type {
   ClienteDetail,
   ClienteListItem,
@@ -13,15 +16,19 @@ import type {
   CreditoListItem,
   CreateClienteRequest,
   EstadoCliente,
+  GenerateAccessResponse,
   UpdateClienteRequest,
 } from "@repo/types";
 
 import type { AuthenticatedUser } from "../../core/auth/auth-request";
+import { TEMPORARY_PASSWORD_EXPIRY_HOURS } from "../../core/security/lockout-policy";
 import {
   mapCreditoListItem,
   rollupEstadoCliente,
   type CreditoRowForMapping,
 } from "../../core/domain/credito-cliente.util";
+import { buildPaymentHistory } from "../../core/domain/payment-schedule.util";
+import { ReceiptTokenService } from "../../core/receipts/receipt-token.service";
 import {
   ClientsRepository,
   type ClientWithDetail,
@@ -30,7 +37,10 @@ import {
 
 @Injectable()
 export class ClientsService {
-  constructor(private readonly clientsRepository: ClientsRepository) {}
+  constructor(
+    private readonly clientsRepository: ClientsRepository,
+    private readonly receiptToken: ReceiptTokenService,
+  ) {}
 
   async findAll(user: AuthenticatedUser, query: ClientesQuery): Promise<ClienteListItem[]> {
     const clients = await this.clientsRepository.findMany(this.scopedWhere(user, query));
@@ -57,6 +67,8 @@ export class ClientsService {
         ruta: body.rutaId ? { connect: { id: body.rutaId } } : undefined,
         fotoDocumentoFrenteUrl: body.fotoDocumentoFrenteUrl,
         fotoDocumentoReversoUrl: body.fotoDocumentoReversoUrl,
+        contactoNombre: body.contactoNombre,
+        contactoTelefono: body.contactoTelefono,
       });
       return this.toDetail(client);
     } catch (error) {
@@ -92,6 +104,8 @@ export class ClientsService {
               : { connect: { id: body.rutaId } },
         fotoDocumentoFrenteUrl: body.fotoDocumentoFrenteUrl,
         fotoDocumentoReversoUrl: body.fotoDocumentoReversoUrl,
+        contactoNombre: body.contactoNombre,
+        contactoTelefono: body.contactoTelefono,
       });
       return this.toDetail(client);
     } catch (error) {
@@ -103,6 +117,66 @@ export class ClientsService {
     const client = await this.clientsRepository.findById(id);
     if (!client) throw new NotFoundException("Cliente no encontrado.");
     await this.clientsRepository.update(id, { activo: false });
+  }
+
+  // Fase 4.13 — genera (o resetea) el acceso del cliente al portal: password
+  // temporal + `mustChangePassword=true` + expiración de 24h. El staff ve
+  // `temporaryPassword` UNA sola vez (no se persiste en claro).
+  async generateAccess(id: string, user: AuthenticatedUser): Promise<GenerateAccessResponse> {
+    const client = await this.clientsRepository.findById(id);
+    if (!client) throw new NotFoundException("Cliente no encontrado.");
+    await this.assertClientRouteAccess(client.rutaId, user);
+
+    if (!client.activo) {
+      throw new BadRequestException("No puedes generar acceso a un cliente inactivo.");
+    }
+
+    const temporaryPassword = generateTemporaryPassword();
+    const passwordHash = await bcrypt.hash(temporaryPassword, 10);
+    const expiresAt = new Date(Date.now() + TEMPORARY_PASSWORD_EXPIRY_HOURS * 60 * 60 * 1000);
+
+    await this.clientsRepository.update(id, {
+      passwordHash,
+      mustChangePassword: true,
+      passwordExpiresAt: expiresAt,
+      failedLoginAttempts: 0,
+      lockedUntil: null,
+      lastLoginAt: null,
+    });
+
+    return { temporaryPassword, expiresAt: expiresAt.toISOString() };
+  }
+
+  // Revoca el acceso: el cliente ya no puede loguearse (passwordHash null es
+  // el mismo criterio que "sin acceso" en `auth-cliente.service.ts:login`).
+  async deleteAccess(id: string, user: AuthenticatedUser): Promise<void> {
+    const client = await this.clientsRepository.findById(id);
+    if (!client) throw new NotFoundException("Cliente no encontrado.");
+    await this.assertClientRouteAccess(client.rutaId, user);
+
+    await this.clientsRepository.update(id, {
+      passwordHash: null,
+      mustChangePassword: false,
+      passwordExpiresAt: null,
+      failedLoginAttempts: 0,
+      lockedUntil: null,
+    });
+  }
+
+  // Mismo criterio que `assertRouteAccess` pero partiendo de un `rutaId`
+  // nullable: un cliente "sin ruta" (§3 — cierre de Fase 3) no tiene cobrador
+  // asignado, así que ningún COBRADOR puede gestionar su acceso (solo ADMIN).
+  private async assertClientRouteAccess(
+    rutaId: string | null,
+    user: AuthenticatedUser,
+  ): Promise<void> {
+    if (user.rol === "ADMIN") return;
+    if (!rutaId) {
+      throw new ForbiddenException(
+        "No puedes gestionar el acceso de un cliente sin ruta asignada.",
+      );
+    }
+    await this.assertRouteAccess(rutaId, user);
   }
 
   // Métricas de la vista "Clientes" del Cobrador (clientes / cartera /
@@ -232,6 +306,8 @@ export class ClientsService {
       fotoDocumentoFrenteUrl: client.fotoDocumentoFrenteUrl,
       fotoDocumentoReversoUrl: client.fotoDocumentoReversoUrl,
       rutaId: client.rutaId,
+      contactoNombre: client.contactoNombre,
+      contactoTelefono: client.contactoTelefono,
       ruta: client.ruta ? { id: client.ruta.id, nombre: client.ruta.nombre } : null,
       saldoPendiente: agregados.saldoPendiente,
       porcentajePagado: agregados.porcentajePagado,
@@ -241,6 +317,10 @@ export class ClientsService {
 
   private toDetail(client: ClientWithDetail): ClienteDetail {
     const agregados = this.computeAgregados(client.creditos);
+    // Una sola referencia de "hoy" para todos los créditos: si se tomara dentro
+    // del flatMap, dos créditos podrían caer en días distintos al cruzar la
+    // medianoche a mitad del cálculo.
+    const hoy = new Date();
 
     return {
       id: client.id,
@@ -248,6 +328,8 @@ export class ClientsService {
       telefono: client.telefono,
       documento: client.documento,
       direccion: client.direccion,
+      contactoNombre: client.contactoNombre,
+      contactoTelefono: client.contactoTelefono,
       fotoDocumentoFrenteUrl: client.fotoDocumentoFrenteUrl,
       fotoDocumentoReversoUrl: client.fotoDocumentoReversoUrl,
       rutaId: client.rutaId,
@@ -258,16 +340,39 @@ export class ClientsService {
       cobradorNombre: client.ruta?.cobrador?.nombre ?? null,
       creditosActivos: agregados.creditosActivos,
       creditosHistorial: agregados.creditosHistorial,
+      tieneAccesoPortal: client.passwordHash !== null,
+      mustChangePassword: client.mustChangePassword,
+      lastLoginAt: client.lastLoginAt ? client.lastLoginAt.toISOString() : null,
+      // Historial REAL y enriquecido. Antes se fabricaba acá un `id` sintético
+      // con `reciboUrl: null` fijo, lo que hacía imposible abrir o compartir el
+      // recibo desde el historial del Cobrador. Ahora reusa
+      // `buildPaymentHistory` (`core/domain`, con unit tests) — el MISMO
+      // cálculo de `numeroCuota`/`estado` que ya usaba el portal del cliente,
+      // así ambas superficies comparten componentes de historial.
       historialPagos: client.creditos.flatMap((credito) =>
-        credito.pagos.map((pago) => ({
-          id: `client-${credito.id}-${pago.fecha.getTime()}-${pago.monto.toString()}`,
-          creditoId: credito.id,
-          monto: Number(pago.monto.toString()),
-          fecha: pago.fecha.toISOString(),
-          cobradorId: "(cobrador)",
-          reciboUrl: null,
-        })),
+        buildPaymentHistory(
+          { id: credito.id, fechaInicio: credito.fechaInicio, dias: credito.dias },
+          credito.pagos.map((pago) => ({
+            id: pago.id,
+            creditoId: credito.id,
+            monto: Number(pago.monto.toString()),
+            fecha: pago.fecha,
+            cobradorId: pago.cobradorId,
+            cobradorNombre: pago.cobrador?.nombre ?? null,
+            reciboUrl: pago.reciboUrl,
+          })),
+          hoy,
+          (pagoId) => this.receiptToken.buildPublicUrl(pagoId),
+        ),
       ),
     };
   }
+}
+
+// Password temporal legible: 8 bytes → base64url (~11 chars), reemplazando
+// caracteres ambiguos al dictarla por teléfono o leerla en un papel
+// (0/O → 2, 1/l/I → 3). No es para memorizar — el cliente la cambia en el
+// primer ingreso (`mustChangePassword=true`).
+function generateTemporaryPassword(): string {
+  return crypto.randomBytes(8).toString("base64url").replace(/[0O]/g, "2").replace(/[1lI]/g, "3");
 }

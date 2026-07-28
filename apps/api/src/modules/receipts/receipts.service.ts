@@ -1,25 +1,52 @@
-import { Injectable, NotFoundException } from "@nestjs/common";
+import { ForbiddenException, Injectable, NotFoundException } from "@nestjs/common";
 import type { Receipt } from "@repo/types";
 
+import type { AuthenticatedUser } from "../../core/auth/auth-request";
+import { buildReciboCodigo } from "../../core/domain/receipt-code.util";
 import { PrismaService } from "../../core/prisma/prisma.service";
+
+type PagoAccessRow = {
+  credito: {
+    clienteId: string;
+    cliente: { ruta: { cobradorId: string | null } | null };
+  };
+};
 
 // Servicio del módulo `receipts` (Fase 4). No tiene repository propio —
 // `Receipt` es un view-model agregado sobre `Pago` + `Credito` + `Cliente`
 // + `Producto` + `Usuario`. La capa de datos la maneja Prisma directo
 // porque el feature es de solo lectura y no comparte modelo con otros.
+//
+// Sirve a DOS consumidores con scoping distinto: el staff vía
+// `GET /payments/:pagoId/receipt` (`ReceiptsController`) y el cliente vía
+// `GET /client-portal/payments/:pagoId/receipt` (`ClientPortalController`,
+// que inyecta este mismo service — no duplica la plantilla HTML).
 @Injectable()
 export class ReceiptsService {
   constructor(private readonly prisma: PrismaService) {}
 
   // Construye el shape `Receipt` para un pago existente. Lanza 404 si el
-  // pago no existe.
-  async getReceipt(pagoId: string): Promise<Receipt> {
+  // pago no existe (o si es de otro cliente — ver `assertAccess`) y 403 si
+  // es un COBRADOR pidiendo un pago de una ruta ajena.
+  async getReceipt(pagoId: string, user: AuthenticatedUser): Promise<Receipt> {
+    return this.loadReceipt(pagoId, user);
+  }
+
+  // Variante SIN chequeo de rol, para el enlace público firmado (`GET /r/:token`).
+  // La autorización ya la hizo `ReceiptTokenService.verify`: el token es la
+  // capability. No exponer este método a ningún controller autenticado.
+  async getPublicReceiptHtml(pagoId: string): Promise<string> {
+    return buildReceiptHtml(await this.loadReceipt(pagoId, null));
+  }
+
+  // `user === null` ⇒ acceso ya autorizado por token firmado.
+  private async loadReceipt(pagoId: string, user: AuthenticatedUser | null): Promise<Receipt> {
     const pago = await this.prisma.pago.findUnique({
       where: { id: pagoId },
       include: {
         credito: {
           include: {
-            cliente: { select: { nombre: true } },
+            cliente: { select: { nombre: true, ruta: { select: { cobradorId: true } } } },
             producto: { select: { nombre: true } },
           },
         },
@@ -28,6 +55,10 @@ export class ReceiptsService {
     });
     if (!pago) {
       throw new NotFoundException("Pago no encontrado.");
+    }
+
+    if (user) {
+      this.assertAccess(pago, user);
     }
 
     // El saldo restante al momento del pago no se persiste — se deriva del
@@ -48,7 +79,7 @@ export class ReceiptsService {
     return {
       id: pago.id,
       pagoId: pago.id,
-      codigo: `R-${pago.id.slice(0, 8).toUpperCase()}`,
+      codigo: buildReciboCodigo(pago.id),
       createdAt: pago.createdAt.toISOString(),
       credito: {
         codigo: pago.credito.codigo,
@@ -64,14 +95,33 @@ export class ReceiptsService {
 
   // Construye el HTML server-rendered del recibo. Es un documento STANDALONE:
   // CSS inline, sin Tailwind, sin necesidad del SPA. Diseñado para abrirse
-  // directamente desde WhatsApp sin autenticación (futuro público).
-  //
-  // Por ahora el endpoint está protegido por JWT (staff). En Fase 4.11 se
-  // agregará un endpoint público con token (cuando se reactive la variante
-  // por token — hoy no es necesaria porque el cliente entra por credenciales).
-  async getReceiptHtml(pagoId: string): Promise<string> {
-    const receipt = await this.getReceipt(pagoId);
+  // directamente desde WhatsApp sin autenticación (futuro público) — hoy
+  // protegido por JWT (staff o cliente, según el controller que lo invoque).
+  async getReceiptHtml(pagoId: string, user: AuthenticatedUser): Promise<string> {
+    const receipt = await this.getReceipt(pagoId, user);
     return buildReceiptHtml(receipt);
+  }
+
+  // Scoping por rol (hallazgo de revisión de Fase 4.0-4.10: antes no existía
+  // ningún chequeo, cualquier autenticado veía cualquier recibo):
+  // - ADMIN: sin restricción.
+  // - COBRADOR: solo recibos de clientes de SU ruta (mismo criterio que
+  //   `cobros.service.ts:43` / `creditos.service.ts:61`).
+  // - CLIENTE: solo recibos de SUS PROPIOS pagos — 404 genérico (no 403) para
+  //   no revelar que el pago existe si es de otro cliente.
+  private assertAccess(pago: PagoAccessRow, user: AuthenticatedUser): void {
+    if (user.rol === "ADMIN") return;
+
+    if (user.rol === "COBRADOR") {
+      if (pago.credito.cliente.ruta?.cobradorId !== user.sub) {
+        throw new ForbiddenException("Solo puedes ver recibos de clientes de tus rutas.");
+      }
+      return;
+    }
+
+    if (pago.credito.clienteId !== user.sub) {
+      throw new NotFoundException("Pago no encontrado.");
+    }
   }
 }
 
@@ -87,11 +137,18 @@ function formatCop(n: number): string {
   }).format(n);
 }
 
+// Fecha CON hora: un cobrador puede registrar varios pagos del mismo cliente
+// el mismo día, y sin la hora los recibos son indistinguibles entre sí.
+// `timeZone` fijo: el server corre en UTC y sin esto el recibo mostraría una
+// hora distinta a la que ve el cobrador en pantalla.
 function formatDate(iso: string): string {
-  return new Date(iso).toLocaleDateString("es-CO", {
+  return new Date(iso).toLocaleString("es-CO", {
     day: "2-digit",
     month: "2-digit",
     year: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+    timeZone: "America/Bogota",
   });
 }
 

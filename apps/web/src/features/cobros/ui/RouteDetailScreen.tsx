@@ -1,18 +1,17 @@
 "use client";
 
-import Link from "next/link";
 import { useParams } from "next/navigation";
 import { CheckIcon } from "lucide-react";
 import { toast } from "sonner";
 import type { RutaDetail } from "@repo/types";
 
-import { ESTADO_CLIENTE_LABEL } from "@/entities/client";
+import { ClientCard, ESTADO_CLIENTE_LABEL } from "@/entities/client";
 import { useRuta } from "@/features/routes-collectors/api/use-rutas";
-import { getInitials } from "@/shared/lib/initials";
 import { formatCurrency } from "@/shared/lib/format-currency";
+import { formatDateShort } from "@/shared/lib/format-date";
 import { cn } from "@/shared/lib/utils";
 import { Badge } from "@/shared/ui/badge";
-import { ProgressRing } from "@/shared/ui/progress-ring";
+import { MetricTile, MetricTileGroup } from "@/shared/ui/metric-tile";
 import { Skeleton } from "@/shared/ui/skeleton";
 import { CollectorHero } from "@/widgets/collector-shell/CollectorHero";
 
@@ -50,7 +49,7 @@ export function RouteDetailScreen() {
     <div className="flex flex-col pb-6">
       <CollectorHero
         title={ruta.nombre}
-        subtitle={`${ruta.cobrador?.nombre ?? "Sin cobrador"} · hoy, ${fechaHoyCorta()}`}
+        subtitle={`${ruta.cobrador?.nombre ?? "Sin cobrador"} · hoy, ${formatDateShort(new Date())}`}
         backHref="/collector"
         actions={
           <button
@@ -69,12 +68,12 @@ export function RouteDetailScreen() {
       />
 
       {/* Tarjeta de resumen superpuesta al hero (screenshot 15c). */}
-      <div className="relative -mt-9 px-4">
-        <div className="grid grid-cols-3 divide-x divide-border rounded-xl border border-border bg-card shadow-md">
-          <SummaryStat value={String(pendientes.length)} label="Pendientes" />
-          <SummaryStat value={String(cobrados.length)} label="Cobrados" />
-          <SummaryStat value={formatCurrency(ruta.cobradoHoy)} label="Hoy" />
-        </div>
+      <div className="px-4">
+        <MetricTileGroup columns={3} divided overlap>
+          <MetricTile value={String(pendientes.length)} label="Pendientes" />
+          <MetricTile value={String(cobrados.length)} label="Cobrados" tone="success" />
+          <MetricTile value={formatCurrency(ruta.cobradoHoy)} label="Cobrado hoy" />
+        </MetricTileGroup>
       </div>
 
       <div className="flex flex-col gap-3 px-4 pt-4">
@@ -106,15 +105,6 @@ export function RouteDetailScreen() {
   );
 }
 
-function SummaryStat({ value, label }: { value: string; label: string }) {
-  return (
-    <div className="flex flex-col items-center justify-center gap-0.5 px-2 py-3.5">
-      <span className="text-lg font-bold tabular-nums">{value}</span>
-      <span className="text-caption text-muted-foreground">{label}</span>
-    </div>
-  );
-}
-
 function ClienteCard({
   cliente,
   cobrado,
@@ -123,45 +113,31 @@ function ClienteCard({
   cobrado?: boolean;
 }) {
   return (
-    <Link
+    <ClientCard
+      cliente={cliente}
       href={`/collector/routes/payments/${cliente.id}`}
-      aria-label={`Abrir cliente ${cliente.nombre}`}
-      className={cn(
-        "flex items-center gap-3 rounded-xl border border-border bg-card p-3.5 shadow-sm transition-colors",
-        "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-        cobrado && "opacity-60",
-      )}
-    >
-      <span className="flex size-10 shrink-0 items-center justify-center rounded-full bg-primary/10 text-sm font-semibold text-primary">
-        {getInitials(cliente.nombre)}
-      </span>
-
-      <div className="flex min-w-0 flex-1 flex-col">
-        <span className="truncate text-sm font-semibold">{cliente.nombre}</span>
-        <span className="truncate text-caption text-muted-foreground">
-          {cliente.ruta?.nombre ?? "Sin ruta"}
-        </span>
-      </div>
-
-      <div className="flex shrink-0 flex-col items-end gap-1">
-        <span className="text-sm font-bold tabular-nums">
-          {formatCurrency(cliente.saldoPendiente ?? 0)}
-        </span>
-        {cobrado ? (
+      // Dentro del detalle de UNA ruta el nombre de esa ruta es redundante; lo
+      // útil parado en la puerta es el documento y el teléfono, copiables.
+      contacto={{ documento: cliente.documento, telefono: cliente.telefono }}
+      // Ya cobrado ⇒ interesa CUÁNTO se cobró hoy (suma de todos sus abonos del
+      // día). Pendiente ⇒ interesa cuánto falta. Antes ambos casos mostraban el
+      // saldo pendiente, así que la tarjeta "Cobrado" repetía el mismo número
+      // que el hero y no decía nada de la cobranza del día.
+      amount={cobrado ? (cliente.totalCobradoHoy ?? cliente.cobroHoy?.monto ?? 0) : (cliente.saldoPendiente ?? 0)}
+      amountLabel={cobrado ? "cobrado hoy" : "saldo"}
+      badge={
+        cobrado ? (
           <Badge status="pagado">
             <CheckIcon />
             Cobrado
           </Badge>
         ) : cliente.estado ? (
           <Badge status={cliente.estado}>{ESTADO_CLIENTE_LABEL[cliente.estado]}</Badge>
-        ) : null}
-      </div>
-
-      <ProgressRing value={cliente.porcentajePagado ?? 0} size="mini" />
-    </Link>
+        ) : null
+      }
+      porcentajePagado={cliente.porcentajePagado ?? 0}
+      muted={cobrado}
+      className="shadow-sm"
+    />
   );
-}
-
-function fechaHoyCorta(): string {
-  return new Date().toLocaleDateString("es-CO", { day: "numeric", month: "short" });
 }

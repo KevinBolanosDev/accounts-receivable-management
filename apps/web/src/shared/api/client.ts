@@ -15,6 +15,10 @@ export class ApiError extends Error {
   constructor(
     public readonly status: number,
     message: string,
+    // Fase 4 — algunos errores de Nest traen un `code` machine-readable
+    // además del `message` (ej. `MUST_CHANGE_PASSWORD`, `ACCOUNT_LOCKED`).
+    // Opcional: la mayoría de errores no lo traen.
+    public readonly code?: string,
   ) {
     super(message);
     this.name = "ApiError";
@@ -32,14 +36,14 @@ interface ApiFetchOptions extends Omit<RequestInit, "body"> {
   body?: unknown;
 }
 
-// Traduce una respuesta no-2xx a ApiError, intentando leer el `message` del
-// cuerpo (los errores de Nest lo traen). Compartido por apiFetch y uploadFile.
+// Traduce una respuesta no-2xx a ApiError, intentando leer `message`/`code`
+// del cuerpo (los errores de Nest lo traen). Compartido por apiFetch y uploadFile.
 async function toApiError(res: Response, path: string): Promise<ApiError> {
-  const message = await res
+  const body = await res
     .json()
-    .then((json: { message?: string }) => json.message)
+    .then((json: { message?: string; code?: string }) => json)
     .catch(() => undefined);
-  return new ApiError(res.status, message ?? `Error ${res.status} al llamar ${path}`);
+  return new ApiError(res.status, body?.message ?? `Error ${res.status} al llamar ${path}`, body?.code);
 }
 
 // Fetch tipado: arma la URL, adjunta el Bearer si hay token, serializa el

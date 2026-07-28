@@ -1,5 +1,5 @@
+import { fetchReceiptHtml } from "@/entities/receipt";
 import { useSessionStore } from "@/entities/session";
-import { apiUrl, authHeaders } from "@/shared/api/client";
 
 export interface ReceiptsService {
   // Devuelve el HTML server-rendered del recibo (no JSON). El front lo monta
@@ -32,25 +32,14 @@ export const mockReceiptsService: ReceiptsService = {
   },
 };
 
-// Variante real: hace fetch al endpoint protegido del back (4.8). El token
-// del staff viaja en el header para que el `JwtAuthGuard` global lo acepte.
-// Como `shared` no puede importar el store (regla FSD), lo recibe como
-// parámetro desde el caller — mismo patrón que `useSessionStore.getState()`.
+// Variante real: delega en `entities/receipt`, donde vive el transporte desde
+// que aparecieron tres consumidores (staff, portal del cliente y el detalle de
+// crédito del Cobrador). Acá solo queda resolver el token del staff — el
+// `scope: "staff"` es lo que elige el endpoint protegido por rol.
 export const httpReceiptsService: ReceiptsService = {
-  async getByPagoId(pagoId: string): Promise<string> {
+  getByPagoId(pagoId: string): Promise<string> {
     const token = useSessionStore.getState().token;
-    const res = await fetch(apiUrl(`/payments/${pagoId}/receipt`), {
-      headers: { ...authHeaders(token) },
-    });
-    if (!res.ok) {
-      // Mismo manejo de errores que `apiFetch` pero devolviendo string (HTML).
-      const message = await res
-        .json()
-        .then((j: { message?: string }) => j.message)
-        .catch(() => undefined);
-      throw new Error(message ?? `Error ${res.status} al obtener el recibo`);
-    }
-    return res.text();
+    return fetchReceiptHtml({ pagoId, scope: "staff", token });
   },
 };
 

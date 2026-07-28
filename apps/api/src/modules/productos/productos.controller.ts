@@ -14,7 +14,12 @@ import { ZodValidationPipe } from "../../core/pipes/zod-validation.pipe";
 
 import { ProductosService } from "./productos.service";
 
+// `GET /products` no tenía `@Roles` propio — un CLIENTE autenticado podía
+// leer el catálogo (hallazgo de auditoría, ver PLAN_DESARROLLO §1.1). Sin
+// uso legítimo para el portal del cliente; `create`/`update` mantienen su
+// propio `@Roles("ADMIN")`.
 @Controller("products")
+@Roles("ADMIN", "COBRADOR")
 export class ProductosController {
   constructor(private readonly productosService: ProductosService) {}
 

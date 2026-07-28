@@ -11,6 +11,8 @@ import type { CobroResponse, CreateCobroRequest, CreditoListItem, Pago } from "@
 
 import { PrismaService } from "../../core/prisma/prisma.service";
 import type { AuthenticatedUser } from "../../core/auth/auth-request";
+import { buildReciboCodigo } from "../../core/domain/receipt-code.util";
+import { ReceiptTokenService } from "../../core/receipts/receipt-token.service";
 
 import { CobrosRepository } from "./cobros.repository";
 
@@ -23,6 +25,7 @@ export class CobrosService {
     private readonly cobrosRepository: CobrosRepository,
     private readonly prisma: PrismaService,
     private readonly config: ConfigService,
+    private readonly receiptToken: ReceiptTokenService,
   ) {}
 
   async registrar(body: CreateCobroRequest, user: AuthenticatedUser): Promise<CobroResponse> {
@@ -107,7 +110,11 @@ export class CobrosService {
           // Fase 4 — el recibo HTML lo sirve `GET /payments/:pagoId/receipt`
           // (módulo `receipts`). Construimos la URL absoluta con
           // `PUBLIC_APP_URL` para que el front pueda compartir por WhatsApp.
-          recibo: buildReciboInfo(this.config.getOrThrow<string>("PUBLIC_APP_URL"), pago.id),
+          recibo: buildReciboInfo(
+            this.config.getOrThrow<string>("PUBLIC_APP_URL"),
+            pago.id,
+            this.receiptToken.buildPublicUrl(pago.id),
+          ),
         };
       });
     } catch (error) {
@@ -134,10 +141,14 @@ export class CobrosService {
 // separada — la URL es determinística y el back sirve el HTML on-demand en
 // `GET /payments/:pagoId/receipt`. Es la URL del BACK (no del front) porque
 // el back sirve HTML standalone que el cliente abre desde WhatsApp sin auth.
-function buildReciboInfo(publicAppUrl: string, pagoId: string) {
+function buildReciboInfo(publicAppUrl: string, pagoId: string, publicUrl: string) {
   return {
+    // `url` exige JWT de staff — es la que abre el propio cobrador en la app.
     url: `${publicAppUrl.replace(/\/$/, "")}/payments/${pagoId}/receipt`,
-    codigo: `R-${pagoId.slice(0, 8).toUpperCase()}`,
+    codigo: buildReciboCodigo(pagoId),
+    // `publicUrl` va firmada (`/r/:token`) y es la que se manda por WhatsApp:
+    // el cliente no tiene JWT de staff y con `url` recibiría un 401.
+    publicUrl,
   };
 }
 

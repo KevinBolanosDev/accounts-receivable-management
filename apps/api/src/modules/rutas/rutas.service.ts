@@ -246,6 +246,7 @@ function summarizeRuta(ruta: RutaWithClientesHoy): {
     const creditosActivos: CreditoListItem[] = [];
     const creditosHistorial: CreditoListItem[] = [];
     let cobroHoy: RutaCliente["cobroHoy"] = null;
+    let totalCobradoHoyCliente = 0;
 
     for (const c of cliente.creditos) {
       const item = mapCreditoListItem(c);
@@ -255,13 +256,22 @@ function summarizeRuta(ruta: RutaWithClientesHoy): {
         creditosHistorial.push(item);
       }
       // `c.pagos` ya viene filtrado al rango de HOY desde el repository.
-      const pagoHoy = c.pagos[0];
-      if (pagoHoy && (!cobroHoy || pagoHoy.fecha > new Date(cobroHoy.fecha))) {
-        cobroHoy = {
-          creditoId: c.id,
-          monto: Number(pagoHoy.monto.toString()),
-          fecha: pagoHoy.fecha.toISOString(),
-        };
+      //
+      // Se recorren TODOS, no solo `c.pagos[0]`: un cliente puede abonar varias
+      // veces en el día (o cancelar el crédito completo en un segundo pago), y
+      // puede tener pagos en más de un crédito. Antes se sumaba únicamente el
+      // pago más reciente y el resto desaparecía del "Cobrado hoy".
+      for (const pagoHoy of c.pagos) {
+        totalCobradoHoyCliente += Number(pagoHoy.monto.toString());
+        // `cobroHoy` sigue siendo el ÚLTIMO pago: solo alimenta el split
+        // Pendientes/Cobrados, no el total.
+        if (!cobroHoy || pagoHoy.fecha > new Date(cobroHoy.fecha)) {
+          cobroHoy = {
+            creditoId: c.id,
+            monto: Number(pagoHoy.monto.toString()),
+            fecha: pagoHoy.fecha.toISOString(),
+          };
+        }
       }
     }
 
@@ -286,7 +296,7 @@ function summarizeRuta(ruta: RutaWithClientesHoy): {
       elegibles += 1;
       if (cobroHoy) cobrados += 1;
     }
-    if (cobroHoy) totalCobradoHoy += cobroHoy.monto;
+    totalCobradoHoy += totalCobradoHoyCliente;
 
     return {
       id: cliente.id,
@@ -302,6 +312,7 @@ function summarizeRuta(ruta: RutaWithClientesHoy): {
       porcentajePagado,
       estado,
       cobroHoy,
+      totalCobradoHoy: Number(totalCobradoHoyCliente.toFixed(2)),
     };
   });
 

@@ -3,19 +3,21 @@ import {
   clienteListItemSchema,
   clienteSchema,
   clientesSummarySchema,
+  generateAccessResponseSchema,
   type Cliente,
   type ClienteDetail,
   type ClienteListItem,
   type ClientesQuery,
   type ClientesSummary,
   type CreateClienteRequest,
+  type GenerateAccessResponse,
   type UpdateClienteRequest,
   type UploadFotoDocumentoResponse,
   uploadFotoDocumentoResponseSchema,
 } from "@repo/types";
 
 import { useSessionStore } from "@/entities/session";
-import { apiFetch, uploadFile } from "@/shared/api/client";
+import { apiFetch, apiUrl, authHeaders, uploadFile } from "@/shared/api/client";
 
 export interface ClientesService {
   listClientes(query?: ClientesQuery): Promise<ClienteListItem[]>;
@@ -25,6 +27,8 @@ export interface ClientesService {
   updateCliente(id: string, body: UpdateClienteRequest): Promise<Cliente>;
   deleteCliente(id: string): Promise<void>;
   uploadFotoDocumento(file: File): Promise<UploadFotoDocumentoResponse>;
+  generateAccess(id: string): Promise<GenerateAccessResponse>;
+  deleteAccess(id: string): Promise<void>;
 }
 
 const delay = (ms = 280) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -83,15 +87,18 @@ function toListItem(c: MockCliente): ClienteListItem {
   };
 }
 
-// Historial de pagos reciente (mock, pantalla 5c). Datos de Crédito → Fase 3.
+// Historial de pagos reciente (mock, pantalla 5c). Enriquecido con
+// `numeroCuota`/`estado`/`reciboCodigo` desde que `historialPagos` pasó a ser
+// `PaymentHistoryItem[]` — el mismo shape que consume el Portal del Cliente.
+// Se dejan horas distintas a propósito: el historial ahora muestra la hora.
 const HISTORIAL_PAGOS: NonNullable<ClienteDetail["historialPagos"]> = [
-  { id: "pg-h-1", creditoId: "cr-2041", cobradorId: "u-1000000002", reciboUrl: null, monto: 20000, fecha: "2026-07-21T08:00:00.000Z" },
-  { id: "pg-h-2", creditoId: "cr-2041", cobradorId: "u-1000000002", reciboUrl: null, monto: 20000, fecha: "2026-07-20T08:00:00.000Z" },
-  { id: "pg-h-3", creditoId: "cr-2041", cobradorId: "u-1000000002", reciboUrl: null, monto: 20000, fecha: "2026-07-19T08:00:00.000Z" },
-  { id: "pg-h-4", creditoId: "cr-2041", cobradorId: "u-1000000002", reciboUrl: null, monto: 20000, fecha: "2026-07-18T08:00:00.000Z" },
-  { id: "pg-h-5", creditoId: "cr-2041", cobradorId: "u-1000000002", reciboUrl: null, monto: 20000, fecha: "2026-07-17T08:00:00.000Z" },
-  { id: "pg-h-6", creditoId: "cr-2041", cobradorId: "u-1000000002", reciboUrl: null, monto: 20000, fecha: "2026-07-16T08:00:00.000Z" },
-  { id: "pg-h-7", creditoId: "cr-2041", cobradorId: "u-1000000002", reciboUrl: null, monto: 20000, fecha: "2026-07-15T08:00:00.000Z" },
+  { id: "pg-h-7", creditoId: "cr-2041", cobradorId: "u-1000000002", cobradorNombre: "Carlos Ramírez", reciboUrl: null, reciboPublicUrl: null, monto: 20000, fecha: "2026-07-21T13:05:00.000Z", numeroCuota: 7, estado: "ON_TIME", fechaVencimiento: "2026-07-21T13:00:00.000Z", fechaPago: "2026-07-21T13:05:00.000Z", diasAtraso: 0, reciboCodigo: "R-PGH7" },
+  { id: "pg-h-6", creditoId: "cr-2041", cobradorId: "u-1000000002", cobradorNombre: "Carlos Ramírez", reciboUrl: null, reciboPublicUrl: null, monto: 20000, fecha: "2026-07-20T15:40:00.000Z", numeroCuota: 6, estado: "LATE", fechaVencimiento: "2026-07-18T13:00:00.000Z", fechaPago: "2026-07-20T15:40:00.000Z", diasAtraso: 2, reciboCodigo: "R-PGH6" },
+  { id: "pg-h-5", creditoId: "cr-2041", cobradorId: "u-1000000002", cobradorNombre: "Carlos Ramírez", reciboUrl: null, reciboPublicUrl: null, monto: 20000, fecha: "2026-07-19T14:10:00.000Z", numeroCuota: 5, estado: "ON_TIME", fechaVencimiento: "2026-07-19T13:00:00.000Z", fechaPago: "2026-07-19T14:10:00.000Z", diasAtraso: 0, reciboCodigo: "R-PGH5" },
+  { id: "pg-h-4", creditoId: "cr-2041", cobradorId: "u-1000000002", cobradorNombre: "Carlos Ramírez", reciboUrl: null, reciboPublicUrl: null, monto: 20000, fecha: "2026-07-18T13:00:00.000Z", numeroCuota: 4, estado: "ON_TIME", fechaVencimiento: "2026-07-18T13:00:00.000Z", fechaPago: "2026-07-18T13:00:00.000Z", diasAtraso: 0, reciboCodigo: "R-PGH4" },
+  { id: "pg-h-3", creditoId: "cr-2041", cobradorId: "u-1000000002", cobradorNombre: "Carlos Ramírez", reciboUrl: null, reciboPublicUrl: null, monto: 20000, fecha: "2026-07-17T16:25:00.000Z", numeroCuota: 3, estado: "ON_TIME", fechaVencimiento: "2026-07-17T13:00:00.000Z", fechaPago: "2026-07-17T16:25:00.000Z", diasAtraso: 0, reciboCodigo: "R-PGH3" },
+  { id: "pg-h-2", creditoId: "cr-2041", cobradorId: "u-1000000002", cobradorNombre: "Carlos Ramírez", reciboUrl: null, reciboPublicUrl: null, monto: 20000, fecha: "2026-07-16T13:30:00.000Z", numeroCuota: 2, estado: "ON_TIME", fechaVencimiento: "2026-07-16T13:00:00.000Z", fechaPago: "2026-07-16T13:30:00.000Z", diasAtraso: 0, reciboCodigo: "R-PGH2" },
+  { id: "pg-h-1", creditoId: "cr-2041", cobradorId: "u-1000000002", cobradorNombre: "Carlos Ramírez", reciboUrl: null, reciboPublicUrl: null, monto: 20000, fecha: "2026-07-15T13:15:00.000Z", numeroCuota: 1, estado: "ON_TIME", fechaVencimiento: "2026-07-15T13:00:00.000Z", fechaPago: "2026-07-15T13:15:00.000Z", diasAtraso: 0, reciboCodigo: "R-PGH1" },
 ];
 
 function toCreditoListItem(
@@ -135,6 +142,9 @@ function toDetail(c: MockCliente): ClienteDetail {
     rutaId: c.rutaId,
     ruta: { id: c.rutaId, nombre: c.rutaNombre },
     cobradorNombre: RUTA_COBRADOR[c.rutaId] ?? null,
+    tieneAccesoPortal: false,
+    mustChangePassword: false,
+    lastLoginAt: null,
     estado: c.estado,
     creditosActivos,
     creditosHistorial,
@@ -208,6 +218,16 @@ export const mockClientesService: ClientesService = {
       fotoDocumentoUrl: "https://example.com/mock/documento.jpg",
     });
   },
+  async generateAccess() {
+    await delay();
+    return generateAccessResponseSchema.parse({
+      temporaryPassword: "Mock2Pass3word",
+      expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
+    });
+  },
+  async deleteAccess() {
+    await delay();
+  },
 };
 
 // ---- Implementación real (se activa en el cableado, sub-fase 2.14) -----------
@@ -251,6 +271,28 @@ export const httpClientesService: ClientesService = {
       file,
       token: useSessionStore.getState().token,
     });
+  },
+  generateAccess(id) {
+    return apiFetch(`/clients/${id}/access`, generateAccessResponseSchema, {
+      method: "POST",
+      token: useSessionStore.getState().token,
+    });
+  },
+  // 204 sin body — `apiFetch` no sirve aquí (hace `res.json()` incondicional,
+  // ver `getClientReceiptHtml` para el mismo patrón con `fetch` crudo).
+  async deleteAccess(id) {
+    const token = useSessionStore.getState().token;
+    const res = await fetch(apiUrl(`/clients/${id}/access`), {
+      method: "DELETE",
+      headers: { ...authHeaders(token) },
+    });
+    if (!res.ok) {
+      const message = await res
+        .json()
+        .then((j: { message?: string }) => j.message)
+        .catch(() => undefined);
+      throw new Error(message ?? `Error ${res.status} al eliminar el acceso`);
+    }
   },
 };
 

@@ -67,6 +67,11 @@ model Cliente {
   // que todavía tiene clientes asignados.
   rutaId                  String?
   ruta                    Ruta?     @relation(fields: [rutaId], references: [id], onDelete: Restrict)
+  // Contacto de referencia (a quién llamar si no se ubica al cliente). Ambos
+  // nullable e independientes: los clientes dados de alta antes de este campo
+  // no lo tienen, y el alta no lo exige.
+  contactoNombre          String?
+  contactoTelefono        String?
   // Fase 4 — acceso opcional al portal del cliente. `passwordHash` null =
   // el staff aún no le generó credenciales (caso normal al dar de alta).
   // Cuando el staff genera/resetea el acceso, `passwordHash` se llena y

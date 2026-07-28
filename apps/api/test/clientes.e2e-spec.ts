@@ -5,7 +5,13 @@ import request from "supertest";
 import { App } from "supertest/types";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "@prisma/client";
-import { clienteDetailSchema, clienteListItemSchema, loginResponseSchema } from "@repo/types";
+import bcrypt from "bcrypt";
+import {
+  clienteDetailSchema,
+  clienteListItemSchema,
+  clientLoginResponseSchema,
+  loginResponseSchema,
+} from "@repo/types";
 import { AppModule } from "../src/app.module";
 
 const ADMIN = { documento: "1000000001", password: "admin123" };
@@ -147,6 +153,35 @@ describe("ClientsController (e2e)", () => {
       .expect(204);
     const deleted = await prisma.cliente.findUniqueOrThrow({ where: { id: client.id } });
     expect(deleted.activo).toBe(false);
+  });
+
+  it("rejects a CLIENTE (portal) token on the staff clients endpoints", async () => {
+    const password = "clienteE2e123";
+    const cliente = await prisma.cliente.create({
+      data: {
+        nombre: "Client Role E2E",
+        telefono: "3000000000",
+        documento: `client-e2e-role-${Date.now()}`,
+        direccion: "Test",
+        rutaId: routeA.id,
+        passwordHash: await bcrypt.hash(password, 10),
+        mustChangePassword: true,
+        passwordExpiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
+      },
+    });
+    const loginRes = await request(app.getHttpServer())
+      .post("/client-auth/login")
+      .send({ documento: cliente.documento, password })
+      .expect(200);
+    const clientToken = clientLoginResponseSchema.parse(loginRes.body).token;
+
+    // Antes de este fix, `RolesGuard` dejaba pasar cualquier rol autenticado
+    // porque el controller no declaraba `@Roles` — un cliente del portal
+    // podía leer el listado completo de clientes (ver PLAN_DESARROLLO §1.1).
+    await request(app.getHttpServer())
+      .get("/clients")
+      .set("Authorization", `Bearer ${clientToken}`)
+      .expect(403);
   });
 
   it("returns a validated client detail", async () => {

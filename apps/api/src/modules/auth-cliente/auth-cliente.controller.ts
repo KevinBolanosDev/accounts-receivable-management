@@ -1,4 +1,4 @@
-import { Body, Controller, Get, HttpCode, HttpStatus, Post } from "@nestjs/common";
+import { Body, Controller, Get, HttpCode, HttpStatus, Post, UseGuards } from "@nestjs/common";
 import { Throttle } from "@nestjs/throttler";
 import {
   changePasswordRequestSchema,
@@ -14,6 +14,7 @@ import {
 
 import type { AuthenticatedUser } from "../../core/auth/auth-request";
 import { CurrentUser } from "../../core/auth/current-user.decorator";
+import { MustChangePasswordGuard } from "../../core/auth/must-change-password.guard";
 import { Roles } from "../../core/auth/roles.decorator";
 import { Public } from "../../core/auth/public.decorator";
 import { ZodValidationPipe } from "../../core/pipes/zod-validation.pipe";
@@ -44,6 +45,7 @@ export class AuthClienteController {
   }
 
   @Roles("CLIENTE")
+  @UseGuards(MustChangePasswordGuard)
   @Get("me")
   async me(@CurrentUser() user: AuthenticatedUser): Promise<ClientMeResponse> {
     const result = await this.authClienteService.me(user);

@@ -16,6 +16,15 @@ const badgeVariants = cva(
         pagado: "bg-accent/15 text-accent",
         "ruta-abierta": "bg-success/15 text-success",
         "ruta-cerrada": "bg-muted text-muted-foreground",
+        // Fase 4 — puntualidad de cuota en el historial (Portal Cliente #21c y
+        // detalle de crédito del Cobrador). Las cuotas sin pagar escalan con el
+        // tiempo: `missed` (vence hoy, neutro) → `overdue` (ámbar) → `defaulted`
+        // (rojo, a la semana).
+        "on-time": "bg-success/15 text-success",
+        late: "bg-destructive/15 text-destructive",
+        missed: "bg-muted text-muted-foreground",
+        overdue: "bg-warning/15 text-warning",
+        defaulted: "bg-destructive/15 text-destructive",
       },
     },
     defaultVariants: {

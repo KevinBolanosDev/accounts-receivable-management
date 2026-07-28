@@ -59,12 +59,23 @@ export class AuthClienteService {
     const passwordOk = await bcrypt.compare(body.password, cliente.passwordHash);
 
     if (!passwordOk) {
-      const failedAttempts = cliente.failedLoginAttempts + 1;
-      const shouldLock = failedAttempts >= MAX_FAILED_ATTEMPTS;
-      await this.repository.update(cliente.id, {
-        failedLoginAttempts: failedAttempts,
-        lockedUntil: shouldLock ? new Date(Date.now() + LOCKOUT_DURATION_MINUTES * 60_000) : null,
+      // Incremento ATÓMICO (`{ increment: 1 }`, un solo UPDATE en Postgres) —
+      // no un read-modify-write en JS. Dos requests concurrentes con la misma
+      // password mala (Fase 4.17, hallazgo de hardening) antes leían el mismo
+      // `failedLoginAttempts` base y podían "perder" un incremento al
+      // escribir el mismo valor absoluto dos veces; el incremento atómico lo
+      // serializa a nivel de fila en la base y cada request ve el conteo
+      // real post-incremento, así que la decisión de bloquear (`shouldLock`)
+      // nunca queda corta. Probado en `auth-cliente.e2e-spec.ts` con
+      // `Promise.all` de intentos simultáneos.
+      const updated = await this.repository.update(cliente.id, {
+        failedLoginAttempts: { increment: 1 },
       });
+      if (updated.failedLoginAttempts >= MAX_FAILED_ATTEMPTS) {
+        await this.repository.update(cliente.id, {
+          lockedUntil: new Date(Date.now() + LOCKOUT_DURATION_MINUTES * 60_000),
+        });
+      }
       throw new UnauthorizedException("Documento o contraseña incorrectos.");
     }
 

@@ -20,6 +20,7 @@ import {
   clientesSummarySchema,
   createClienteRequestSchema,
   clientesQuerySchema,
+  generateAccessResponseSchema,
   updateClienteRequestSchema,
   uploadFotoDocumentoResponseSchema,
   type ClienteDetail,
@@ -27,6 +28,7 @@ import {
   type ClientesQuery,
   type ClientesSummary,
   type CreateClienteRequest,
+  type GenerateAccessResponse,
   type UpdateClienteRequest,
   type UploadFotoDocumentoResponse,
 } from "@repo/types";
@@ -39,7 +41,14 @@ import { StorageService } from "../../core/storage/storage.service";
 import { ZodValidationPipe } from "../../core/pipes/zod-validation.pipe";
 import { ClientsService } from "./clients.service";
 
+// `CLIENTE` comparte el mismo JwtAuthGuard/RolesGuard global que el staff
+// desde Fase 4 — sin este `@Roles` de clase, cualquier cliente autenticado
+// podía leer/crear/editar clientes ajenos y, más grave, resetear el acceso
+// de OTRO cliente vía `/access` (hallazgo de auditoría, ver PLAN_DESARROLLO
+// §1.1 y ESTADO_ACTUAL §7.2). `remove` mantiene su propio `@Roles("ADMIN")`,
+// que sigue ganando por handler (Reflector.getAllAndOverride).
 @Controller("clients")
+@Roles("ADMIN", "COBRADOR")
 export class ClientesController {
   constructor(
     private readonly clientsService: ClientsService,
@@ -90,6 +99,25 @@ export class ClientesController {
   @Roles("ADMIN")
   async remove(@Param("id") id: string): Promise<void> {
     await this.clientsService.remove(id);
+  }
+
+  // Fase 4.13 — genera/resetea la contraseña temporal del portal del
+  // cliente. ADMIN o COBRADOR de la ruta del cliente (scoping en el service).
+  @Post(":id/access")
+  async generateAccess(
+    @Param("id") id: string,
+    @CurrentUser() user: AuthenticatedUser,
+  ): Promise<GenerateAccessResponse> {
+    return generateAccessResponseSchema.parse(await this.clientsService.generateAccess(id, user));
+  }
+
+  @Delete(":id/access")
+  @HttpCode(HttpStatus.NO_CONTENT)
+  async deleteAccess(
+    @Param("id") id: string,
+    @CurrentUser() user: AuthenticatedUser,
+  ): Promise<void> {
+    await this.clientsService.deleteAccess(id, user);
   }
 
   @Post("id-document-photo")

@@ -9,4 +9,6 @@ export { MyRoutesScreen } from "./ui/MyRoutesScreen";
 export { MyClientsScreen } from "./ui/MyClientsScreen";
 export { RouteDetailScreen } from "./ui/RouteDetailScreen";
 export { ClientPaymentsScreen } from "./ui/ClientPaymentsScreen";
+export type { ClientPaymentsTab } from "./ui/ClientPaymentsScreen";
+export { CollectorCreditDetailScreen } from "./ui/CollectorCreditDetailScreen";
 export { RegistrarCobroSheet } from "./ui/RegistrarCobroSheet";

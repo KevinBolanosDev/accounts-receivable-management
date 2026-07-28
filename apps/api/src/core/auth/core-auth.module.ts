@@ -2,7 +2,9 @@ import { Global, Module } from "@nestjs/common";
 import { ConfigModule, ConfigService } from "@nestjs/config";
 import { JwtModule } from "@nestjs/jwt";
 
+import { ReceiptTokenService } from "../receipts/receipt-token.service";
 import { JwtAuthGuard } from "./jwt-auth.guard";
+import { MustChangePasswordGuard } from "./must-change-password.guard";
 import { RolesGuard } from "./roles.guard";
 
 // Infra transversal de auth (igual que PrismaModule): una sola configuración
@@ -26,7 +28,11 @@ import { RolesGuard } from "./roles.guard";
       }),
     }),
   ],
-  providers: [JwtAuthGuard, RolesGuard],
-  exports: [JwtModule, JwtAuthGuard, RolesGuard],
+  // `ReceiptTokenService` vive acá (y no en `modules/receipts`) porque lo usan
+  // cuatro features distintas para poblar `reciboPublicUrl` — cobros, clientes,
+  // creditos y client-portal. Al ser este módulo @Global, ninguna necesita
+  // importar a otra para conseguirlo.
+  providers: [JwtAuthGuard, RolesGuard, MustChangePasswordGuard, ReceiptTokenService],
+  exports: [JwtModule, JwtAuthGuard, RolesGuard, MustChangePasswordGuard, ReceiptTokenService],
 })
 export class CoreAuthModule {}

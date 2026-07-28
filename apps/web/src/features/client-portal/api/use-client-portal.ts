@@ -1,9 +1,9 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
+import type { ClientCreditDetail, ClientCreditListItem, ClientCreditSummary } from "@repo/types";
 
-import { clientCreditService, type ClientCreditSummary } from "./client-credit-service";
-import type { CreditoListItem, Pago } from "@repo/types";
+import { clientCreditService } from "./client-credit-service";
 
 // Fase 4 — query keys jerárquicas del portal del cliente. El prefijo
 // `client-portal` las aísla de las queries de staff (`creditos`, `clientes`,
@@ -11,22 +11,22 @@ import type { CreditoListItem, Pago } from "@repo/types";
 export const clientPortalKeys = {
   all: ["client-portal"] as const,
   credits: () => [...clientPortalKeys.all, "credits"] as const,
-  payments: (creditoId?: string) =>
-    [...clientPortalKeys.all, "payments", creditoId ?? null] as const,
+  detail: (id: string) => [...clientPortalKeys.all, "credits", id] as const,
   summary: () => [...clientPortalKeys.all, "summary"] as const,
 };
 
 export function useMyCredits() {
-  return useQuery<CreditoListItem[]>({
+  return useQuery<ClientCreditListItem[]>({
     queryKey: clientPortalKeys.credits(),
     queryFn: () => clientCreditService.getMyCredits(),
   });
 }
 
-export function useMyPayments(creditoId?: string) {
-  return useQuery<Pago[]>({
-    queryKey: clientPortalKeys.payments(creditoId),
-    queryFn: () => clientCreditService.getMyPayments(creditoId),
+export function useMyCreditDetail(id: string) {
+  return useQuery<ClientCreditDetail>({
+    queryKey: clientPortalKeys.detail(id),
+    queryFn: () => clientCreditService.getCreditDetail(id),
+    enabled: !!id,
   });
 }
 

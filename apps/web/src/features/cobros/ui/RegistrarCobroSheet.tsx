@@ -13,10 +13,12 @@ import {
 import { toast } from "sonner";
 
 import { formatCurrency } from "@/shared/lib/format-currency";
+import { formatDateTime } from "@/shared/lib/format-date";
 import { cn } from "@/shared/lib/utils";
 import { Button } from "@/shared/ui/button";
 import { Input } from "@/shared/ui/input";
 import { Label } from "@/shared/ui/label";
+import { MetricTile, MetricTileGroup } from "@/shared/ui/metric-tile";
 import {
   Select,
   SelectContent,
@@ -77,6 +79,10 @@ export function RegistrarCobroSheet({
       monto: creditoPreseleccionado?.cuotaDiaria ?? creditos[0]?.cuotaDiaria ?? 0,
     },
   });
+
+  // Se recalcula en cada apertura del sheet, no en cada render: es la hora que
+  // se le muestra al cobrador como "cuándo se está registrando este cobro".
+  const ahora = React.useMemo(() => new Date(), [open]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const creditoId = useWatch({ control: form.control, name: "creditoId" });
   const monto = useWatch({ control: form.control, name: "monto" });
@@ -177,6 +183,32 @@ export function RegistrarCobroSheet({
                 </p>
               ) : null}
             </div>
+          ) : null}
+
+          {/* Contexto del crédito antes de confirmar: cuánto lleva pagado,
+              cuánto debe, qué cuota es y cuándo se está registrando. Solo se
+              renderiza con el sheet abierto — si no, la hora quedaría congelada
+              del momento en que se montó la tarjeta. */}
+          {creditoElegido ? (
+            <MetricTileGroup columns={2} className="gap-3">
+              <MetricTile
+                label="Saldo pagado"
+                value={formatCurrency(creditoElegido.totalPagado)}
+                align="start"
+                tone="success"
+              />
+              <MetricTile
+                label="Saldo pendiente"
+                value={formatCurrency(creditoElegido.saldoPendiente)}
+                align="start"
+              />
+              <MetricTile
+                label="Cuota"
+                value={`${Math.min(creditoElegido.cuotasPagadas + 1, creditoElegido.cuotasTotal)}/${creditoElegido.cuotasTotal}`}
+                align="start"
+              />
+              <MetricTile label="Fecha" value={formatDateTime(ahora)} align="start" />
+            </MetricTileGroup>
           ) : null}
 
           <div className="flex flex-col gap-1.5">

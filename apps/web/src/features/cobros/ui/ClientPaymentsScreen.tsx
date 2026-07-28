@@ -1,18 +1,31 @@
 "use client";
 
 import { useMemo } from "react";
-import { useParams } from "next/navigation";
-import { DownloadIcon } from "lucide-react";
-import { toast } from "sonner";
-import type { CreditoListItem, Pago } from "@repo/types";
+import { CheckIcon } from "lucide-react";
+import type { ClienteDetail, CreditoListItem } from "@repo/types";
 
-import { ESTADO_CLIENTE_LABEL } from "@/entities/client";
+import { ClientContactPanel, ESTADO_CLIENTE_LABEL } from "@/entities/client";
+import {
+  CreditSummaryCard,
+  contarCreditos,
+  saldoPendienteDeCreditos,
+  totalPagadoDeCreditos,
+} from "@/entities/credit";
+import {
+  agruparPagosPorCredito,
+  cobroDeHoy,
+  pagosDeCredito,
+  resumenHistorial,
+  type CobroDeHoy,
+} from "@/entities/payment";
 import { useCliente } from "@/features/clients/api/use-clientes";
 import { getInitials } from "@/shared/lib/initials";
 import { formatCurrency } from "@/shared/lib/format-currency";
+import { formatRelativeDateTime } from "@/shared/lib/format-date";
 import { cn } from "@/shared/lib/utils";
+import { Badge } from "@/shared/ui/badge";
 import { Button } from "@/shared/ui/button";
-import { WhatsAppIcon } from "@/shared/ui/icons/whatsapp-icon";
+import { MetricTile, MetricTileGroup } from "@/shared/ui/metric-tile";
 import { ProgressRing } from "@/shared/ui/progress-ring";
 import { Skeleton } from "@/shared/ui/skeleton";
 import { TabsContent, TabsList, TabsRoot, TabsTrigger } from "@/shared/ui/tabs";
@@ -21,64 +34,43 @@ import { CollectorHero } from "@/widgets/collector-shell/CollectorHero";
 import { RegistrarCobroSheet } from "./RegistrarCobroSheet";
 
 // DESIGN_SYSTEM.md §3.5 / #16c — pagos del cliente
-// (/collector/routes/payments/[id]). Hero de marca con avatar + estado,
-// tarjeta superpuesta con el resumen general (anillo de avance + saldo
-// pendiente total) y, debajo, Tabs Activos/Historial: "Activos" repite el
-// patrón de tarjeta independiente por crédito (con su propio botón
-// "Registrar cobro"); "Historial" lista TODOS los pagos, enriquecidos con
-// producto/nº de cuota/referencia — deja el terreno listo para los recibos
-// de la Fase 4 (los botones Descargar/Compartir ya están, pero avisan que el
-// archivo llega en esa fase mientras `pago.reciboUrl` sea null). Reusa
-// `useCliente(id)` — el mismo hook real que el Admin (5c), ya scoped por
-// cobrador en el backend (`GET /clients/:id` con `ruta.cobradorId = user.sub`
-// para rol COBRADOR).
+// (/collector/routes/payments/[id]).
+//
+// La pestaña "Historial" NO lista pagos sueltos: lista un crédito por
+// producto, y cada tarjeta abre el detalle de ESE crédito con sus propias
+// cuotas (`/credits/[creditoId]`). Antes volcaba todas las cuotas de todos los
+// créditos mezcladas en una sola lista plana, ilegible en cuanto el cliente
+// tenía más de un crédito.
+//
+// Reusa `useCliente(id)` — el mismo hook real que el Admin (5c), ya scoped por
+// cobrador en el backend.
 
-interface PagoEnriquecido extends Pago {
-  producto: string;
-  cuotaNumero: number;
-  cuotasTotal: number;
-  referencia: string;
+export type ClientPaymentsTab = "activos" | "historial";
+
+interface ClientPaymentsScreenProps {
+  clienteId: string;
+  /** Pestaña inicial. La resuelve el server component desde `?tab=`. */
+  initialTab?: ClientPaymentsTab;
 }
 
-export function ClientPaymentsScreen() {
-  const params = useParams<{ id: string }>();
-  const clienteId = params.id;
-
+export function ClientPaymentsScreen({
+  clienteId,
+  initialTab = "activos",
+}: ClientPaymentsScreenProps) {
   const { data: cliente, isLoading } = useCliente(clienteId);
 
-  // Enriquece cada pago con el producto y el nº de cuota de SU crédito: se
-  // agrupa por creditoId, se ordena cada grupo por fecha (ascendente) para
-  // numerar las cuotas, y se aplana de nuevo ordenado descendente (recientes
-  // primero). La "referencia" es sintética (código del crédito + cuota) —
-  // sirve de identificador legible hasta que exista un recibo real.
-  const historialEnriquecido = useMemo<PagoEnriquecido[]>(() => {
+  // Un crédito por producto para la pestaña Historial. Incluye los ACTIVOS que
+  // ya tengan pagos: son los que concentran casi todo el historial, y esta
+  // pestaña es la puerta de entrada al detalle por crédito.
+  const creditosConPagos = useMemo(() => {
     if (!cliente) return [];
-    const creditos = [...cliente.creditosActivos, ...cliente.creditosHistorial];
-    const creditoPorId = new Map(creditos.map((c) => [c.id, c]));
+    const porCredito = agruparPagosPorCredito(cliente.historialPagos);
+    const todos = [...cliente.creditosActivos, ...cliente.creditosHistorial];
 
-    const porCredito = new Map<string, Pago[]>();
-    for (const pago of cliente.historialPagos ?? []) {
-      const lista = porCredito.get(pago.creditoId) ?? [];
-      lista.push(pago);
-      porCredito.set(pago.creditoId, lista);
-    }
-
-    const enriquecidos: PagoEnriquecido[] = [];
-    for (const [creditoId, pagos] of porCredito) {
-      const credito = creditoPorId.get(creditoId);
-      const ordenados = [...pagos].sort((a, b) => a.fecha.localeCompare(b.fecha));
-      ordenados.forEach((pago, i) => {
-        const cuotaNumero = i + 1;
-        enriquecidos.push({
-          ...pago,
-          producto: credito?.producto ?? "Crédito",
-          cuotaNumero,
-          cuotasTotal: credito?.cuotasTotal ?? 0,
-          referencia: `${credito?.codigo ?? "CR"}-${String(cuotaNumero).padStart(2, "0")}`,
-        });
-      });
-    }
-    return enriquecidos.sort((a, b) => b.fecha.localeCompare(a.fecha));
+    return todos
+      .map((credito) => ({ credito, resumen: resumenHistorial(porCredito.get(credito.id) ?? []) }))
+      .filter((fila) => fila.resumen.pagos > 0)
+      .sort((a, b) => (b.resumen.ultimoPago ?? "").localeCompare(a.resumen.ultimoPago ?? ""));
   }, [cliente]);
 
   if (isLoading || !cliente) {
@@ -95,12 +87,15 @@ export function ClientPaymentsScreen() {
   }
 
   const creditosActivos = cliente.creditosActivos;
+  const todosLosCreditos = [...cliente.creditosActivos, ...cliente.creditosHistorial];
 
   return (
     <div className="flex flex-col gap-4 pb-6">
       <CollectorHero
         title={cliente.nombre}
-        backHref={`/collector/routes/${cliente.rutaId}`}
+        // `rutaId` es nullable: un cliente sin ruta generaba
+        // `/collector/routes/null`, que es un 404.
+        backHref={cliente.rutaId ? `/collector/routes/${cliente.rutaId}` : "/collector"}
         avatar={
           <span className="flex size-14 shrink-0 items-center justify-center rounded-full bg-white/20 text-lg font-semibold">
             {getInitials(cliente.nombre)}
@@ -128,11 +123,36 @@ export function ClientPaymentsScreen() {
         </div>
       </div>
 
+      {/* Métricas del cliente: saldo, cuántos créditos y cuánto lleva pagado
+          sumando TODOS sus créditos (no solo los activos). */}
       <div className="px-4">
-        <TabsRoot defaultValue="activos">
+        <MetricTileGroup columns={3} divided>
+          <MetricTile
+            label="Saldo pendiente"
+            value={formatCurrency(saldoPendienteDeCreditos(todosLosCreditos))}
+          />
+          <MetricTile
+            label="Créditos"
+            value={String(contarCreditos(todosLosCreditos))}
+            sub={`${creditosActivos.length} activo${creditosActivos.length === 1 ? "" : "s"}`}
+          />
+          <MetricTile
+            label="Total pagado"
+            value={formatCurrency(totalPagadoDeCreditos(todosLosCreditos))}
+            tone="success"
+          />
+        </MetricTileGroup>
+      </div>
+
+      <div className="px-4">
+        <ClientContactPanel cliente={cliente} />
+      </div>
+
+      <div className="px-4">
+        <TabsRoot defaultValue={initialTab}>
           <TabsList>
             <TabsTrigger value="activos">Activos ({creditosActivos.length})</TabsTrigger>
-            <TabsTrigger value="historial">Historial ({historialEnriquecido.length})</TabsTrigger>
+            <TabsTrigger value="historial">Historial ({creditosConPagos.length})</TabsTrigger>
           </TabsList>
 
           <TabsContent value="activos">
@@ -141,18 +161,40 @@ export function ClientPaymentsScreen() {
                 <EmptyState text="Este cliente no tiene créditos activos." />
               ) : (
                 creditosActivos.map((credito) => (
-                  <CreditoCard key={credito.id} credito={credito} clienteNombre={cliente.nombre} />
+                  <CreditoActivoCard
+                    key={credito.id}
+                    credito={credito}
+                    cliente={cliente}
+                    clienteId={clienteId}
+                    cobradoHoy={cobroDeHoy(pagosDeCredito(cliente.historialPagos, credito.id))}
+                  />
                 ))
               )}
             </div>
           </TabsContent>
 
           <TabsContent value="historial">
-            <div className="flex flex-col gap-2">
-              {historialEnriquecido.length === 0 ? (
+            <div className="flex flex-col gap-3">
+              {creditosConPagos.length === 0 ? (
                 <EmptyState text="Este cliente todavía no tiene pagos registrados." />
               ) : (
-                historialEnriquecido.map((pago) => <PagoRow key={pago.id} pago={pago} />)
+                creditosConPagos.map(({ credito, resumen }) => (
+                  <CreditSummaryCard
+                    key={credito.id}
+                    credito={credito}
+                    href={`/collector/routes/payments/${clienteId}/credits/${credito.id}`}
+                    amountKind="pagado"
+                    meta={`${resumen.pagos} pago${resumen.pagos === 1 ? "" : "s"} · último ${formatRelativeDateTime(resumen.ultimoPago)}`}
+                    badge={
+                      credito.estado === "PAGADO" ? (
+                        <Badge status="pagado">Pagado</Badge>
+                      ) : credito.estado === "MORA" ? (
+                        <Badge status="mora">Mora</Badge>
+                      ) : null
+                    }
+                    className="shadow-sm"
+                  />
+                ))
               )}
             </div>
           </TabsContent>
@@ -170,110 +212,64 @@ function EmptyState({ text }: { text: string }) {
   );
 }
 
-function CreditoCard({
+function CreditoActivoCard({
   credito,
-  clienteNombre,
+  cliente,
+  clienteId,
+  cobradoHoy,
 }: {
   credito: CreditoListItem;
-  clienteNombre: string;
+  cliente: ClienteDetail;
+  clienteId: string;
+  cobradoHoy: CobroDeHoy | null;
 }) {
   return (
-    <div className="flex flex-col gap-4 rounded-xl border border-border bg-card p-4 shadow-sm">
-      <div className="flex items-center gap-3">
-        <ProgressRing value={credito.porcentajePagado ?? 0} size="mini" />
-        <div className="flex min-w-0 flex-1 flex-col">
-          <span className="truncate text-sm font-semibold">{credito.producto}</span>
-          <span className="truncate text-caption text-muted-foreground">
-            {formatCurrency(credito.cuotaDiaria)}/día · {credito.cuotasPagadas}/{credito.cuotasTotal}{" "}
-            cuotas
-          </span>
-        </div>
-        <div className="flex shrink-0 flex-col items-end">
-          <span className="text-sm font-bold tabular-nums">
-            {formatCurrency(credito.saldoPendiente)}
-          </span>
-          <span className="text-caption text-muted-foreground">saldo</span>
-        </div>
-      </div>
-
-      <RegistrarCobroSheet
-        creditos={[credito]}
-        clienteNombre={clienteNombre}
-        creditoPreseleccionado={credito}
-      >
-        <Button
-          size="lg"
-          className={cn(
-            "w-full bg-gradient-to-r from-primary to-accent text-primary-foreground",
-            "hover:opacity-95",
-          )}
+    <CreditSummaryCard
+      credito={credito}
+      href={`/collector/routes/payments/${clienteId}/credits/${credito.id}`}
+      className="shadow-sm"
+      badge={
+        // "Cobrado hoy" gana sobre "Mora": es el dato que el cobrador necesita
+        // de un vistazo para no cobrar dos veces sin querer.
+        cobradoHoy ? (
+          <Badge status="pagado">
+            <CheckIcon />
+            Cobrado hoy
+          </Badge>
+        ) : credito.estado === "MORA" ? (
+          <Badge status="mora">Mora</Badge>
+        ) : null
+      }
+      meta={
+        cobradoHoy
+          ? `Hoy: ${formatCurrency(cobradoHoy.total)} en ${cobradoHoy.pagos} ${cobradoHoy.pagos === 1 ? "abono" : "abonos"} · ${credito.cuotasPagadas}/${credito.cuotasTotal} cuotas`
+          : undefined
+      }
+      // `footer` es lo que permite meter un componente de FEATURE dentro de una
+      // tarjeta que vive en `entities/` sin invertir la dirección del import.
+      footer={
+        <RegistrarCobroSheet
+          creditos={[credito]}
+          clienteNombre={cliente.nombre}
+          creditoPreseleccionado={credito}
         >
-          Registrar cobro
-        </Button>
-      </RegistrarCobroSheet>
-    </div>
+          {/* El botón NO desaparece al cobrar: el cliente puede volver a
+              abonar el mismo día o cancelar el crédito completo. Solo baja de
+              jerarquía visual (secundario) para que no invite a repetir el
+              cobro por inercia. */}
+          <Button
+            size="lg"
+            variant={cobradoHoy ? "secondary" : "primary"}
+            className={cn(
+              "w-full",
+              !cobradoHoy &&
+                "bg-linear-to-r from-primary to-accent text-primary-foreground hover:opacity-95",
+            )}
+          >
+            {cobradoHoy ? "Registrar otro abono" : "Registrar cobro"}
+          </Button>
+        </RegistrarCobroSheet>
+      }
+    />
   );
-}
-
-// Fila de pago del historial: producto + nº de cuota + fecha + referencia, y
-// las acciones de recibo. `pago.reciboUrl` siempre es null en Fase 3 — los
-// botones ya están listos para cuando la Fase 4 lo empiece a llenar.
-function PagoRow({ pago }: { pago: PagoEnriquecido }) {
-  function handleDescargar() {
-    if (pago.reciboUrl) {
-      window.open(pago.reciboUrl, "_blank");
-    } else {
-      toast.info("El recibo estará disponible cuando se generen en la Fase 4.");
-    }
-  }
-
-  function handleCompartir() {
-    if (pago.reciboUrl) {
-      const texto = `Recibo de pago · ${pago.producto} · Cuota ${pago.cuotaNumero}/${pago.cuotasTotal} · ${formatCurrency(pago.monto)}\n${pago.reciboUrl}`;
-      window.open(`https://wa.me/?text=${encodeURIComponent(texto)}`, "_blank");
-    } else {
-      toast.info("Compartir estará disponible cuando se generen los recibos (Fase 4).");
-    }
-  }
-
-  return (
-    <div className="flex items-center gap-3 rounded-xl border border-border bg-card p-3.5">
-      <div className="flex min-w-0 flex-1 flex-col">
-        <span className="truncate text-sm font-semibold">{pago.producto}</span>
-        <span className="truncate text-caption text-muted-foreground">
-          Cuota {pago.cuotaNumero}/{pago.cuotasTotal} · {fmtFecha(pago.fecha)}
-        </span>
-        <span className="truncate text-caption text-muted-foreground/70">Ref. {pago.referencia}</span>
-      </div>
-      <span className="shrink-0 text-sm font-bold tabular-nums">{formatCurrency(pago.monto)}</span>
-      <div className="flex shrink-0 gap-1">
-        <Button
-          type="button"
-          variant="ghost"
-          size="icon"
-          aria-label="Descargar recibo"
-          onClick={handleDescargar}
-        >
-          <DownloadIcon />
-        </Button>
-        <Button
-          type="button"
-          variant="ghost"
-          size="icon"
-          aria-label="Compartir recibo"
-          onClick={handleCompartir}
-        >
-          <WhatsAppIcon className="size-4" />
-        </Button>
-      </div>
-    </div>
-  );
-}
-
-function fmtFecha(iso: string): string {
-  return new Date(iso).toLocaleDateString("es-CO", {
-    day: "numeric",
-    month: "short",
-    year: "numeric",
-  });
 }

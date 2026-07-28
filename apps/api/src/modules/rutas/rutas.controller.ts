@@ -28,7 +28,13 @@ import { ZodValidationPipe } from "../../core/pipes/zod-validation.pipe";
 import type { AuthenticatedUser } from "../../core/auth/auth-request";
 import { RutasService } from "./rutas.service";
 
+// `GET /routes` y `GET /routes/:id` no tenían `@Roles` propio (a diferencia
+// de create/update/delete/assign, que ya eran ADMIN-only) — un CLIENTE
+// autenticado podía listar todas las rutas (hallazgo de auditoría, ver
+// PLAN_DESARROLLO §1.1). Los handlers ADMIN-only mantienen su propio
+// `@Roles("ADMIN")`, que sigue ganando por handler.
 @Controller("routes")
+@Roles("ADMIN", "COBRADOR")
 export class RutasController {
   constructor(private readonly rutasService: RutasService) {}
 

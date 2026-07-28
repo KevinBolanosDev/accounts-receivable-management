@@ -31,7 +31,11 @@ import { ZodValidationPipe } from "../../core/pipes/zod-validation.pipe";
 
 import { CreditosService } from "./creditos.service";
 
+// Ver nota de `clientes.controller.ts` — mismo hallazgo, mismo fix. Sin este
+// `@Roles` de clase, un CLIENTE autenticado podía crear/editar créditos de
+// cualquiera. `anular` mantiene su propio `@Roles("ADMIN")`.
 @Controller("credits")
+@Roles("ADMIN", "COBRADOR")
 export class CreditosController {
   constructor(private readonly creditosService: CreditosService) {}
 

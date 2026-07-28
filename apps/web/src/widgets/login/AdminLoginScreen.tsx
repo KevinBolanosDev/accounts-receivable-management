@@ -77,7 +77,9 @@ export function AdminLoginScreen() {
           </div>
 
           <div className="mt-6">
-            <LoginForm />
+            {/* Solo ADMIN: una cuenta de cobrador acá se rechaza con un
+                mensaje, no se le abre sesión. */}
+            <LoginForm allowedRoles={["ADMIN"]} redirectTo="/admin" />
           </div>
         </div>
       </section>

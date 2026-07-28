@@ -8,11 +8,16 @@ import {
 
 import type { AuthenticatedUser } from "../../core/auth/auth-request";
 import { CurrentUser } from "../../core/auth/current-user.decorator";
+import { Roles } from "../../core/auth/roles.decorator";
 import { ZodValidationPipe } from "../../core/pipes/zod-validation.pipe";
 
 import { CobrosService } from "./cobros.service";
 
+// Sin `@Roles`, un CLIENTE autenticado podía llamar `POST /collections`
+// (hallazgo de auditoría, ver PLAN_DESARROLLO §1.1) — registrar cobros es
+// exclusivamente de staff.
 @Controller("collections")
+@Roles("ADMIN", "COBRADOR")
 export class CobrosController {
   constructor(private readonly cobrosService: CobrosService) {}
 

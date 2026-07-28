@@ -1,9 +1,10 @@
 "use client";
 
+import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Controller, useForm, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { ArrowLeftIcon, ChevronsUpDownIcon } from "lucide-react";
+import { ArrowLeftIcon, ChevronsUpDownIcon, CopyIcon } from "lucide-react";
 import { createClienteRequestSchema, type CreateClienteRequest } from "@repo/types";
 import { toast } from "sonner";
 
@@ -13,11 +14,20 @@ import { ProductoField } from "@/features/creditos/ui/CreditoFields";
 import { useRutas } from "@/features/routes-collectors/api/use-rutas";
 import { formatCurrency } from "@/shared/lib/format-currency";
 import { Button } from "@/shared/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/shared/ui/dialog";
 import { Input } from "@/shared/ui/input";
 import { Label } from "@/shared/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/shared/ui/select";
+import { Switch } from "@/shared/ui/switch";
 
-import { useCreateCliente } from "../api/use-clientes";
+import { useCreateCliente, useGenerateClientAccess } from "../api/use-clientes";
 import { DocumentUploader } from "./DocumentUploader";
 
 const RUTA_CORTA = "Mi ruta";
@@ -30,7 +40,11 @@ interface CreditoOpcional {
   dias?: number | undefined;
 }
 
-type FormValues = CreateClienteRequest & CreditoOpcional;
+interface AccesoOpcional {
+  crearAcceso: boolean;
+}
+
+type FormValues = CreateClienteRequest & CreditoOpcional & AccesoOpcional;
 
 // DESIGN_SYSTEM.md §4.4 — alta de cliente en la calle: hero de gradiente +
 // tarjeta con el formulario (foto primero), cámara, y botón "Guardar" fijo al
@@ -43,9 +57,11 @@ export function FieldClientCreateScreen() {
   const router = useRouter();
   const createCliente = useCreateCliente();
   const createCredito = useCreateCredito();
+  const generateAccess = useGenerateClientAccess();
   const { data: rutas = [] } = useRutas();
   const activeRoute = rutas[0];
   const tieneVariasRutas = rutas.length > 1;
+  const [tempPassword, setTempPassword] = useState<string | null>(null);
 
   const {
     register,
@@ -74,6 +90,7 @@ export function FieldClientCreateScreen() {
       monto: undefined,
       interes: undefined,
       dias: undefined,
+      crearAcceso: false,
     },
   });
 
@@ -141,10 +158,30 @@ export function FieldClientCreateScreen() {
       } else {
         toast.success("Cliente creado");
       }
+
+      if (v.crearAcceso) {
+        try {
+          const access = await generateAccess.mutateAsync(clienteCreado.id);
+          // No navegamos todavía — el dialog de la password navega al cerrarse
+          // (el staff necesita copiarla antes de perder la pantalla).
+          setTempPassword(access.temporaryPassword);
+          return;
+        } catch {
+          toast.error(
+            "Cliente creado, pero no se pudo generar el acceso al portal. Puedes generarlo luego desde su detalle.",
+          );
+        }
+      }
+
       router.push("/collector/clients");
     } catch {
       toast.error("No se pudo guardar el cliente");
     }
+  }
+
+  function closeTempPasswordDialog() {
+    setTempPassword(null);
+    router.push("/collector/clients");
   }
 
   const saving = createCliente.isPending || createCredito.isPending;
@@ -357,6 +394,27 @@ export function FieldClientCreateScreen() {
           ) : null}
         </div>
 
+        {/* Fase 4.14 — acceso opcional al portal desde el alta en campo. */}
+        <div className="mx-4 mt-4 flex items-center justify-between gap-3 rounded-2xl bg-card p-5 shadow-lg">
+          <div className="flex flex-col">
+            <Label htmlFor="f-crear-acceso">Crear acceso al portal</Label>
+            <p className="text-body-sm text-muted-foreground">
+              Genera una contraseña temporal para que el cliente consulte su crédito.
+            </p>
+          </div>
+          <Controller
+            control={control}
+            name="crearAcceso"
+            render={({ field }) => (
+              <Switch
+                id="f-crear-acceso"
+                checked={field.value}
+                onCheckedChange={field.onChange}
+              />
+            )}
+          />
+        </div>
+
         <div className="mt-auto p-4">
           <Button
             type="submit"
@@ -367,6 +425,40 @@ export function FieldClientCreateScreen() {
             Guardar cliente
           </Button>
         </div>
+
+      <Dialog
+        open={!!tempPassword}
+        onOpenChange={(open) => !open && closeTempPasswordDialog()}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Acceso al portal creado</DialogTitle>
+            <DialogDescription>
+              Compártela con el cliente fuera de la app. No se vuelve a mostrar.
+            </DialogDescription>
+          </DialogHeader>
+          {tempPassword ? (
+            <div className="flex items-center gap-2">
+              <Input readOnly value={tempPassword} className="font-mono" />
+              <Button
+                type="button"
+                variant="secondary"
+                size="icon"
+                aria-label="Copiar contraseña"
+                onClick={() => {
+                  void navigator.clipboard.writeText(tempPassword);
+                  toast.success("Copiada al portapapeles");
+                }}
+              >
+                <CopyIcon />
+              </Button>
+            </div>
+          ) : null}
+          <DialogFooter>
+            <Button onClick={closeTempPasswordDialog}>Listo</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </form>
   );
 }

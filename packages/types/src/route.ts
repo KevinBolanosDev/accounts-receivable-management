@@ -46,6 +46,12 @@ export const rutaClienteSchema = clienteListItemSchema.extend({
   cobroHoy: z
     .object({ creditoId: z.string(), monto: z.number(), fecha: z.string() })
     .nullable(),
+  // SUMA de todo lo abonado hoy por el cliente, en todos sus créditos.
+  // `cobroHoy` es solo el ÚLTIMO pago (sirve para el split Pendientes/Cobrados);
+  // si el cliente abona dos veces o paga en dos créditos, `cobroHoy.monto` se
+  // queda corto y no hay forma de derivar el total en el front. Optional
+  // mientras el backend viejo no lo mande.
+  totalCobradoHoy: z.number().optional(),
 });
 export type RutaCliente = z.infer<typeof rutaClienteSchema>;
 

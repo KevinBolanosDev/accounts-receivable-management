@@ -67,3 +67,22 @@ export function useUploadFotoDocumento() {
     mutationFn: (file: File) => clientesService.uploadFotoDocumento(file),
   });
 }
+
+// Mismo patrón que `useDeleteCliente`: el `id` viaja en `mutate(id)`, no al
+// invocar el hook — así sirve tanto al detalle (id ya conocido) como al alta
+// (id recién creado, ver `FieldClientCreateScreen`).
+export function useGenerateClientAccess() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => clientesService.generateAccess(id),
+    onSuccess: (_data, id) => queryClient.invalidateQueries({ queryKey: clientesKeys.detail(id) }),
+  });
+}
+
+export function useDeleteClientAccess() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => clientesService.deleteAccess(id),
+    onSuccess: (_data, id) => queryClient.invalidateQueries({ queryKey: clientesKeys.detail(id) }),
+  });
+}

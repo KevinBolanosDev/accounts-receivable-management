@@ -63,7 +63,9 @@ export function CollectorLoginScreen() {
               <p className="text-sm text-muted-foreground">Ingresa para ver tu ruta de hoy.</p>
             </div>
 
-            <LoginForm />
+            {/* Solo COBRADOR: una cuenta de admin acá se rechaza con un
+                mensaje, no se le abre sesión. */}
+            <LoginForm allowedRoles={["COBRADOR"]} redirectTo="/collector" />
           </div>
         </div>
       </div>

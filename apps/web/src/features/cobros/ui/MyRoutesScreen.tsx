@@ -6,7 +6,9 @@ import { ChevronRightIcon, MapPinIcon } from "lucide-react";
 import { useSessionStore } from "@/entities/session";
 import { useRutas, useRutasSummary } from "@/features/routes-collectors/api/use-rutas";
 import { formatCurrency } from "@/shared/lib/format-currency";
+import { formatDateShort } from "@/shared/lib/format-date";
 import { cn } from "@/shared/lib/utils";
+import { MetricTile, MetricTileGroup } from "@/shared/ui/metric-tile";
 import { ProgressRing } from "@/shared/ui/progress-ring";
 import { Skeleton } from "@/shared/ui/skeleton";
 import { CollectorHero } from "@/widgets/collector-shell/CollectorHero";
@@ -29,12 +31,12 @@ export function MyRoutesScreen() {
     <div className="flex flex-col pb-6">
       <CollectorHero
         title="Mis rutas"
-        subtitle={`${usuario?.nombre ?? "Cobrador"} · hoy, ${fechaHoyCorta()}`}
+        subtitle={`${usuario?.nombre ?? "Cobrador"} · hoy, ${formatDateShort(new Date())}`}
       />
 
       {/* Tira de métricas superpuesta al hero. */}
-      <div className="relative z-10 -mt-9 px-4">
-        <div className="grid grid-cols-3 divide-x divide-border rounded-xl border border-border bg-card shadow-md">
+      <div className="px-4">
+        <MetricTileGroup columns={3} divided overlap>
           <MetricTile
             value={summary ? `${summary.rutasAbiertas}/${summary.rutasTotal}` : "—"}
             label="Rutas abiertas"
@@ -44,7 +46,7 @@ export function MyRoutesScreen() {
             label="Cobrado hoy"
           />
           <MetricTile value={summary ? String(summary.clientesEnRuta) : "—"} label="Clientes" />
-        </div>
+        </MetricTileGroup>
       </div>
 
       <div className="flex flex-col gap-3 px-4 pt-4">
@@ -98,15 +100,3 @@ export function MyRoutesScreen() {
   );
 }
 
-function MetricTile({ value, label }: { value: string; label: string }) {
-  return (
-    <div className="flex flex-col items-center justify-center gap-0.5 px-2 py-3.5">
-      <span className="text-lg font-bold tabular-nums">{value}</span>
-      <span className="text-caption text-muted-foreground">{label}</span>
-    </div>
-  );
-}
-
-function fechaHoyCorta(): string {
-  return new Date().toLocaleDateString("es-CO", { day: "numeric", month: "short" });
-}

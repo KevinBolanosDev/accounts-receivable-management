@@ -1,17 +1,12 @@
 import { z } from "zod";
 
 import { creditoListItemSchema } from "./credito";
+import { pagoSchema } from "./payment";
 
-export const pagoSchema = z.object({
-  id: z.string(),
-  creditoId: z.string(),
-  monto: z.number(),
-  fecha: z.string(),
-  cobradorId: z.string(),
-  cobradorNombre: z.string().nullable().optional(), // nombre del cobrador (columna del detalle #10a)
-  reciboUrl: z.string().url().nullable(),
-});
-export type Pago = z.infer<typeof pagoSchema>;
+// `pagoSchema`/`Pago` viven en `./payment` (hoja) desde el fix del ciclo de
+// imports. NO se re-exportan desde acá: el barrel ya hace `export * from
+// "./payment"`, y re-exportarlos también desde este módulo volvería el nombre
+// ambiguo entre dos `export *`.
 
 export const createCobroRequestSchema = z.object({
   creditoId: z.string().min(1, "Selecciona el crédito al que aplica el pago."),
@@ -26,6 +21,10 @@ export type CreateCobroRequest = z.infer<typeof createCobroRequestSchema>;
 export const reciboInfoSchema = z.object({
   url: z.string().url(),
   codigo: z.string(),
+  // Enlace público con token firmado (`GET /r/:token`) — es el que se comparte
+  // por WhatsApp. `url` exige JWT de staff: mandarla al cliente daría 401.
+  // Optional para no romper respuestas de un backend anterior al cambio.
+  publicUrl: z.string().url().optional(),
 });
 export type ReciboInfo = z.infer<typeof reciboInfoSchema>;
 

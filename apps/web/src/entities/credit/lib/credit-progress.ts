@@ -17,6 +17,27 @@ export function formatMontoCredito(monto: number): string {
   return formatCurrency(monto);
 }
 
+// Agregados sobre una lista de créditos, para las métricas del detalle de
+// cliente ("saldo pendiente", "# de créditos", "total pagado"). Los créditos
+// ANULADOS se excluyen: no representan dinero real ni cobrado ni por cobrar.
+type CreditoParaAgregar = Pick<CreditoListItem, "estado" | "saldoPendiente" | "totalPagado">;
+
+function vigentes(creditos: CreditoParaAgregar[]): CreditoParaAgregar[] {
+  return creditos.filter((c) => c.estado !== "ANULADO");
+}
+
+export function saldoPendienteDeCreditos(creditos: CreditoParaAgregar[]): number {
+  return Number(vigentes(creditos).reduce((sum, c) => sum + c.saldoPendiente, 0).toFixed(2));
+}
+
+export function totalPagadoDeCreditos(creditos: CreditoParaAgregar[]): number {
+  return Number(vigentes(creditos).reduce((sum, c) => sum + c.totalPagado, 0).toFixed(2));
+}
+
+export function contarCreditos(creditos: CreditoParaAgregar[]): number {
+  return vigentes(creditos).length;
+}
+
 // Cálculo del crédito en el front (espejo de `derivarMontos` del backend).
 // montoTotal = monto + monto*interes/100 ; cuotaDiaria = montoTotal/dias.
 // Ej: 200000 capital + 40% = 280000 total ; /30 días = 9333.33/día.

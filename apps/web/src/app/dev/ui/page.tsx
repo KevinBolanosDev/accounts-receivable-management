@@ -16,10 +16,15 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 
-import { ClientCard } from "@/entities/client";
-import { CreditCard } from "@/entities/credit";
-import type { CreditoListItem } from "@repo/types";
+import { ClientCard, ClientContactPanel } from "@/entities/client";
+import { CreditCard, CreditSummaryCard } from "@/entities/credit";
+import { PaymentHistory, esCuotaSinPagar } from "@/entities/payment";
+import { ReceiptActions } from "@/entities/receipt";
+import { ReceiptCard } from "@/features/receipts";
+import type { CreditoListItem, PaymentHistoryItem, Receipt } from "@repo/types";
 import { formatCurrency } from "@/shared/lib/format-currency";
+import { DataField, DataFieldList } from "@/shared/ui/data-field";
+import { MetricTile, MetricTileGroup } from "@/shared/ui/metric-tile";
 import {
   animateProgressRing,
   useCountUp,
@@ -240,6 +245,110 @@ const CREDIT_DEMO_MORA: CreditoListItem = {
   porcentajePagado: 55,
   estado: "MORA",
   cuotasTotal: 48,
+};
+
+// Historial con los CINCO estados de cuota, para revisar los badges, la
+// escalada por tiempo (Pendiente → Vencida → Mora) y las dos columnas de fecha
+// (vencimiento vs. pago real) sin depender del backend.
+const PAGOS_DEMO: PaymentHistoryItem[] = [
+  {
+    id: "pg-d-5",
+    creditoId: "cr-2041",
+    monto: 0,
+    fecha: "2026-07-28T13:00:00.000Z",
+    cobradorId: "",
+    cobradorNombre: null,
+    reciboUrl: null,
+    reciboPublicUrl: null,
+    numeroCuota: 15,
+    estado: "PENDING", // vence hoy: todavía se puede cobrar
+    fechaVencimiento: "2026-07-28T13:00:00.000Z",
+    fechaPago: null,
+    diasAtraso: 0,
+    reciboCodigo: null,
+  },
+  {
+    id: "pg-d-4",
+    creditoId: "cr-2041",
+    monto: 0,
+    fecha: "2026-07-25T13:00:00.000Z",
+    cobradorId: "",
+    cobradorNombre: null,
+    reciboUrl: null,
+    reciboPublicUrl: null,
+    numeroCuota: 14,
+    estado: "OVERDUE", // pasó de día pero no llega a la semana
+    fechaVencimiento: "2026-07-25T13:00:00.000Z",
+    fechaPago: null,
+    diasAtraso: 3,
+    reciboCodigo: null,
+  },
+  {
+    id: "pg-d-3",
+    creditoId: "cr-2041",
+    monto: 0,
+    fecha: "2026-07-18T13:00:00.000Z",
+    cobradorId: "",
+    cobradorNombre: null,
+    reciboUrl: null,
+    reciboPublicUrl: null,
+    numeroCuota: 13,
+    estado: "DEFAULTED", // una semana o más sin pagar
+    fechaVencimiento: "2026-07-18T13:00:00.000Z",
+    fechaPago: null,
+    diasAtraso: 10,
+    reciboCodigo: null,
+  },
+  {
+    id: "pg-d-2",
+    creditoId: "cr-2041",
+    monto: 55_000,
+    fecha: "2026-07-26T20:42:00.000Z",
+    cobradorId: "u-2",
+    cobradorNombre: "Carlos Ramírez",
+    reciboUrl: null,
+    reciboPublicUrl: "https://example.com/r/token-2",
+    numeroCuota: 12,
+    estado: "LATE",
+    // Venció el 24 y se pagó el 26: es justo el caso que las dos columnas
+    // separadas hacen visible.
+    fechaVencimiento: "2026-07-24T13:00:00.000Z",
+    fechaPago: "2026-07-26T20:42:00.000Z",
+    diasAtraso: 2,
+    reciboCodigo: "R-PGD2",
+  },
+  {
+    id: "pg-d-1",
+    creditoId: "cr-2041",
+    monto: 55_000,
+    fecha: "2026-07-25T14:10:00.000Z",
+    cobradorId: "u-2",
+    cobradorNombre: "Carlos Ramírez",
+    reciboUrl: null,
+    reciboPublicUrl: "https://example.com/r/token-1",
+    numeroCuota: 11,
+    estado: "ON_TIME",
+    fechaVencimiento: "2026-07-25T13:00:00.000Z",
+    fechaPago: "2026-07-25T14:10:00.000Z",
+    diasAtraso: 0,
+    reciboCodigo: "R-PGD1",
+  },
+];
+
+const RECEIPT_DEMO: Receipt = {
+  id: "pg-2041-12",
+  pagoId: "pg-2041-12",
+  codigo: "R-PG204112",
+  createdAt: "2026-07-24T15:00:00.000Z",
+  credito: {
+    codigo: "CR-2041",
+    clienteNombre: "María Fernández",
+    productoNombre: "Nevera",
+  },
+  monto: 20_000,
+  saldoRestante: 1_160_000,
+  fecha: "2026-07-24T15:00:00.000Z",
+  cobradorNombre: "Cobrador Demo",
 };
 
 function ComboboxDemo() {
@@ -543,7 +652,7 @@ export default function UiGalleryPage() {
 
       <Section
         title="Client card"
-        description="entities/client — saldo/estado/anillo son stub hasta la Fase 3"
+        description="entities/client — API de slots: contacto con copiar, cifra + etiqueta, badge libre"
       >
         <div className="grid max-w-md gap-3">
           <ClientCard
@@ -552,9 +661,38 @@ export default function UiGalleryPage() {
           />
           <ClientCard
             cliente={{ nombre: "Luis Pardo", ruta: { id: "r2", nombre: "Ruta 6 · Kennedy" } }}
-            saldoPendiente={180000}
+            amount={180000}
+            amountLabel="saldo"
             estado="proximo-a-vencer"
             porcentajePagado={62}
+          />
+          {/* Variante "Cobrados hoy" del cobrador: contacto copiable en vez de
+              la ruta, y lo COBRADO en vez del saldo pendiente. */}
+          <ClientCard
+            cliente={{ nombre: "Kevin Bohórquez", ruta: null }}
+            contacto={{ documento: "1023456789", telefono: "3001234567" }}
+            amount={774000}
+            amountLabel="cobrado hoy"
+            badge={<Badge status="pagado">Cobrado</Badge>}
+            porcentajePagado={8}
+            muted
+          />
+        </div>
+      </Section>
+
+      <Section
+        title="Client contact panel"
+        description="entities/client — documento, teléfono, ubicación y contacto adicional con copiar"
+      >
+        <div className="max-w-2xl">
+          <ClientContactPanel
+            cliente={{
+              documento: "1023456789",
+              telefono: "3001234567",
+              direccion: "Cra 12 #34-56, Barrio Centro",
+              contactoNombre: "Marta Bohórquez",
+              contactoTelefono: "3109876543",
+            }}
           />
         </div>
       </Section>
@@ -568,6 +706,121 @@ export default function UiGalleryPage() {
           <CreditCard credito={CREDIT_DEMO_PAGADO} clienteNombre="José Martínez" />
           <CreditCard credito={CREDIT_DEMO_MORA} density="compact" clienteNombre="Carmen López" />
           <CreditCard credito={CREDIT_DEMO_HERO} density="compact" />
+        </div>
+      </Section>
+
+      <Section
+        title="Credit summary card"
+        description="entities/credit — fila tappable por crédito (lista del Portal + Historial del Cobrador)"
+      >
+        <div className="grid max-w-2xl gap-3">
+          <CreditSummaryCard credito={CREDIT_DEMO_HERO} href="#" />
+          <CreditSummaryCard
+            credito={CREDIT_DEMO_PAGADO}
+            amountKind="pagado"
+            meta="20 pagos · último 27 jul, 3:42 p. m."
+            badge={<Badge status="pagado">Pagado</Badge>}
+            href="#"
+          />
+          {/* El slot `footer` permite inyectar un componente de FEATURE (el
+              sheet de registrar cobro) sin que la entity lo importe. */}
+          <CreditSummaryCard
+            credito={CREDIT_DEMO_MORA}
+            badge={<Badge status="mora">En mora</Badge>}
+            footer={
+              <Button size="lg" className="w-full">
+                Registrar cobro
+              </Button>
+            }
+          />
+        </div>
+      </Section>
+
+      <Section
+        title="Metric tiles"
+        description="shared/ui — reemplaza los 5 tiles de métrica que estaban copiados por pantalla"
+      >
+        <div className="grid max-w-2xl gap-4">
+          <MetricTileGroup columns={3} divided>
+            <MetricTile label="Pendientes" value="8" />
+            <MetricTile label="Cobrados" value="12" tone="success" />
+            <MetricTile label="Hoy" value={formatCurrency(774000)} />
+          </MetricTileGroup>
+          <MetricTileGroup columns={2}>
+            <MetricTile label="Saldo pendiente" value={formatCurrency(522667)} align="start" />
+            <MetricTile label="Cuota" value="3/30" align="start" sub="27 jul, 3:42 p. m." />
+          </MetricTileGroup>
+        </div>
+      </Section>
+
+      <Section
+        title="Payment history"
+        description="entities/payment — misma implementación para Cobrador y Portal; fecha CON hora"
+      >
+        <div className="max-w-2xl">
+          <PaymentHistory
+            pagos={PAGOS_DEMO}
+            cuotasTotal={30}
+            producto="Nevera"
+            renderActions={(pago) =>
+              esCuotaSinPagar(pago.estado) ? null : (
+                <ReceiptActions
+                  actions={["download", "share"]}
+                  onDownload={() => undefined}
+                  share={{ monto: pago.monto, publicUrl: pago.reciboPublicUrl }}
+                />
+              )
+            }
+          />
+        </div>
+      </Section>
+
+      <Section
+        title="Receipt actions"
+        description="entities/receipt — ver / descargar (print-to-PDF) / compartir por WhatsApp"
+      >
+        <div className="flex max-w-2xl flex-col gap-4">
+          <div className="flex items-center gap-3">
+            <span className="text-body-sm text-muted-foreground">Con recibo disponible:</span>
+            <ReceiptActions
+              actions={["view", "download", "share"]}
+              onView={() => undefined}
+              onDownload={() => undefined}
+              share={{ monto: 55000, publicUrl: "https://example.com/r/token" }}
+            />
+          </div>
+          <div className="flex items-center gap-3">
+            {/* Sin `publicUrl` compartir queda deshabilitado con tooltip, en vez
+                de mostrar un botón que al pulsarlo no hace nada. */}
+            <span className="text-body-sm text-muted-foreground">Sin recibo:</span>
+            <ReceiptActions actions={["view", "download", "share"]} share={{ monto: 0 }} />
+          </div>
+          <div className="flex items-center gap-3">
+            <span className="text-body-sm text-muted-foreground">Con etiqueta:</span>
+            <ReceiptActions
+              variant="labeled"
+              onDownload={() => undefined}
+              share={{ monto: 55000, publicUrl: "https://example.com/r/token" }}
+            />
+          </div>
+        </div>
+      </Section>
+
+      <Section
+        title="Copy button + Data field"
+        description="shared/ui — afordancia de copiar reutilizable (para en el click, no navega)"
+      >
+        <div className="max-w-2xl rounded-xl border border-border bg-card p-4">
+          <DataFieldList>
+            <DataField label="Documento" value="1023456789" copyValue="1023456789" />
+            <DataField
+              label="Teléfono"
+              value="3001234567"
+              copyValue="3001234567"
+              href="tel:3001234567"
+            />
+            <DataField label="Sin dato" value={null} />
+          </DataFieldList>
         </div>
       </Section>
 
@@ -709,6 +962,35 @@ export default function UiGalleryPage() {
           <Skeleton className="h-4 w-48" />
           <Skeleton className="h-4 w-64" />
           <Skeleton className="h-10 w-full" />
+        </div>
+      </Section>
+
+      <Section
+        title="Recibos"
+        description="ReceiptCard (pantalla #18c) — versión completa y versión mini embebida (Fase 4.18)"
+      >
+        <div className="flex flex-wrap items-start gap-6">
+          <ReceiptCard
+            receipt={RECEIPT_DEMO}
+            publicUrl="http://localhost:3001/r/token-demo"
+            phone="3001234567"
+          />
+
+          <Dialog>
+            <DialogTrigger asChild>
+              <Button variant="secondary">Ver recibo en modal (mini)</Button>
+            </DialogTrigger>
+            <DialogContent className="sm:max-w-sm">
+              <DialogHeader>
+                <DialogTitle>Recibo de pago</DialogTitle>
+              </DialogHeader>
+              <ReceiptCard
+                receipt={RECEIPT_DEMO}
+                publicUrl="http://localhost:3001/r/token-demo"
+                compact
+              />
+            </DialogContent>
+          </Dialog>
         </div>
       </Section>
     </div>

@@ -44,13 +44,15 @@ apps/web/src/
 │   ├── productos/        ← CRUD de productos (alimenta creditos)
 │   └── routes-collectors/← CRUD de rutas + asignar/desasignar clientes
 ├── entities/             ← Modelos de dominio UI
-│   ├── client/           ← ClientCard + lib estado
-│   ├── credit/           ← CreditCard + lib progress + cálculo
-│   └── session/          ← Zustand useSessionStore (único store)
+│   ├── client/           ← ClientCard (API de slots) + ClientContactPanel + lib estado
+│   ├── credit/           ← CreditCard (admin) + CreditSummaryCard (fila tappable) + lib progress/agregados
+│   ├── payment/          ← PaymentRow/PaymentHistoryTable/PaymentHistory + cuota-estado + helpers de historial
+│   ├── receipt/          ← ReceiptActions + useReceiptActions + fetchReceiptHtml + buildWhatsAppUrl
+│   └── session/          ← Zustand useSessionStore + useClientSessionStore
 ├── shared/               ← Base agnóstica de dominio
 │   ├── api/              ← apiFetch, uploadFile, ApiError, authHeaders
-│   ├── lib/              ← format-currency, initials, utils (cn), motion/*
-│   └── ui/               ← 23 primitivos shadcn + icons/
+│   ├── lib/              ← format-currency, format-date, print, initials, utils (cn), motion/*
+│   └── ui/               ← 26 primitivos shadcn + icons/
 └── pages-fsd/            ← VACÍO (placeholder; FSD "pages" no aplica con App Router)
 ```
 
@@ -161,7 +163,9 @@ interface SessionState {
 
 Persistencia: `persist(..., { name: "session-storage", onRehydrateStorage: () => state => state?.setHasHydrated(true) })`. Selectores siempre parciales (`useSessionStore(s => s.token)`) para minimizar renders.
 
-**`RouteGuard`** (`features/auth/ui/RouteGuard.tsx`): server-component-friendly, espera `hasHydrated`, redirige a `loginPath` si no autenticado o si rol no está en `allowedRoles`.
+**`RouteGuard`** (`features/auth/ui/RouteGuard.tsx`): server-component-friendly, espera `hasHydrated`, redirige a `loginPath` si no autenticado o si rol no está en `allowedRoles`. En la propia ruta de login **solo** salta el formulario quien ya tiene sesión **con un rol válido para esa superficie** — si no, se muestra el login para poder cambiar de cuenta.
+
+**Cada login acepta solo SUS roles.** `LoginForm` recibe `allowedRoles` + `redirectTo`; si el backend autentica bien pero devuelve otro rol, **la sesión no se establece** y se muestra el error indicando dónde ingresar. Antes el formulario redirigía según el rol devuelto sin mirar la superficie: con credenciales de admin en `/collector/login` la sesión se abría igual y rebotaba a `/admin`. `POST /auth/login` sigue siendo agnóstico de superficie a propósito (un endpoint, el rol viaja en el JWT); quien decide qué rol acepta cada pantalla es el front.
 
 ## Design system
 
@@ -227,9 +231,13 @@ Las `page.tsx` son server components. Toda la lógica vive en features/widgets c
 
 **Rutas del Admin implementadas:** `/admin`, `/admin/login`, `/admin/clients`, `/admin/clients/new`, `/admin/clients/[id]`, `/admin/clients/[id]/edit`, `/admin/collectors`, `/admin/credits/new`, `/admin/credits/[id]`, `/admin/credits/[id]/edit`, `/admin/routes-collectors`, `/admin/routes-collectors/new`, `/admin/routes-collectors/[id]`, `/admin/routes-collectors/[id]/edit`. Falta `credits/page.tsx` (placeholder) — `redirect("/admin/credits/new")`.
 
-**Rutas del Cobrador implementadas:** `/collector`, `/collector/login`, `/collector/clients`, `/collector/clients/new`, `/collector/receipts` (placeholder Fase 4), `/collector/profile` (placeholder + Logout), `/collector/routes/[id]`, `/collector/routes/payments/[id]`.
+**Rutas del Cobrador implementadas:** `/collector`, `/collector/login`, `/collector/clients`, `/collector/clients/new`, `/collector/profile` (placeholder + Logout), `/collector/routes/[id]`, `/collector/routes/payments/[id]` (acepta `?tab=historial`), `/collector/routes/payments/[id]/credits/[creditoId]` (detalle de crédito + historial de sus cuotas), `/collector/receipts/[pagoId]`.
 
-**Rutas del Cliente:** `/client` (placeholder; feature vive en Fase 4).
+> **Pendiente conocido:** `nav-items.ts` tiene una pestaña "Recibos" → `/collector/receipts`, pero **no existe `page.tsx` para esa ruta** (solo `[pagoId]`), así que la pestaña da 404. Listar los recibos del cobrador necesita un endpoint nuevo (`GET /payments` scoped por cobrador) que todavía no existe.
+
+**Rutas del Cliente:** `/client/login`, `/client/change-password`, `/client/credit` (lista "Mis créditos"), `/client/credit/[id]` (detalle + historial + recibo).
+
+**Historial modular (Cobrador y Cliente comparten componentes):** la pestaña "Historial" del cliente lista **un crédito por producto** (`CreditSummaryCard`), y cada uno abre el detalle de ESE crédito con sus cuotas (`PaymentHistory` + `ReceiptActions`). Es la misma estructura de dos niveles que ya tenía el Portal (`/client/credit` → `/client/credit/[id]`), con los mismos componentes de `entities/` — solo cambian el `scope` del recibo y qué acciones se pintan. La ruta del detalle va **anidada** bajo el cliente porque `isCollectorTabActive` marca la pestaña con `pathname.startsWith("/collector/routes")`; una ruta plana no encendería ninguna.
 
 ## Decisiones y gotchas
 
@@ -239,6 +247,13 @@ Las `page.tsx` son server components. Toda la lógica vive en features/widgets c
 - **Mocks no se borran.** `mockXxxService` queda implementado para poder volver atrás en un click si el back se rompe.
 - **`apiFetch` no maneja 401/403** automáticamente. Política: si la sesión expira, `useValidateSession` lo detecta y limpia; las queries activas fallan con `ApiError` y la UI decide qué hacer (mostrar toast, redirigir, etc.).
 - **Decimales:** todo monto en pantalla va con `formatCurrency` (`Intl es-CO`, COP, 0 fracciones, `tabular-nums`). El cálculo de progreso del crédito está en `entities/credit/lib/credit-progress.ts`.
+- **Estado de una cuota (`CuotaEstado`):** pagadas `ON_TIME` / `LATE`; sin pagar escala con el tiempo — `PENDING` (vence hoy, todavía se cobra: neutro) → `OVERDUE` ("Vencida", ámbar, desde el día siguiente) → `DEFAULTED` ("En mora", rojo, a los `DIAS_PARA_MORA` = 7 días). Lo calcula el backend (`buildPaymentHistory`, con unit tests); el front solo mapea a badge en `entities/payment/lib/cuota-estado.ts`.
+- **Vencimiento ≠ pago.** `PaymentHistoryItem` trae `fechaVencimiento` (siempre) y `fechaPago` (null si no se ha pagado) como campos distintos, más `diasAtraso`. La tabla los muestra en dos columnas: antes había una sola `fecha` que significaba una cosa en las filas pagadas y otra en las no pagadas.
+- **Fechas:** todas por `shared/lib/format-date.ts` (`formatDate`, `formatDateShort`, `formatTime`, `formatDateTime`, `formatDateTimeShort`, `formatRelativeDateTime`). **Los pagos se muestran con hora** — un cliente puede abonar dos veces el mismo día.
+- **Afordancia de navegación:** toda tarjeta que navega lleva `href` y pinta un `ChevronRightIcon`. Si una tarjeta no tiene chevron, no se abre. `timeZone` está **fijo a `America/Bogota`**: sin eso el SSR (UTC) y el navegador generan strings distintos y React tira mismatch de hidratación. Nada de `toLocaleDateString` suelto en una pantalla.
+- **Cómo se comparte y descarga un recibo:** una sola implementación en `entities/receipt`. Descargar = `printHtmlDocument` (`shared/lib/print.ts`, iframe oculto + `window.print()`, con rama para iOS Safari) → el usuario guarda como PDF; el PDF real es Fase 5. Compartir = `wa.me` con el **`reciboPublicUrl`** (`GET /r/:token`), nunca con `reciboUrl` (esa exige JWT de staff y le daría 401 al cliente). Si no hay recibo, el botón va `disabled` con tooltip — **no** un toast que promete algo que no pasa.
+- **Frontera entities ↔ features:** `entities/*` nunca importa de `features/*` ni de otra entity. Cuando una tarjeta de entity necesita un componente de feature (ej. `RegistrarCobroSheet` dentro de `CreditSummaryCard`) se pasa por un **slot** (`footer`, `actions`, `renderActions`). Cuando una entity necesita el JWT (`entities/receipt`), el token entra **por parámetro** — igual que `apiFetch`.
+- **Tarjetas navegables con botones dentro:** `ClientCard`/`CreditSummaryCard` usan **stretched link** (`<Link className="absolute inset-0">` bajo el contenido), no envuelven la tarjeta en un `<a>`. Un `<button>` (copiar, compartir) dentro de un `<a>` es HTML inválido y además navega al pulsarlo.
 - **Sin SWR/React Query devtools** ni **sin Storybook**: la galería `/dev/ui` hace de ambos.
 
 ## Comandos

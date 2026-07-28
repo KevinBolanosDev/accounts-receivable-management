@@ -3,7 +3,15 @@
 import { useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { PencilIcon, PlusIcon, Trash2Icon } from "lucide-react";
+import {
+  CopyIcon,
+  KeyIcon,
+  PencilIcon,
+  PlusIcon,
+  ShieldOffIcon,
+  Trash2Icon,
+} from "lucide-react";
+import type { ClienteDetail } from "@repo/types";
 import { toast } from "sonner";
 
 import { CreditCard } from "@/entities/credit";
@@ -21,6 +29,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/shared/ui/dialog";
+import { Input } from "@/shared/ui/input";
 import { ProgressRing } from "@/shared/ui/progress-ring";
 import { Skeleton } from "@/shared/ui/skeleton";
 import {
@@ -31,7 +40,12 @@ import {
 } from "@/shared/ui/tabs";
 import { AdminPageHeader } from "@/widgets/admin-shell/AdminPageHeader";
 
-import { useCliente, useDeleteCliente } from "../api/use-clientes";
+import {
+  useCliente,
+  useDeleteCliente,
+  useDeleteClientAccess,
+  useGenerateClientAccess,
+} from "../api/use-clientes";
 
 // DESIGN_SYSTEM.md §3.3 — enriquecimiento del detalle de cliente (#5c).
 // Header con saldo **agregado** (suma de los créditos activos) y badge de
@@ -208,6 +222,9 @@ export function ClientDetailScreen({ clienteId }: { clienteId: string }) {
           </div>
         </div>
 
+        {/* Fase 4.14 — acceso del cliente al Portal Cliente */}
+        <ClientAccessSection cliente={cliente} />
+
         {/* Tabs Activo / Historial (Fase 3 — 1:N con varios activos) */}
         <TabsRoot defaultValue="activos">
           <TabsList>
@@ -282,6 +299,137 @@ export function ClientDetailScreen({ clienteId }: { clienteId: string }) {
         </DialogContent>
       </Dialog>
     </>
+  );
+}
+
+// Fase 4.14 — sección "Acceso del cliente al portal". `tieneAccesoPortal`/
+// `mustChangePassword`/`lastLoginAt` vienen de `ClienteDetail` (Fase 4.14 los
+// agrega sin exponer `passwordHash` — ver packages/types/src/client.ts).
+function ClientAccessSection({ cliente }: { cliente: ClienteDetail }) {
+  const generateAccess = useGenerateClientAccess();
+  const deleteAccess = useDeleteClientAccess();
+  const [tempPassword, setTempPassword] = useState<{ value: string; expiresAt: string } | null>(
+    null,
+  );
+  const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
+
+  async function handleGenerate() {
+    try {
+      const result = await generateAccess.mutateAsync(cliente.id);
+      setTempPassword({ value: result.temporaryPassword, expiresAt: result.expiresAt });
+    } catch {
+      toast.error("No se pudo generar el acceso");
+    }
+  }
+
+  async function handleDelete() {
+    try {
+      await deleteAccess.mutateAsync(cliente.id);
+      toast.success("Acceso eliminado");
+      setConfirmDeleteOpen(false);
+    } catch {
+      toast.error("No se pudo eliminar el acceso");
+    }
+  }
+
+  const estadoLabel = !cliente.tieneAccesoPortal
+    ? "Sin acceso"
+    : cliente.mustChangePassword
+      ? "Debe cambiar la contraseña temporal"
+      : cliente.lastLoginAt
+        ? `Acceso activo · último ingreso: ${new Date(cliente.lastLoginAt).toLocaleDateString("es-CO")}`
+        : "Acceso activo · sin ingresos todavía";
+
+  return (
+    <div className="flex flex-wrap items-center justify-between gap-4 rounded-lg border border-border bg-card p-5">
+      <div>
+        <p className="text-caption uppercase tracking-wider text-muted-foreground">
+          Acceso del cliente al portal
+        </p>
+        <p className="text-body font-medium">{estadoLabel}</p>
+      </div>
+      <div className="flex gap-2">
+        <Button
+          variant="secondary"
+          size="sm"
+          loading={generateAccess.isPending}
+          onClick={handleGenerate}
+        >
+          <KeyIcon />
+          {cliente.tieneAccesoPortal ? "Resetear contraseña" : "Generar contraseña"}
+        </Button>
+        {cliente.tieneAccesoPortal ? (
+          <Button
+            variant="secondary"
+            size="sm"
+            className="text-destructive"
+            onClick={() => setConfirmDeleteOpen(true)}
+          >
+            <ShieldOffIcon />
+            Eliminar acceso
+          </Button>
+        ) : null}
+      </div>
+
+      <Dialog open={!!tempPassword} onOpenChange={(open) => !open && setTempPassword(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Contraseña temporal generada</DialogTitle>
+            <DialogDescription>
+              Compártela con el cliente fuera de la app. No se vuelve a mostrar.
+            </DialogDescription>
+          </DialogHeader>
+          {tempPassword ? (
+            <div className="flex flex-col gap-3">
+              <div className="flex items-center gap-2">
+                <Input readOnly value={tempPassword.value} className="font-mono" />
+                <Button
+                  type="button"
+                  variant="secondary"
+                  size="icon"
+                  aria-label="Copiar contraseña"
+                  onClick={() => {
+                    void navigator.clipboard.writeText(tempPassword.value);
+                    toast.success("Copiada al portapapeles");
+                  }}
+                >
+                  <CopyIcon />
+                </Button>
+              </div>
+              <p className="text-body-sm text-muted-foreground">
+                Válida hasta {new Date(tempPassword.expiresAt).toLocaleString("es-CO")}.
+              </p>
+            </div>
+          ) : null}
+          <DialogFooter>
+            <Button onClick={() => setTempPassword(null)}>Listo</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={confirmDeleteOpen} onOpenChange={setConfirmDeleteOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>¿Eliminar acceso al portal?</DialogTitle>
+            <DialogDescription>
+              El cliente ya no podrá ingresar con sus credenciales actuales.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="secondary" onClick={() => setConfirmDeleteOpen(false)}>
+              Cancelar
+            </Button>
+            <Button
+              variant="destructive"
+              loading={deleteAccess.isPending}
+              onClick={handleDelete}
+            >
+              Eliminar acceso
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </div>
   );
 }
 

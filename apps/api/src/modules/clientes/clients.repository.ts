@@ -38,7 +38,22 @@ const clientDetailInclude = {
   creditos: {
     include: {
       producto: { select: { id: true, nombre: true } },
-      pagos: { select: { monto: true, fecha: true } },
+      // `id`, `cobradorId`, `cobrador.nombre` y `reciboUrl` son necesarios para
+      // construir el historial REAL: sin ellos el service fabricaba un `id`
+      // sintético y forzaba `reciboUrl: null`, así que el front nunca podía
+      // abrir ni compartir el recibo de un pago del historial.
+      // Orden ascendente: `buildPaymentHistory` numera las cuotas por posición.
+      pagos: {
+        select: {
+          id: true,
+          monto: true,
+          fecha: true,
+          cobradorId: true,
+          reciboUrl: true,
+          cobrador: { select: { nombre: true } },
+        },
+        orderBy: { fecha: "asc" },
+      },
     },
     orderBy: { fechaInicio: "desc" },
   },

@@ -18,6 +18,7 @@ import { CreditosModule } from "./modules/creditos/creditos.module";
 import { CobrosModule } from "./modules/cobros/cobros.module";
 import { AuthClienteModule } from "./modules/auth-cliente/auth-cliente.module";
 import { ReceiptsModule } from "./modules/receipts/receipts.module";
+import { ClientPortalModule } from "./modules/client-portal/client-portal.module";
 
 @Module({
   imports: [
@@ -43,6 +44,7 @@ import { ReceiptsModule } from "./modules/receipts/receipts.module";
     CobrosModule,
     AuthClienteModule,
     ReceiptsModule,
+    ClientPortalModule,
   ],
   providers: [
     // Orden de ejecución = orden de registro. El throttler corre primero

@@ -4,13 +4,11 @@ import Link from "next/link";
 import { PlusIcon } from "lucide-react";
 import type { ClienteListItem } from "@repo/types";
 
-import { ESTADO_CLIENTE_LABEL } from "@/entities/client";
+import { ClientCard, ESTADO_CLIENTE_LABEL } from "@/entities/client";
 import { useClientes, useClientesSummary } from "@/features/clients/api/use-clientes";
-import { getInitials } from "@/shared/lib/initials";
 import { formatCurrency } from "@/shared/lib/format-currency";
-import { cn } from "@/shared/lib/utils";
 import { Badge } from "@/shared/ui/badge";
-import { ProgressRing } from "@/shared/ui/progress-ring";
+import { MetricTile, MetricTileGroup } from "@/shared/ui/metric-tile";
 import { Skeleton } from "@/shared/ui/skeleton";
 import { CollectorHero } from "@/widgets/collector-shell/CollectorHero";
 
@@ -45,16 +43,25 @@ export function MyClientsScreen() {
       />
 
       {/* Tira de métricas superpuesta al hero. */}
-      <div className="relative z-10 -mt-9 px-4">
-        <div className="grid grid-cols-2 gap-3 rounded-xl border border-border bg-card p-4 shadow-md">
-          <MetricTile label="Clientes" value={String(summary?.clientes ?? "—")} />
+      <div className="px-4">
+        <MetricTileGroup columns={2} overlap className="gap-3">
+          <MetricTile label="Clientes" value={String(summary?.clientes ?? "—")} align="start" />
           <MetricTile
             label="Total cartera"
             value={summary ? formatCurrency(summary.cartera) : "—"}
+            align="start"
           />
-          <MetricTile label="Cobrados" value={summary ? formatCurrency(summary.cobrados) : "—"} />
-          <MetricTile label="Saldo" value={summary ? formatCurrency(summary.saldo) : "—"} />
-        </div>
+          <MetricTile
+            label="Cobrados"
+            value={summary ? formatCurrency(summary.cobrados) : "—"}
+            align="start"
+          />
+          <MetricTile
+            label="Saldo"
+            value={summary ? formatCurrency(summary.saldo) : "—"}
+            align="start"
+          />
+        </MetricTileGroup>
       </div>
 
       <div className="flex flex-col gap-3 px-4 pt-4">
@@ -77,46 +84,24 @@ export function MyClientsScreen() {
   );
 }
 
-function MetricTile({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="flex flex-col gap-0.5">
-      <span className="text-caption uppercase tracking-wide text-muted-foreground">{label}</span>
-      <span className="text-base font-bold tabular-nums">{value}</span>
-    </div>
-  );
-}
-
 function ClienteCard({ cliente }: { cliente: ClienteListItem }) {
   return (
-    <Link
+    <ClientCard
+      cliente={cliente}
       href={`/collector/routes/payments/${cliente.id}`}
-      aria-label={`Abrir cliente ${cliente.nombre}`}
-      className={cn(
-        "flex items-center gap-3 rounded-xl border border-border bg-card p-3.5 shadow-sm transition-colors",
-        "hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-      )}
-    >
-      <span className="flex size-10 shrink-0 items-center justify-center rounded-full bg-primary/10 text-sm font-semibold text-primary">
-        {getInitials(cliente.nombre)}
-      </span>
-
-      <div className="flex min-w-0 flex-1 flex-col">
-        <span className="truncate text-sm font-semibold">{cliente.nombre}</span>
-        <span className="truncate text-caption text-muted-foreground">
-          {cliente.ruta?.nombre ?? "Sin ruta"}
-        </span>
-      </div>
-
-      <div className="flex shrink-0 flex-col items-end gap-1">
-        <span className="text-sm font-bold tabular-nums">
-          {formatCurrency(cliente.saldoPendiente ?? 0)}
-        </span>
-        {cliente.estado ? (
+      // Acá SÍ se muestra la ruta: esta lista mezcla clientes de todas las
+      // rutas del cobrador, así que saber a cuál pertenece cada uno es útil.
+      contacto={{ documento: cliente.documento, telefono: cliente.telefono }}
+      subtitle={cliente.ruta?.nombre}
+      amount={cliente.saldoPendiente ?? 0}
+      amountLabel="saldo"
+      badge={
+        cliente.estado ? (
           <Badge status={cliente.estado}>{ESTADO_CLIENTE_LABEL[cliente.estado]}</Badge>
-        ) : null}
-      </div>
-
-      <ProgressRing value={cliente.porcentajePagado ?? 0} size="mini" />
-    </Link>
+        ) : null
+      }
+      porcentajePagado={cliente.porcentajePagado ?? 0}
+      className="shadow-sm"
+    />
   );
 }

@@ -1,0 +1,175 @@
+import "dotenv/config";
+import { Test, TestingModule } from "@nestjs/testing";
+import { INestApplication } from "@nestjs/common";
+import request from "supertest";
+import { App } from "supertest/types";
+import { PrismaPg } from "@prisma/adapter-pg";
+import { Prisma, PrismaClient } from "@prisma/client";
+import { loginResponseSchema } from "@repo/types";
+import { AppModule } from "../src/app.module";
+import { ReceiptTokenService } from "../src/core/receipts/receipt-token.service";
+
+const ADMIN = { documento: "1000000001", password: "admin123" };
+const COLLECTOR_A = { documento: "1000000002", password: "cobrador123" };
+const COLLECTOR_B = { documento: "1000000003", password: "cobrador123" };
+const ROUTE_PREFIX = "Receipts E2E";
+const PRODUCTO_NOMBRE = "Producto Receipts E2E";
+
+const prisma = new PrismaClient({
+  adapter: new PrismaPg({ connectionString: process.env.DATABASE_URL }),
+});
+
+async function login(
+  app: INestApplication<App>,
+  credentials: { documento: string; password: string },
+) {
+  const res = await request(app.getHttpServer()).post("/auth/login").send(credentials).expect(200);
+  return loginResponseSchema.parse(res.body);
+}
+
+describe("ReceiptsController (e2e)", () => {
+  let app: INestApplication<App>;
+  let routeA: { id: string };
+  let pagoId: string;
+
+  beforeAll(async () => {
+    await prisma.cliente.deleteMany({ where: { documento: { startsWith: "receipts-e2e-" } } });
+    const collectorA = await prisma.usuario.findUniqueOrThrow({
+      where: { documento: COLLECTOR_A.documento },
+    });
+    routeA = await prisma.ruta.create({
+      data: { nombre: `${ROUTE_PREFIX} ${Date.now()}`, cobradorId: collectorA.id },
+    });
+    const cliente = await prisma.cliente.create({
+      data: {
+        nombre: "Cliente Receipts E2E",
+        telefono: "3000000000",
+        documento: `receipts-e2e-${Date.now()}`,
+        direccion: "Test",
+        rutaId: routeA.id,
+      },
+    });
+    const producto = await prisma.producto.upsert({
+      where: { nombre: PRODUCTO_NOMBRE },
+      update: {},
+      create: { nombre: PRODUCTO_NOMBRE, precioBase: new Prisma.Decimal(100000) },
+    });
+    const credito = await prisma.credito.create({
+      data: {
+        codigo: `CR-RCP-${Date.now()}`,
+        clienteId: cliente.id,
+        productoId: producto.id,
+        monto: new Prisma.Decimal(100000),
+        interes: new Prisma.Decimal(0),
+        dias: 10,
+        montoTotal: new Prisma.Decimal(100000),
+        cuotaDiaria: new Prisma.Decimal(10000),
+        saldoPendiente: new Prisma.Decimal(90000),
+        estado: "ACTIVO",
+      },
+    });
+    const pago = await prisma.pago.create({
+      data: { creditoId: credito.id, monto: new Prisma.Decimal(10000), cobradorId: collectorA.id },
+    });
+    pagoId = pago.id;
+  });
+
+  beforeEach(async () => {
+    const moduleFixture: TestingModule = await Test.createTestingModule({
+      imports: [AppModule],
+    }).compile();
+    app = moduleFixture.createNestApplication();
+    await app.init();
+  });
+
+  afterEach(() => app.close());
+
+  afterAll(async () => {
+    const routes = await prisma.ruta.findMany({
+      where: { nombre: { startsWith: ROUTE_PREFIX } },
+      select: { id: true },
+    });
+    const routeIds = routes.map((r) => r.id);
+    const clientes = await prisma.cliente.findMany({
+      where: { rutaId: { in: routeIds } },
+      select: { id: true },
+    });
+    const clienteIds = clientes.map((c) => c.id);
+    await prisma.pago.deleteMany({ where: { credito: { clienteId: { in: clienteIds } } } });
+    await prisma.credito.deleteMany({ where: { clienteId: { in: clienteIds } } });
+    await prisma.cliente.deleteMany({ where: { id: { in: clienteIds } } });
+    await prisma.ruta.deleteMany({ where: { id: { in: routeIds } } });
+    await prisma.$disconnect();
+  });
+
+  it("responde 200 + HTML para un ADMIN", async () => {
+    const admin = await login(app, ADMIN);
+    const res = await request(app.getHttpServer())
+      .get(`/payments/${pagoId}/receipt`)
+      .set("Authorization", `Bearer ${admin.token}`)
+      .expect(200);
+    expect(res.text).toContain("<!doctype html>");
+  });
+
+  it("responde 200 + HTML para el COBRADOR de la ruta del cliente", async () => {
+    const collector = await login(app, COLLECTOR_A);
+    const res = await request(app.getHttpServer())
+      .get(`/payments/${pagoId}/receipt`)
+      .set("Authorization", `Bearer ${collector.token}`)
+      .expect(200);
+    expect(res.text).toContain("<!doctype html>");
+  });
+
+  it("responde 403 para un COBRADOR de otra ruta", async () => {
+    const collector = await login(app, COLLECTOR_B);
+    await request(app.getHttpServer())
+      .get(`/payments/${pagoId}/receipt`)
+      .set("Authorization", `Bearer ${collector.token}`)
+      .expect(403);
+  });
+
+  it("responde 401 sin token", () => {
+    return request(app.getHttpServer()).get(`/payments/${pagoId}/receipt`).expect(401);
+  });
+
+  it("responde 404 si el pago no existe", async () => {
+    const admin = await login(app, ADMIN);
+    await request(app.getHttpServer())
+      .get("/payments/00000000-0000-0000-0000-000000000000/receipt")
+      .set("Authorization", `Bearer ${admin.token}`)
+      .expect(404);
+  });
+
+  // === Enlace público firmado (`GET /r/:token`) =============================
+  // Es lo que se comparte por WhatsApp: el cliente que lo abre no tiene JWT de
+  // staff, así que el recibo TIENE que cargar sin Authorization.
+  describe("GET /r/:token (enlace público)", () => {
+    it("sirve el recibo SIN token de sesión", async () => {
+      const admin = await login(app, ADMIN);
+      // El enlace público se obtiene del propio detalle del cliente, igual que
+      // lo hace el front — no se fabrica a mano en el test.
+      const receiptRes = await request(app.getHttpServer())
+        .get(`/payments/${pagoId}/receipt`)
+        .set("Authorization", `Bearer ${admin.token}`)
+        .expect(200);
+      expect(receiptRes.text).toContain("<!doctype html>");
+
+      const token = app.get(ReceiptTokenService).sign(pagoId);
+
+      const res = await request(app.getHttpServer()).get(`/r/${token}`).expect(200);
+      expect(res.text).toContain("<!doctype html>");
+      expect(res.headers["x-robots-tag"]).toContain("noindex");
+    });
+
+    it("responde 401 con un token corrupto", async () => {
+      await request(app.getHttpServer()).get("/r/no-es-un-jwt").expect(401);
+    });
+
+    // El chequeo que impide que un JWT de sesión (que NO lleva `typ: receipt`)
+    // sirva como enlace de recibo, y viceversa.
+    it("responde 401 con un JWT de sesión válido en vez de un token de recibo", async () => {
+      const admin = await login(app, ADMIN);
+      await request(app.getHttpServer()).get(`/r/${admin.token}`).expect(401);
+    });
+  });
+});

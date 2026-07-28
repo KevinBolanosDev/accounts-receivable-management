@@ -14,8 +14,17 @@ interface RouteGuardProps {
   children: React.ReactNode;
 }
 
+// Panel propio de cada rol. `CLIENTE` está explícito aunque hoy no pueda
+// llegar acá (usa `client-session-store`, otro store y otro endpoint de login):
+// con un `else` genérico, un cliente terminaría en el panel del cobrador.
+const DASHBOARD_POR_ROL: Record<Rol, string> = {
+  ADMIN: "/admin",
+  COBRADOR: "/collector",
+  CLIENTE: "/client/credit",
+};
+
 function dashboardPathFor(rol: Rol): string {
-  return rol === "ADMIN" ? "/admin" : "/collector";
+  return DASHBOARD_POR_ROL[rol];
 }
 
 // Protege un route-group completo por rol, leyendo el store de sesión y
@@ -42,9 +51,12 @@ export function RouteGuard({ allowedRoles, loginPath, children }: RouteGuardProp
     if (!hasHydrated) return;
 
     if (isOnLoginPath) {
-      // Cualquier sesión activa (sea cual sea su rol) se manda a su propio
-      // panel — no tiene sentido mostrarle un login ajeno a quien ya entró.
-      if (isAuthenticated && usuario) {
+      // Solo se salta el login quien YA tiene sesión válida PARA ESTA
+      // superficie. Si el rol no corresponde (un admin abriendo
+      // /collector/login) se le muestra el formulario para que pueda entrar
+      // con la cuenta correcta: antes se lo rebotaba a su panel, así que era
+      // imposible cambiar de cuenta sin cerrar sesión primero.
+      if (isAuthenticated && hasAllowedRole && usuario) {
         router.replace(dashboardPathFor(usuario.rol));
       }
       return;
@@ -66,7 +78,9 @@ export function RouteGuard({ allowedRoles, loginPath, children }: RouteGuardProp
   if (!hasHydrated) return null;
 
   if (isOnLoginPath) {
-    return isAuthenticated ? null : <>{children}</>;
+    // Se oculta solo mientras el efecto de arriba redirige a quien ya tiene
+    // sesión válida acá; con rol ajeno el formulario se muestra normalmente.
+    return isAuthenticated && hasAllowedRole ? null : <>{children}</>;
   }
 
   if (!isAuthenticated || !hasAllowedRole) return null;

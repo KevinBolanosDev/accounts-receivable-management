@@ -5,7 +5,7 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { loginRequestSchema, type LoginRequest } from "@repo/types";
+import { loginRequestSchema, type LoginRequest, type Rol } from "@repo/types";
 
 import { useSessionStore } from "@/entities/session";
 import { Button } from "@/shared/ui/button";
@@ -19,7 +19,27 @@ import { authService } from "../api/auth-service";
 // del layout que lo envuelve — el mismo formulario sirve a las dos pantallas.
 const FIELD_CLASS = "h-11 bg-muted";
 
-export function LoginForm() {
+const ROL_LABEL: Record<Rol, string> = {
+  ADMIN: "administrador",
+  COBRADOR: "cobrador",
+  CLIENTE: "cliente",
+};
+
+// A dónde mandar a alguien que se equivocó de pantalla de login.
+const LOGIN_PATH_POR_ROL: Record<Rol, string> = {
+  ADMIN: "/admin/login",
+  COBRADOR: "/collector/login",
+  CLIENTE: "/client/login",
+};
+
+interface LoginFormProps {
+  /** Roles que ESTA superficie acepta. Un login válido con otro rol se rechaza. */
+  allowedRoles: Rol[];
+  /** A dónde ir tras un login aceptado. */
+  redirectTo: string;
+}
+
+export function LoginForm({ allowedRoles, redirectTo }: LoginFormProps) {
   const router = useRouter();
   const setSession = useSessionStore((state) => state.setSession);
   const [authError, setAuthError] = useState<string | null>(null);
@@ -37,9 +57,22 @@ export function LoginForm() {
     setAuthError(null);
     try {
       const session = await authService.login(credentials);
+      const rol = session.usuario.rol;
+
+      // Cada superficie solo acepta SUS roles. Antes este formulario redirigía
+      // según el rol devuelto sin mirar desde dónde se entró: con credenciales
+      // de admin en /collector/login la sesión se abría igual y rebotaba a
+      // /admin. Ahora se rechaza y la sesión NO se establece — el token de la
+      // respuesta se descarta sin guardarse.
+      if (!allowedRoles.includes(rol)) {
+        setAuthError(
+          `Esta es una cuenta de ${ROL_LABEL[rol]} y no tiene acceso desde aquí. Ingresa en ${LOGIN_PATH_POR_ROL[rol]}.`,
+        );
+        return;
+      }
+
       setSession(session);
-      // Redirección por el rol de la respuesta, no por la ruta de origen.
-      router.push(session.usuario.rol === "ADMIN" ? "/admin" : "/collector");
+      router.push(redirectTo);
     } catch (error) {
       setAuthError(error instanceof Error ? error.message : "No se pudo iniciar sesión.");
     }

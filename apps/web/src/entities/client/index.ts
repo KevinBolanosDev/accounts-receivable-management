@@ -1,5 +1,6 @@
 export { ClientCard } from "./ui/ClientCard";
 export type { ClientCardProps } from "./ui/ClientCard";
+export { ClientContactPanel } from "./ui/ClientContactPanel";
 export { getInitials } from "@/shared/lib/initials";
 export {
   ESTADO_CLIENTE_LABEL,

@@ -1,13 +1,22 @@
+"use client";
+
 import type { Receipt } from "@repo/types";
 
-import { Button } from "@/shared/ui/button";
+import { ReceiptActions } from "@/entities/receipt";
 import { Card, CardContent, CardFooter, CardHeader } from "@/shared/ui/card";
 import { formatCurrency } from "@/shared/lib/format-currency";
+import { formatDateTime } from "@/shared/lib/format-date";
 
 interface ReceiptCardProps {
   receipt: Receipt;
-  /** URL pública del front (NEXT_PUBLIC_APP_URL) — usada por "Compartir por WhatsApp". */
-  appUrl: string;
+  /**
+   * Enlace público firmado del recibo (`/r/:token`) — el que se comparte por
+   * WhatsApp. Antes esto era `appUrl` y se compartía `/client/login`: el
+   * destinatario tenía que tener acceso al portal y buscar el recibo a mano.
+   */
+  publicUrl?: string | null;
+  /** Teléfono destino del WhatsApp. */
+  phone?: string | null;
   /** Código del recibo, ya conocido (cuando viene de CobroResponse). */
   reciboCodigo?: string;
   /** Si true, oculta los botones (variante embebida en historial). */
@@ -15,18 +24,17 @@ interface ReceiptCardProps {
 }
 
 // Recibo visual (pantalla #18c). Versión UI del HTML server-rendered que
-// sirve el back en 4.8 — se usa cuando tenemos el shape `Receipt` (ej. en el
-// historial del portal del cliente). Cuando abrimos el recibo al cobrar
-// (4.9), el back ya sirve el HTML completo y se monta directo en un iframe.
-export function ReceiptCard({ receipt, appUrl, reciboCodigo, compact = false }: ReceiptCardProps) {
+// sirve el back en 4.8 — se usa cuando tenemos el shape `Receipt`. Cuando
+// abrimos el recibo al cobrar (4.9), el back ya sirve el HTML completo y se
+// monta directo en un iframe.
+export function ReceiptCard({
+  receipt,
+  publicUrl,
+  phone,
+  reciboCodigo,
+  compact = false,
+}: ReceiptCardProps) {
   const codigo = reciboCodigo ?? receipt.codigo;
-
-  // wa.me prellenado — no requiere API de WhatsApp Business, abre el cliente
-  // del usuario con el mensaje listo. El enlace apunta al portal del cliente
-  // con su sesión (ya autenticado por credenciales).
-  const shareUrl = `${appUrl}/client/login`;
-  const shareText = `Hola ${receipt.credito.clienteNombre}, te compartimos tu recibo de pago.`;
-  const whatsappUrl = `https://wa.me/?text=${encodeURIComponent(shareText)}&url=${encodeURIComponent(shareUrl)}`;
 
   return (
     <Card className="mx-auto w-full max-w-md print:shadow-none print:border-0">
@@ -62,9 +70,9 @@ export function ReceiptCard({ receipt, appUrl, reciboCodigo, compact = false }: 
           </div>
           <div>
             <dt className="text-caption uppercase text-muted-foreground">Fecha</dt>
-            <dd className="font-medium tabular-nums">
-              {new Date(receipt.fecha).toLocaleDateString("es-CO")}
-            </dd>
+            {/* Con hora: dos cobros del mismo cliente el mismo día generan
+                recibos que de otro modo se verían idénticos. */}
+            <dd className="font-medium tabular-nums">{formatDateTime(receipt.fecha)}</dd>
           </div>
           <div className="col-span-2 rounded-md border border-border p-3">
             <dt className="text-caption uppercase text-muted-foreground">
@@ -78,20 +86,26 @@ export function ReceiptCard({ receipt, appUrl, reciboCodigo, compact = false }: 
       </CardContent>
 
       {!compact && (
-        <CardFooter className="flex flex-col gap-2 print:hidden">
-          <Button asChild className="w-full">
-            <a href={whatsappUrl} target="_blank" rel="noopener noreferrer">
-              Compartir por WhatsApp
-            </a>
-          </Button>
-          <Button
-            type="button"
-            variant="secondary"
-            className="w-full"
-            onClick={() => window.print()}
-          >
-            Descargar / Imprimir
-          </Button>
+        <CardFooter className="print:hidden">
+          <ReceiptActions
+            variant="labeled"
+            actions={["download", "share"]}
+            // La tarjeta YA está en pantalla, así que imprimir la página actual
+            // alcanza (el `print:hidden`/`print:shadow-none` la dejan limpia).
+            // No hace falta bajar el HTML del recibo como en las filas del
+            // historial.
+            onDownload={() => window.print()}
+            phone={phone}
+            share={{
+              clienteNombre: receipt.credito.clienteNombre,
+              producto: receipt.credito.productoNombre,
+              monto: receipt.monto,
+              fecha: receipt.fecha,
+              reciboCodigo: codigo,
+              publicUrl,
+            }}
+            className="w-full justify-center gap-3"
+          />
         </CardFooter>
       )}
     </Card>

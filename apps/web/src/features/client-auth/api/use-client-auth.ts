@@ -9,6 +9,7 @@ import type {
 } from "@repo/types";
 
 import { useClientSessionStore } from "@/entities/session";
+import { ApiError } from "@/shared/api/client";
 
 import { clientAuthService } from "./client-auth-service";
 
@@ -48,11 +49,12 @@ export function useClientChangePassword() {
 }
 
 // `useClientMe` — valida el token contra el backend. Se usa en el `ClientGuard`
-// cuando ya hay sesión pero queremos confirmar que sigue vigente. Si el
-// backend lo rechaza, limpiamos el store (el guard redirige).
+// cuando ya hay sesión pero queremos confirmar que sigue vigente.
 export function useClientMe(enabled: boolean) {
   const token = useClientSessionStore((state) => state.token);
   const clearSession = useClientSessionStore((state) => state.clearSession);
+  const updateCliente = useClientSessionStore((state) => state.updateCliente);
+  const cliente = useClientSessionStore((state) => state.cliente);
 
   const query = useQuery({
     queryKey: ["client-auth", "me", token],
@@ -61,11 +63,23 @@ export function useClientMe(enabled: boolean) {
     retry: false,
   });
 
-  // Side-effect: si falla la validación, limpiamos.
-  // (Sigue el patrón de `useValidateSession` del staff.)
+  // Side-effect: si falla la validación, decidimos según el motivo.
+  // - 428 MUST_CHANGE_PASSWORD: la sesión sigue siendo válida, solo falta
+  //   cambiar la temporal — reflejamos el flag local y dejamos que
+  //   `ClientGuard` redirija a `/client/change-password` (no limpiar sesión).
+  // - Cualquier otro error (401/403/red): limpiamos, igual que
+  //   `useValidateSession` del staff.
   useEffect(() => {
-    if (query.isError) clearSession();
-  }, [query.isError, clearSession]);
+    if (!query.isError) return;
+    const error = query.error;
+    if (error instanceof ApiError && error.status === 428 && error.code === "MUST_CHANGE_PASSWORD") {
+      if (cliente && !cliente.mustChangePassword) {
+        updateCliente({ ...cliente, mustChangePassword: true });
+      }
+      return;
+    }
+    clearSession();
+  }, [query.isError, query.error, cliente, updateCliente, clearSession]);
 
   return query;
 }
