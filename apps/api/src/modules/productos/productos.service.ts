@@ -2,27 +2,30 @@ import { ConflictException, Injectable, NotFoundException } from "@nestjs/common
 import { Prisma } from "@prisma/client";
 import type { CreateProductoRequest, Producto, UpdateProductoRequest } from "@repo/types";
 
+import type { AuthenticatedUser } from "../../core/auth/auth-request";
+import { requireAdminId } from "../../core/auth/tenant.util";
 import { ProductosRepository, type ProductoRow } from "./productos.repository";
 
 @Injectable()
 export class ProductosService {
   constructor(private readonly productosRepository: ProductosRepository) {}
 
-  findAll(): Promise<Producto[]> {
-    return this.productosRepository.findMany().then((rows) => rows.map(toDto));
+  findAll(user: AuthenticatedUser): Promise<Producto[]> {
+    return this.productosRepository.findMany(requireAdminId(user)).then((rows) => rows.map(toDto));
   }
 
-  async findById(id: string): Promise<Producto> {
-    const row = await this.productosRepository.findById(id);
+  async findById(id: string, user: AuthenticatedUser): Promise<Producto> {
+    const row = await this.productosRepository.findById(id, requireAdminId(user));
     if (!row) throw new NotFoundException("Producto no encontrado.");
     return toDto(row);
   }
 
-  async create(body: CreateProductoRequest): Promise<Producto> {
+  async create(body: CreateProductoRequest, user: AuthenticatedUser): Promise<Producto> {
     try {
       const row = await this.productosRepository.create({
         nombre: body.nombre,
         precioBase: new Prisma.Decimal(body.precioBase),
+        admin: { connect: { id: requireAdminId(user) } },
       });
       return toDto(row);
     } catch (error) {
@@ -33,8 +36,12 @@ export class ProductosService {
     }
   }
 
-  async update(id: string, body: UpdateProductoRequest): Promise<Producto> {
-    const existing = await this.productosRepository.findById(id);
+  async update(
+    id: string,
+    body: UpdateProductoRequest,
+    user: AuthenticatedUser,
+  ): Promise<Producto> {
+    const existing = await this.productosRepository.findById(id, requireAdminId(user));
     if (!existing) throw new NotFoundException("Producto no encontrado.");
 
     try {

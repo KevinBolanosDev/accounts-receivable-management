@@ -15,6 +15,7 @@ import type {
 } from "@repo/types";
 
 import type { AuthenticatedUser } from "../../core/auth/auth-request";
+import { requireAdminId } from "../../core/auth/tenant.util";
 import { mapCreditoListItem, rollupEstadoCliente } from "../../core/domain/credito-cliente.util";
 import { RutasRepository, type RutaWithClientesHoy, type RutaWithCount } from "./rutas.repository";
 
@@ -26,13 +27,13 @@ export class RutasService {
 
   async findAll(user: AuthenticatedUser): Promise<RutaListItem[]> {
     const where = this.scopeWhere(user);
-    const rutas = await this.rutasRepository.findMany(where, hoyRange());
+    const rutas = await this.rutasRepository.findMany(where, requireAdminId(user), hoyRange());
     return rutas.map((ruta) => this.toListItem(ruta));
   }
 
   async findOne(id: string, user: AuthenticatedUser): Promise<RutaDetail> {
     const where = this.scopeWhere(user);
-    const ruta = await this.rutasRepository.findById(id, where, hoyRange());
+    const ruta = await this.rutasRepository.findById(id, where, requireAdminId(user), hoyRange());
 
     if (!ruta) {
       throw new NotFoundException("Ruta no encontrada.");
@@ -41,11 +42,17 @@ export class RutasService {
     return this.toDetail(ruta);
   }
 
-  async create(body: CreateRutaRequest): Promise<RutaListItem> {
+  async create(body: CreateRutaRequest, user: AuthenticatedUser): Promise<RutaListItem> {
+    const adminId = requireAdminId(user);
+    if (body.cobradorId) {
+      await this.assertCobradorInTenant(body.cobradorId, adminId);
+    }
+
     try {
       const ruta = await this.rutasRepository.create({
         nombre: body.nombre,
         activa: body.activa,
+        admin: { connect: { id: adminId } },
         cobrador: body.cobradorId ? { connect: { id: body.cobradorId } } : undefined,
       });
       return this.toListItemFromWrite(ruta);
@@ -54,8 +61,15 @@ export class RutasService {
     }
   }
 
-  async update(id: string, body: UpdateRutaRequest): Promise<RutaListItem> {
-    await this.assertExists(id);
+  async update(
+    id: string,
+    body: UpdateRutaRequest,
+    user: AuthenticatedUser,
+  ): Promise<RutaListItem> {
+    await this.assertExists(id, user);
+    if (body.cobradorId) {
+      await this.assertCobradorInTenant(body.cobradorId, requireAdminId(user));
+    }
 
     try {
       const ruta = await this.rutasRepository.update(id, {
@@ -81,8 +95,8 @@ export class RutasService {
     clienteIds: string[],
     user: AuthenticatedUser,
   ): Promise<RutaDetail> {
-    await this.assertExists(id);
-    await this.rutasRepository.assignClientes(id, clienteIds);
+    await this.assertExists(id, user);
+    await this.rutasRepository.assignClientes(id, clienteIds, requireAdminId(user));
     return this.findOne(id, user);
   }
 
@@ -91,13 +105,13 @@ export class RutasService {
     clienteId: string,
     user: AuthenticatedUser,
   ): Promise<RutaDetail> {
-    await this.assertExists(id);
-    await this.rutasRepository.unassignCliente(id, clienteId);
+    await this.assertExists(id, user);
+    await this.rutasRepository.unassignCliente(id, clienteId, requireAdminId(user));
     return this.findOne(id, user);
   }
 
-  async remove(id: string): Promise<void> {
-    await this.assertExists(id);
+  async remove(id: string, user: AuthenticatedUser): Promise<void> {
+    await this.assertExists(id, user);
 
     const clientesCount = await this.rutasRepository.countClientes(id);
     if (clientesCount > 0) {
@@ -116,8 +130,12 @@ export class RutasService {
   // Una ruta desactivada no debe "aparecer en la app del cobrador" (ni en su
   // lista ni por acceso directo a /routes/:id) — ADMIN sigue viendo todas,
   // activas e inactivas, para poder gestionarlas.
-  private scopeWhere(user: AuthenticatedUser): Prisma.RutaWhereInput | undefined {
-    return user.rol === "COBRADOR" ? { cobradorId: user.sub, activa: true } : undefined;
+  private scopeWhere(user: AuthenticatedUser): Prisma.RutaWhereInput {
+    return {
+      // Tenant primero: aplica a ADMIN y COBRADOR por igual.
+      adminId: requireAdminId(user),
+      ...(user.rol === "COBRADOR" ? { cobradorId: user.sub, activa: true } : {}),
+    };
   }
 
   private cobradorUpdate(
@@ -128,10 +146,26 @@ export class RutasService {
     return { connect: { id: cobradorId } };
   }
 
-  private async assertExists(id: string): Promise<void> {
-    const ruta = await this.rutasRepository.findById(id, undefined, hoyRange());
+  // Scoped por tenant: sin esto un ADMIN podía editar, borrar o reasignar
+  // clientes de una ruta de otro ADMIN conociendo su id.
+  private async assertExists(id: string, user: AuthenticatedUser): Promise<void> {
+    const ruta = await this.rutasRepository.findById(
+      id,
+      this.scopeWhere(user),
+      requireAdminId(user),
+      hoyRange(),
+    );
     if (!ruta) {
       throw new NotFoundException("Ruta no encontrada.");
+    }
+  }
+
+  // Un cobrador de otro tenant se reporta como inexistente (mismo criterio que
+  // `clients.service.assertRouteAccess`): un 403 confirmaría que ese id existe.
+  private async assertCobradorInTenant(cobradorId: string, adminId: string): Promise<void> {
+    const cobrador = await this.rutasRepository.findCobradorById(cobradorId);
+    if (!cobrador || cobrador.adminId !== adminId) {
+      throw new BadRequestException("El cobrador indicado no existe.");
     }
   }
 
@@ -176,7 +210,7 @@ export class RutasService {
       activa: ruta.activa,
       cobradorId: ruta.cobradorId,
       cobrador: ruta.cobrador ? { id: ruta.cobrador.id, nombre: ruta.cobrador.nombre } : null,
-      clientesCount: ruta._count.clientes,
+      clientesCount: ruta._count.clientAdmins,
       totalCobradoHoy: 0,
       avanceDelDia: 0,
       estadoDia: "abierta",
@@ -191,7 +225,7 @@ export class RutasService {
       activa: ruta.activa,
       cobradorId: ruta.cobradorId,
       cobrador: ruta.cobrador ? { id: ruta.cobrador.id, nombre: ruta.cobrador.nombre } : null,
-      clientesCount: ruta.clientes.length,
+      clientesCount: ruta.clientAdmins.length,
       totalCobradoHoy: resumen.totalCobradoHoy,
       avanceDelDia: resumen.avanceDelDia,
       // Stub Fase 5: el cierre diario es lo que abre/cierra el día de una ruta.
@@ -210,7 +244,7 @@ export class RutasService {
       cobradorTelefono: ruta.cobrador?.telefono ?? null,
       estadoDia: "abierta",
       avanceDelDia: resumen.avanceDelDia,
-      clientesCount: ruta.clientes.length,
+      clientesCount: ruta.clientAdmins.length,
       cobradoHoy: resumen.totalCobradoHoy,
       // Stub Fase 5: MORA se persiste a nivel de Crédito con el cierre diario;
       // hoy ningún crédito llega a ese estado, así que el rollup nunca lo marca.
@@ -242,7 +276,8 @@ function summarizeRuta(ruta: RutaWithClientesHoy): {
   let cobrados = 0;
   let saldoTotal = 0;
 
-  const clientes: RutaCliente[] = ruta.clientes.map((cliente) => {
+  const clientes: RutaCliente[] = ruta.clientAdmins.map((clientAdmin) => {
+    const cliente = clientAdmin.client;
     const creditosActivos: CreditoListItem[] = [];
     const creditosHistorial: CreditoListItem[] = [];
     let cobroHoy: RutaCliente["cobroHoy"] = null;
@@ -306,8 +341,10 @@ function summarizeRuta(ruta: RutaWithClientesHoy): {
       direccion: cliente.direccion,
       fotoDocumentoFrenteUrl: cliente.fotoDocumentoFrenteUrl,
       fotoDocumentoReversoUrl: cliente.fotoDocumentoReversoUrl,
-      rutaId: cliente.rutaId,
-      ruta: cliente.ruta ? { id: cliente.ruta.id, nombre: cliente.ruta.nombre } : null,
+      // La ruta es siempre ESTA ruta: `ruta.clientAdmins` ya viene filtrado a
+      // las relaciones activas de esta misma ruta (ver `buildRutaReadInclude`).
+      rutaId: ruta.id,
+      ruta: { id: ruta.id, nombre: ruta.nombre },
       saldoPendiente: Number(saldoActivos.toFixed(2)),
       porcentajePagado,
       estado,

@@ -2,13 +2,24 @@ import { ForbiddenException, Injectable, NotFoundException } from "@nestjs/commo
 import type { Receipt } from "@repo/types";
 
 import type { AuthenticatedUser } from "../../core/auth/auth-request";
+import { requireAdminId } from "../../core/auth/tenant.util";
 import { buildReciboCodigo } from "../../core/domain/receipt-code.util";
 import { PrismaService } from "../../core/prisma/prisma.service";
 
 type PagoAccessRow = {
   credito: {
     clienteId: string;
-    cliente: { ruta: { cobradorId: string | null } | null };
+    // Explícito en el propio Credito (ver `schema.prisma`): un cliente puede
+    // ser cartera de más de un admin, así que el tenant NO se puede derivar
+    // de `cliente`.
+    adminId: string;
+    cliente: {
+      // Todas las relaciones cliente↔admin de este cliente (normalmente 1).
+      // Se resuelve la que corresponde a `credito.adminId` en `assertAccess`
+      // — no se puede filtrar en la query porque ese valor es un campo
+      // hermano dentro del mismo resultado, no algo conocido de antemano.
+      admins: { adminId: string; ruta: { cobradorId: string | null } | null }[];
+    };
   };
 };
 
@@ -46,7 +57,12 @@ export class ReceiptsService {
       include: {
         credito: {
           include: {
-            cliente: { select: { nombre: true, ruta: { select: { cobradorId: true } } } },
+            cliente: {
+              select: {
+                nombre: true,
+                admins: { select: { adminId: true, ruta: { select: { cobradorId: true } } } },
+              },
+            },
             producto: { select: { nombre: true } },
           },
         },
@@ -110,17 +126,27 @@ export class ReceiptsService {
   // - CLIENTE: solo recibos de SUS PROPIOS pagos — 404 genérico (no 403) para
   //   no revelar que el pago existe si es de otro cliente.
   private assertAccess(pago: PagoAccessRow, user: AuthenticatedUser): void {
-    if (user.rol === "ADMIN") return;
-
-    if (user.rol === "COBRADOR") {
-      if (pago.credito.cliente.ruta?.cobradorId !== user.sub) {
-        throw new ForbiddenException("Solo puedes ver recibos de clientes de tus rutas.");
+    // CLIENTE no tiene tenant (se scopea por su propio id) — se resuelve aparte.
+    if (user.rol === "CLIENTE") {
+      if (pago.credito.clienteId !== user.sub) {
+        throw new NotFoundException("Pago no encontrado.");
       }
       return;
     }
 
-    if (pago.credito.clienteId !== user.sub) {
+    // Staff: primero el tenant. Un recibo de otro admin no existe — 404, no
+    // 403, para no confirmar que ese pago existe en otra cartera.
+    if (pago.credito.adminId !== requireAdminId(user)) {
       throw new NotFoundException("Pago no encontrado.");
+    }
+
+    if (user.rol === "ADMIN") return;
+
+    // La relación cliente↔admin correspondiente a ESTE crédito (el cliente
+    // puede tener otras, con otros admins — no sirven acá).
+    const relation = pago.credito.cliente.admins.find((a) => a.adminId === pago.credito.adminId);
+    if (relation?.ruta?.cobradorId !== user.sub) {
+      throw new ForbiddenException("Solo puedes ver recibos de clientes de tus rutas.");
     }
   }
 }

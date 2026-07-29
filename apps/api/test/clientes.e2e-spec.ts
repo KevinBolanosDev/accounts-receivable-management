@@ -13,6 +13,7 @@ import {
   loginResponseSchema,
 } from "@repo/types";
 import { AppModule } from "../src/app.module";
+import { seedAdminId } from "./helpers/tenant";
 
 const ADMIN = { documento: "1000000001", password: "admin123" };
 const COLLECTOR_A = { documento: "1000000002", password: "cobrador123" };
@@ -37,9 +38,11 @@ describe("ClientsController (e2e)", () => {
   let app: INestApplication<App>;
   let routeA: { id: string };
   let routeB: { id: string };
+  let adminId: string;
 
   beforeAll(async () => {
     await prisma.cliente.deleteMany({ where: { documento: { startsWith: "client-e2e-" } } });
+    adminId = await seedAdminId(prisma);
     const collectorA = await prisma.usuario.findUniqueOrThrow({
       where: { documento: COLLECTOR_A.documento },
     });
@@ -47,10 +50,10 @@ describe("ClientsController (e2e)", () => {
       where: { documento: COLLECTOR_B.documento },
     });
     routeA = await prisma.ruta.create({
-      data: { nombre: `Client E2E A ${Date.now()}`, cobradorId: collectorA.id },
+      data: { nombre: `Client E2E A ${Date.now()}`, cobradorId: collectorA.id, adminId },
     });
     routeB = await prisma.ruta.create({
-      data: { nombre: `Client E2E B ${Date.now()}`, cobradorId: collectorB.id },
+      data: { nombre: `Client E2E B ${Date.now()}`, cobradorId: collectorB.id, adminId },
     });
   });
 
@@ -69,8 +72,18 @@ describe("ClientsController (e2e)", () => {
       where: { nombre: { startsWith: "Client E2E" } },
       select: { id: true },
     });
-    await prisma.cliente.deleteMany({ where: { rutaId: { in: routes.map((route) => route.id) } } });
-    await prisma.ruta.deleteMany({ where: { id: { in: routes.map((route) => route.id) } } });
+    const routeIds = routes.map((route) => route.id);
+    // La ruta ahora vive en ClientAdmin (relación cliente↔admin), no en
+    // Cliente: hay que resolver los clientId por ahí, y borrar esa fila antes
+    // que el Cliente y la Ruta (ambos FK Restrict desde ClientAdmin).
+    const clientAdmins = await prisma.clientAdmin.findMany({
+      where: { rutaId: { in: routeIds } },
+      select: { clientId: true },
+    });
+    const clienteIds = clientAdmins.map((ca) => ca.clientId);
+    await prisma.clientAdmin.deleteMany({ where: { clientId: { in: clienteIds } } });
+    await prisma.cliente.deleteMany({ where: { id: { in: clienteIds } } });
+    await prisma.ruta.deleteMany({ where: { id: { in: routeIds } } });
     await prisma.$disconnect();
   });
 
@@ -120,7 +133,7 @@ describe("ClientsController (e2e)", () => {
         telefono: "3000000000",
         documento: `client-e2e-${Date.now()}`,
         direccion: "Test",
-        rutaId: routeA.id,
+        admins: { create: { adminId, rutaId: routeA.id } },
       },
     });
     const collector = await login(app, COLLECTOR_B);
@@ -139,7 +152,7 @@ describe("ClientsController (e2e)", () => {
         telefono: "3000000000",
         documento: `client-e2e-${Date.now()}`,
         direccion: "Test",
-        rutaId: routeA.id,
+        admins: { create: { adminId, rutaId: routeA.id } },
       },
     });
     const collector = await login(app, COLLECTOR_A);
@@ -151,8 +164,12 @@ describe("ClientsController (e2e)", () => {
       .delete(`/clients/${client.id}`)
       .set("Authorization", `Bearer ${admin.token}`)
       .expect(204);
-    const deleted = await prisma.cliente.findUniqueOrThrow({ where: { id: client.id } });
-    expect(deleted.activo).toBe(false);
+    // `activo` es ahora propiedad de la relación (ClientAdmin), no del
+    // Cliente global: el soft-delete desactiva MI relación con el cliente.
+    const relation = await prisma.clientAdmin.findUniqueOrThrow({
+      where: { clientId_adminId: { clientId: client.id, adminId } },
+    });
+    expect(relation.activo).toBe(false);
   });
 
   it("rejects a CLIENTE (portal) token on the staff clients endpoints", async () => {
@@ -163,7 +180,7 @@ describe("ClientsController (e2e)", () => {
         telefono: "3000000000",
         documento: `client-e2e-role-${Date.now()}`,
         direccion: "Test",
-        rutaId: routeA.id,
+        admins: { create: { adminId, rutaId: routeA.id } },
         passwordHash: await bcrypt.hash(password, 10),
         mustChangePassword: true,
         passwordExpiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
@@ -192,7 +209,7 @@ describe("ClientsController (e2e)", () => {
         telefono: "3000000000",
         documento: `client-e2e-${Date.now()}`,
         direccion: "Test",
-        rutaId: routeA.id,
+        admins: { create: { adminId, rutaId: routeA.id } },
       },
     });
     const response = await request(app.getHttpServer())

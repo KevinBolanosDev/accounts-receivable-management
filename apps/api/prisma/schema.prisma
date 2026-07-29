@@ -27,6 +27,8 @@ enum EstadoCredito {
 model Usuario {
   id           String   @id @default(uuid())
   nombre       String
+  // Global, NO por tenant: el login (staff y portal) resuelve por documento.
+  // Si fuera único por admin, `findUnique({ documento })` sería ambiguo.
   documento    String   @unique
   passwordHash String
   rol          Rol
@@ -34,39 +36,58 @@ model Usuario {
   activo       Boolean  @default(true)
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
-  rutas        Ruta[]
-  pagos        Pago[] // back-relation Fase 3 (cobrador persiste pagos)
+
+  // Multi-tenancy: el ADMIN es la raíz del tenant. Un COBRADOR pertenece a
+  // exactamente un ADMIN (`adminId` apunta a él); un ADMIN tiene `adminId`
+  // null porque es la raíz. Para resolver el tenant de cualquier usuario se
+  // usa `resolveAdminId` (core/auth/tenant.util.ts): ADMIN → su propio id,
+  // COBRADOR → su adminId.
+  adminId    String?
+  admin      Usuario?  @relation("AdminCobradores", fields: [adminId], references: [id], onDelete: Restrict)
+  cobradores Usuario[] @relation("AdminCobradores")
+
+  rutas Ruta[] @relation("CobradorRutas")
+  pagos Pago[] // back-relation Fase 3 (cobrador persiste pagos)
+
+  // Back-relations de propiedad (solo pobladas cuando el usuario es ADMIN).
+  rutasAdmin     Ruta[]        @relation("AdminRutas")
+  clientAdmins   ClientAdmin[] @relation("AdminClientes")
+  productosAdmin Producto[]    @relation("AdminProductos")
+  creditosAdmin  Credito[]     @relation("AdminCreditos")
+
+  @@index([adminId])
 }
 
 model Ruta {
-  id         String    @id @default(uuid())
-  nombre     String    @unique
-  activa     Boolean   @default(true)
-  cobradorId String?
-  cobrador   Usuario?  @relation(fields: [cobradorId], references: [id], onDelete: SetNull)
-  clientes   Cliente[]
-  createdAt  DateTime  @default(now())
-  updatedAt  DateTime  @updatedAt
+  id           String        @id @default(uuid())
+  // Único POR ADMIN, no global: dos admins distintos deben poder tener cada
+  // uno su "Ruta Centro" sin colisionar.
+  nombre       String
+  activa       Boolean       @default(true)
+  cobradorId   String?
+  cobrador     Usuario?      @relation("CobradorRutas", fields: [cobradorId], references: [id], onDelete: SetNull)
+  // Dueño del tenant. Restrict: no se borra un admin que todavía tiene rutas.
+  adminId      String
+  admin        Usuario       @relation("AdminRutas", fields: [adminId], references: [id], onDelete: Restrict)
+  // La asignación de ruta vive en `ClientAdmin` (por relación cliente↔admin),
+  // no en `Cliente` directo — ver el comentario en `ClientAdmin`.
+  clientAdmins ClientAdmin[]
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
 
+  @@unique([adminId, nombre])
   @@index([cobradorId])
+  @@index([adminId])
 }
 
 model Cliente {
-  id                      String    @id @default(uuid())
+  id                      String        @id @default(uuid())
   nombre                  String
   telefono                String
-  documento               String    @unique
+  documento               String        @unique
   direccion               String
   fotoDocumentoFrenteUrl  String?
   fotoDocumentoReversoUrl String?
-  // Nullable desde el cierre de Fase 3 (§3 del plan de pulido): un cliente
-  // puede quedar "sin ruta" al quitarlo desde la pantalla de Ruta, sin dejar
-  // de existir. Sin ruta, el scoping por cobrador (`ruta.cobradorId`) lo
-  // excluye de la app del cobrador — solo Admin lo ve, en el bucket "Sin
-  // asignar". `onDelete: Restrict` se mantiene: no se puede borrar una ruta
-  // que todavía tiene clientes asignados.
-  rutaId                  String?
-  ruta                    Ruta?     @relation(fields: [rutaId], references: [id], onDelete: Restrict)
   // Contacto de referencia (a quién llamar si no se ubica al cliente). Ambos
   // nullable e independientes: los clientes dados de alta antes de este campo
   // no lo tienen, y el alta no lo exige.
@@ -77,32 +98,74 @@ model Cliente {
   // Cuando el staff genera/resetea el acceso, `passwordHash` se llena y
   // `mustChangePassword` se fuerza a true para que la temporal se cambie
   // en el primer ingreso. `passwordExpiresAt` caduca la temporal tras 24h.
+  // Estos campos de login son GLOBALES (una sola cuenta por persona, sin
+  // importar cuántos admins la tengan como cliente — ver `ClientAdmin`).
   passwordHash            String?
-  mustChangePassword      Boolean   @default(false)
+  mustChangePassword      Boolean       @default(false)
   passwordExpiresAt       DateTime?
-  failedLoginAttempts     Int       @default(0)
+  failedLoginAttempts     Int           @default(0)
   lockedUntil             DateTime?
   lastLoginAt             DateTime?
-  activo                  Boolean   @default(true)
-  createdAt               DateTime  @default(now())
-  updatedAt               DateTime  @updatedAt
+  createdAt               DateTime      @default(now())
+  updatedAt               DateTime      @updatedAt
 
-  // Fase 3 — back-relation: 1 cliente → N créditos (varios activos posibles)
+  // Multi-tenancy (v2): un Cliente es una identidad única (mismo documento,
+  // mismo login) que puede pertenecer a VARIOS admins a la vez — cada
+  // pertenencia es una fila `ClientAdmin`. `rutaId`/`activo` NO viven acá
+  // porque son propiedad de la RELACIÓN admin↔cliente, no de la identidad:
+  // dos admins que comparten un cliente asignan rutas distintas y pueden
+  // desactivar su propia relación sin afectar al otro.
+  admins ClientAdmin[]
+
+  // Fase 3 — back-relation: 1 cliente → N créditos (posiblemente de admins
+  // distintos si el cliente es compartido — cada Credito lleva su propio
+  // `adminId`, ver el modelo).
   creditos Credito[]
+}
 
+// Relación cliente↔admin (soporta que un mismo Cliente sea cartera de más de
+// un ADMIN). Es la única fuente de scoping por tenant para `Cliente`: un
+// admin solo ve/gestiona los clientes con una fila acá para su `adminId`.
+// `rutaId`/`activo` son POR RELACIÓN (no por cliente): el mismo Cliente puede
+// estar en la ruta X del admin A y sin ruta en el admin B, o activo para uno
+// e inactivo (soft-delete) para el otro.
+model ClientAdmin {
+  id        String   @id @default(uuid())
+  clientId  String
+  client    Cliente  @relation(fields: [clientId], references: [id], onDelete: Restrict)
+  adminId   String
+  admin     Usuario  @relation("AdminClientes", fields: [adminId], references: [id], onDelete: Restrict)
+  // Nullable: un cliente puede quedar "sin ruta" (bucket "Sin asignar") para
+  // este admin sin dejar de ser su cliente. `onDelete: Restrict`: no se borra
+  // una ruta que todavía tiene clientes asignados.
+  rutaId    String?
+  ruta      Ruta?    @relation(fields: [rutaId], references: [id], onDelete: Restrict)
+  activo    Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([clientId, adminId])
+  @@index([adminId])
   @@index([rutaId])
 }
 
 // Fase 3 — catálogo de productos. Nombre único → upsert idempotente del seed.
 // Dinero siempre en Decimal, jamás Float (ver §3.6 del plan).
 model Producto {
-  id         String   @id @default(uuid())
-  nombre     String   @unique
-  precioBase Decimal  @db.Decimal(12, 2)
-  activo     Boolean  @default(true)
+  id         String    @id @default(uuid())
+  // Único POR ADMIN: cada admin lleva su propio catálogo. Con `@unique` global
+  // el primer admin que registrara "Nevera" se lo bloqueaba a todos los demás.
+  nombre     String
+  precioBase Decimal   @db.Decimal(12, 2)
+  activo     Boolean   @default(true)
+  adminId    String
+  admin      Usuario   @relation("AdminProductos", fields: [adminId], references: [id], onDelete: Restrict)
   creditos   Credito[]
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+
+  @@unique([adminId, nombre])
+  @@index([adminId])
 }
 
 // Fase 3 — Crédito. `codigo` legible y único (CR-XXXX), generado en el service
@@ -121,6 +184,14 @@ model Credito {
   cliente        Cliente       @relation(fields: [clienteId], references: [id], onDelete: Restrict)
   productoId     String
   producto       Producto      @relation(fields: [productoId], references: [id], onDelete: Restrict)
+  // Explícito, NO derivado de `cliente.adminId`: desde que un Cliente puede
+  // ser cartera de varios admins (`ClientAdmin`), el tenant del crédito tiene
+  // que quedar en el crédito mismo — si no, un crédito que el admin A le dio
+  // a un cliente compartido sería visible también para el admin B con quien
+  // ese cliente también tiene relación. Se exige que exista una fila
+  // `ClientAdmin(clienteId, adminId)` al crear (el service lo valida).
+  adminId        String
+  admin          Usuario       @relation("AdminCreditos", fields: [adminId], references: [id], onDelete: Restrict)
   monto          Decimal       @db.Decimal(12, 2) // capital (sin interés)
   interes        Decimal       @db.Decimal(5, 2) // % de interés sobre el capital
   dias           Int // plazo en días = número de cuotas diarias
@@ -134,6 +205,7 @@ model Credito {
   updatedAt      DateTime      @updatedAt
 
   @@index([clienteId])
+  @@index([adminId])
   @@index([estado])
 }
 

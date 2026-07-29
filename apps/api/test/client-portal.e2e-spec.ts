@@ -14,6 +14,7 @@ import {
   loginResponseSchema,
 } from "@repo/types";
 import { AppModule } from "../src/app.module";
+import { seedAdminId } from "./helpers/tenant";
 
 const ADMIN = { documento: "1000000001", password: "admin123" };
 const COBRADOR_DOCUMENTO = "1000000002";
@@ -50,10 +51,11 @@ async function createCliente(overrides: Record<string, unknown> = {}) {
 // (ON_TIME), cuota 2 pagada 1 día tarde (LATE), y cuota 3 todavía sin pagar
 // (MISSED) — ejercita los 3 estados de `buildPaymentHistory` con datos reales.
 async function createCreditoConHistorialMixto(clienteId: string, cobradorId: string) {
+  const adminId = await seedAdminId(prisma);
   const producto = await prisma.producto.upsert({
-    where: { nombre: PRODUCTO_NOMBRE },
+    where: { adminId_nombre: { adminId, nombre: PRODUCTO_NOMBRE } },
     update: {},
-    create: { nombre: PRODUCTO_NOMBRE, precioBase: new Prisma.Decimal(300000) },
+    create: { nombre: PRODUCTO_NOMBRE, precioBase: new Prisma.Decimal(300000), adminId },
   });
 
   const fechaInicio = new Date(Date.now() - 2 * DIA_MS);
@@ -62,6 +64,7 @@ async function createCreditoConHistorialMixto(clienteId: string, cobradorId: str
       codigo: `CR-E2E-${Date.now()}-${counter}`,
       clienteId,
       productoId: producto.id,
+      adminId,
       monto: new Prisma.Decimal(300000),
       interes: new Prisma.Decimal(0),
       dias: 30,

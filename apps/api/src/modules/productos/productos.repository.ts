@@ -10,15 +10,17 @@ export type ProductoRow = Prisma.ProductoGetPayload<Record<string, never>>;
 export class ProductosRepository {
   constructor(private readonly prisma: PrismaService) {}
 
-  findMany(args: { activo?: boolean } = {}): Promise<ProductoRow[]> {
+  // `adminId` es obligatorio en ambas lecturas: el catálogo es por tenant y no
+  // existe ningún caso de uso que deba leer el de todos los admins a la vez.
+  findMany(adminId: string, args: { activo?: boolean } = {}): Promise<ProductoRow[]> {
     return this.prisma.producto.findMany({
-      where: { activo: args.activo ?? true },
+      where: { adminId, activo: args.activo ?? true },
       orderBy: { nombre: "asc" },
     });
   }
 
-  findById(id: string): Promise<ProductoRow | null> {
-    return this.prisma.producto.findUnique({ where: { id } });
+  findById(id: string, adminId: string): Promise<ProductoRow | null> {
+    return this.prisma.producto.findFirst({ where: { id, adminId } });
   }
 
   create(data: Prisma.ProductoCreateInput): Promise<ProductoRow> {

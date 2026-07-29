@@ -12,6 +12,7 @@ import {
   loginResponseSchema,
 } from "@repo/types";
 import { AppModule } from "../src/app.module";
+import { seedAdminId } from "./helpers/tenant";
 
 const ADMIN = { documento: "1000000001", password: "admin123" };
 const COLLECTOR_A = { documento: "1000000002", password: "cobrador123" };
@@ -33,13 +34,15 @@ async function login(
 describe("ClientesController — access (e2e)", () => {
   let app: INestApplication<App>;
   let routeA: { id: string };
+  let adminId: string;
 
   beforeAll(async () => {
+    adminId = await seedAdminId(prisma);
     const collectorA = await prisma.usuario.findUniqueOrThrow({
       where: { documento: COLLECTOR_A.documento },
     });
     routeA = await prisma.ruta.create({
-      data: { nombre: `${ROUTE_PREFIX} ${Date.now()}`, cobradorId: collectorA.id },
+      data: { nombre: `${ROUTE_PREFIX} ${Date.now()}`, cobradorId: collectorA.id, adminId },
     });
   });
 
@@ -59,20 +62,36 @@ describe("ClientesController — access (e2e)", () => {
       select: { id: true },
     });
     const routeIds = routes.map((r) => r.id);
-    await prisma.cliente.deleteMany({ where: { rutaId: { in: routeIds } } });
+    // La ruta ahora vive en ClientAdmin (relación cliente↔admin), no en
+    // Cliente: hay que resolver los clientId por ahí, y borrar esa fila antes
+    // que el Cliente y la Ruta (ambos FK Restrict desde ClientAdmin).
+    const clientAdmins = await prisma.clientAdmin.findMany({
+      where: { rutaId: { in: routeIds } },
+      select: { clientId: true },
+    });
+    const clienteIds = clientAdmins.map((ca) => ca.clientId);
+    await prisma.clientAdmin.deleteMany({ where: { clientId: { in: clienteIds } } });
+    await prisma.cliente.deleteMany({ where: { id: { in: clienteIds } } });
     await prisma.ruta.deleteMany({ where: { id: { in: routeIds } } });
     await prisma.$disconnect();
   });
 
   async function createCliente(overrides: Record<string, unknown> = {}) {
+    // `activo`/`rutaId` son propiedad de la relación (ClientAdmin), no del
+    // Cliente: se separan del resto de overrides para anidarlos en `admins`.
+    const { activo, rutaId, ...clienteOverrides } = overrides as {
+      activo?: boolean;
+      rutaId?: string;
+      [key: string]: unknown;
+    };
     return prisma.cliente.create({
       data: {
         nombre: "Cliente Access E2E",
         telefono: "3000000000",
         documento: `clientes-access-e2e-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
         direccion: "Test",
-        rutaId: routeA.id,
-        ...overrides,
+        admins: { create: { adminId, rutaId: rutaId ?? routeA.id, activo: activo ?? true } },
+        ...clienteOverrides,
       },
     });
   }

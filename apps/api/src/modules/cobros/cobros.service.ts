@@ -11,6 +11,7 @@ import type { CobroResponse, CreateCobroRequest, CreditoListItem, Pago } from "@
 
 import { PrismaService } from "../../core/prisma/prisma.service";
 import type { AuthenticatedUser } from "../../core/auth/auth-request";
+import { requireAdminId } from "../../core/auth/tenant.util";
 import { buildReciboCodigo } from "../../core/domain/receipt-code.util";
 import { ReceiptTokenService } from "../../core/receipts/receipt-token.service";
 
@@ -32,18 +33,27 @@ export class CobrosService {
     // === Validaciones previas (no entran en la transacción) ================
     const monto = new Prisma.Decimal(body.monto);
 
-    const credito = await this.prisma.credito.findUnique({
-      where: { id: body.creditoId },
-      include: { cliente: { include: { ruta: true } } },
+    // Scoping por tenant en la propia búsqueda: un crédito de otro admin se
+    // reporta como inexistente, así que ni siquiera se llega a la transacción.
+    // `Credito.adminId` es explícito (un cliente puede ser cartera de más de
+    // un admin, ver `schema.prisma`), así que el filtro va directo ahí.
+    const adminId = requireAdminId(user);
+    const credito = await this.prisma.credito.findFirst({
+      where: { id: body.creditoId, adminId },
+      include: {
+        cliente: { include: { admins: { where: { adminId }, take: 1, include: { ruta: true } } } },
+      },
     });
     if (!credito) {
       throw new NotFoundException("El crédito no existe.");
     }
+    const clientRelation = credito.cliente.admins[0];
 
-    // Scoping por cobrador: la ruta del cliente del crédito debe ser del
-    // cobrador (ADMIN pasa sin chequeo). Un cliente "sin ruta" (§3 — cierre de
-    // Fase 3) no tiene cobrador asignado, así que ningún COBRADOR pasa.
-    if (user.rol === "COBRADOR" && credito.cliente.ruta?.cobradorId !== user.sub) {
+    // Scoping por cobrador: la ruta del cliente del crédito (en ESTE tenant)
+    // debe ser del cobrador (ADMIN pasa sin chequeo). Un cliente "sin ruta"
+    // (§3 — cierre de Fase 3) no tiene cobrador asignado, así que ningún
+    // COBRADOR pasa.
+    if (user.rol === "COBRADOR" && clientRelation?.ruta?.cobradorId !== user.sub) {
       throw new ForbiddenException("Solo puedes cobrar créditos de clientes de tus rutas.");
     }
 

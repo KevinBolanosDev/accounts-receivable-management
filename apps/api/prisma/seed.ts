@@ -24,8 +24,17 @@ void generarTokenAcceso;
 // swap mock → real no cambie nada del lado del navegador. El segundo cobrador
 // (Fase 2) sirve para el e2e de scoping; los productos/créditos (Fase 3) le
 // dan al primero clientes ACTIVOS para que "Mi ruta de hoy" tenga datos.
-const USERS = [
+interface SeedUser {
+  documento: string;
+  nombre: string;
+  password: string;
+  rol: "ADMIN" | "COBRADOR";
+  telefono?: string;
+}
+
+const USERS: SeedUser[] = [
   { documento: "1000000001", nombre: "Admin Demo", password: "admin123", rol: "ADMIN" as const },
+  { documento: "36279514", nombre: "Antonio", password: "antonio123", rol: "ADMIN" as const },
   {
     documento: "1000000002",
     nombre: "Cobrador Demo",
@@ -107,27 +116,54 @@ const PRODUCTOS = [
   { nombre: "Licuadora", precioBase: "380000.00" },
 ];
 
-async function seedUsuarios(): Promise<void> {
-  for (const user of USERS) {
-    const passwordHash = await bcrypt.hash(user.password, 10);
+// Admin dueño de TODO lo que siembra este script (multi-tenancy). Los
+// cobradores cuelgan de él y rutas/clientes/productos llevan su `adminId`.
+// Antonio es un ADMIN aparte: es la raíz de su propio tenant y arranca con
+// cartera vacía a propósito.
+const OWNER_DOCUMENTO = "1000000001";
 
-    await prisma.usuario.upsert({
-      where: { documento: user.documento },
-      update: { nombre: user.nombre, passwordHash, rol: user.rol, telefono: user.telefono ?? null },
-      create: {
-        documento: user.documento,
-        nombre: user.nombre,
-        passwordHash,
-        rol: user.rol,
-        telefono: user.telefono ?? null,
-      },
-    });
+async function upsertUsuario(user: SeedUser, adminId: string | null): Promise<void> {
+  const passwordHash = await bcrypt.hash(user.password, 10);
+  const campos = {
+    nombre: user.nombre,
+    passwordHash,
+    rol: user.rol,
+    telefono: user.telefono ?? null,
+    adminId,
+  };
 
-    console.log(`Usuario sembrado: ${user.nombre} (${user.rol}, documento ${user.documento})`);
-  }
+  await prisma.usuario.upsert({
+    where: { documento: user.documento },
+    update: campos,
+    create: { documento: user.documento, ...campos },
+  });
+
+  console.log(`Usuario sembrado: ${user.nombre} (${user.rol}, documento ${user.documento})`);
 }
 
-async function seedRutas(): Promise<void> {
+// Dos pasadas a propósito: los ADMIN primero (son la raíz del tenant, con
+// `adminId` null) y recién después los COBRADOR, que necesitan el id del owner
+// ya persistido. Resolver el owner con una lectura aparte —en vez de
+// capturarlo del upsert dentro del loop— es lo que rompe el ciclo de
+// inferencia de TS (`usuario` → `adminId` → `ownerId` → `usuario.id`, TS7022).
+async function seedUsuarios(): Promise<string> {
+  for (const user of USERS.filter((u) => u.rol === "ADMIN")) {
+    await upsertUsuario(user, null);
+  }
+
+  const owner = await prisma.usuario.findUnique({ where: { documento: OWNER_DOCUMENTO } });
+  if (!owner) {
+    throw new Error(`El seed requiere un ADMIN con documento ${OWNER_DOCUMENTO} en USERS.`);
+  }
+
+  for (const user of USERS.filter((u) => u.rol !== "ADMIN")) {
+    await upsertUsuario(user, owner.id);
+  }
+
+  return owner.id;
+}
+
+async function seedRutas(adminId: string): Promise<void> {
   const cobrador1 = await prisma.usuario.findUniqueOrThrow({ where: { documento: "1000000002" } });
   const cobrador2 = await prisma.usuario.findUniqueOrThrow({ where: { documento: "1000000003" } });
 
@@ -140,26 +176,31 @@ async function seedRutas(): Promise<void> {
 
   for (const ruta of RUTAS) {
     await prisma.ruta.upsert({
-      where: { nombre: ruta.nombre },
+      // Clave compuesta: el nombre de ruta ya no es único global.
+      where: { adminId_nombre: { adminId, nombre: ruta.nombre } },
       update: { cobradorId: ruta.cobradorId },
-      create: { nombre: ruta.nombre, cobradorId: ruta.cobradorId },
+      create: { nombre: ruta.nombre, cobradorId: ruta.cobradorId, adminId },
     });
 
     console.log(`Ruta sembrada: ${ruta.nombre}`);
   }
 }
 
-async function seedClientes(): Promise<void> {
+async function seedClientes(adminId: string): Promise<void> {
   for (const cliente of CLIENTES) {
-    const ruta = await prisma.ruta.findUniqueOrThrow({ where: { nombre: cliente.rutaNombre } });
+    const ruta = await prisma.ruta.findUniqueOrThrow({
+      where: { adminId_nombre: { adminId, nombre: cliente.rutaNombre } },
+    });
 
-    await prisma.cliente.upsert({
+    // El Cliente es identidad global (documento único); la pertenencia a ESTE
+    // admin — incluida su ruta — vive en `ClientAdmin` (multi-tenancy v2, un
+    // cliente puede ser cartera de más de un admin).
+    const cli = await prisma.cliente.upsert({
       where: { documento: cliente.documento },
       update: {
         nombre: cliente.nombre,
         telefono: cliente.telefono,
         direccion: cliente.direccion,
-        rutaId: ruta.id,
         passwordHash: cliente.passwordHash ?? null,
         mustChangePassword: cliente.mustChangePassword ?? false,
         passwordExpiresAt: cliente.passwordExpiresAt ?? null,
@@ -171,7 +212,6 @@ async function seedClientes(): Promise<void> {
         nombre: cliente.nombre,
         telefono: cliente.telefono,
         direccion: cliente.direccion,
-        rutaId: ruta.id,
         passwordHash: cliente.passwordHash ?? null,
         mustChangePassword: cliente.mustChangePassword ?? false,
         passwordExpiresAt: cliente.passwordExpiresAt ?? null,
@@ -182,19 +222,26 @@ async function seedClientes(): Promise<void> {
       },
     });
 
+    await prisma.clientAdmin.upsert({
+      where: { clientId_adminId: { clientId: cli.id, adminId } },
+      update: { rutaId: ruta.id, activo: true },
+      create: { clientId: cli.id, adminId, rutaId: ruta.id, activo: true },
+    });
+
     console.log(`Cliente sembrado: ${cliente.nombre} (${cliente.rutaNombre})`);
   }
 }
 
-async function seedProductos(): Promise<void> {
+async function seedProductos(adminId: string): Promise<void> {
   for (const producto of PRODUCTOS) {
     await prisma.producto.upsert({
-      where: { nombre: producto.nombre },
+      where: { adminId_nombre: { adminId, nombre: producto.nombre } },
       update: { precioBase: new Prisma.Decimal(producto.precioBase), activo: true },
       create: {
         nombre: producto.nombre,
         precioBase: new Prisma.Decimal(producto.precioBase),
         activo: true,
+        adminId,
       },
     });
 
@@ -270,7 +317,7 @@ const CREDITOS: CreditoSeed[] = [
   },
 ];
 
-async function seedCreditos(): Promise<void> {
+async function seedCreditos(adminId: string): Promise<void> {
   for (const c of CREDITOS) {
     const cliente = await prisma.cliente.findUniqueOrThrow({
       where: { documento: c.clienteDocumento },
@@ -279,9 +326,9 @@ async function seedCreditos(): Promise<void> {
     // pisa el precioBase de los sembrados en seedProductos.
     const monto = new Prisma.Decimal(c.monto);
     const producto = await prisma.producto.upsert({
-      where: { nombre: c.producto },
+      where: { adminId_nombre: { adminId, nombre: c.producto } },
       update: { activo: true },
-      create: { nombre: c.producto, precioBase: monto, activo: true },
+      create: { nombre: c.producto, precioBase: monto, activo: true, adminId },
     });
 
     // Derivar montos como el service: total = monto + monto*interes/100.
@@ -300,6 +347,7 @@ async function seedCreditos(): Promise<void> {
       update: {
         clienteId: cliente.id,
         productoId: producto.id,
+        adminId,
         monto,
         interes,
         dias: c.dias,
@@ -313,6 +361,7 @@ async function seedCreditos(): Promise<void> {
         codigo: c.codigo,
         clienteId: cliente.id,
         productoId: producto.id,
+        adminId,
         monto,
         interes,
         dias: c.dias,
@@ -348,11 +397,13 @@ async function seedCreditos(): Promise<void> {
 }
 
 async function main(): Promise<void> {
-  await seedUsuarios();
-  await seedRutas();
-  await seedClientes();
-  await seedProductos();
-  await seedCreditos();
+  // `seedUsuarios` devuelve el id del admin dueño; todo lo demás se siembra
+  // dentro de ese tenant.
+  const adminId = await seedUsuarios();
+  await seedRutas(adminId);
+  await seedClientes(adminId);
+  await seedProductos(adminId);
+  await seedCreditos(adminId);
 }
 
 main()

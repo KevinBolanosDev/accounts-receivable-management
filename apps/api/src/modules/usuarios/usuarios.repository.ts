@@ -8,7 +8,7 @@ const cobradorInclude = {
     select: {
       id: true,
       nombre: true,
-      _count: { select: { clientes: { where: { activo: true } } } },
+      _count: { select: { clientAdmins: { where: { activo: true } } } },
     },
   },
 } satisfies Prisma.UsuarioInclude;
@@ -27,8 +27,8 @@ export class UsuariosRepository {
     });
   }
 
-  findById(id: string): Promise<CobradorWithRelations | null> {
-    return this.prisma.usuario.findUnique({ where: { id }, include: cobradorInclude });
+  findById(id: string, where?: Prisma.UsuarioWhereInput): Promise<CobradorWithRelations | null> {
+    return this.prisma.usuario.findFirst({ where: { ...where, id }, include: cobradorInclude });
   }
 
   create(data: Prisma.UsuarioCreateInput): Promise<CobradorWithRelations> {
@@ -39,18 +39,28 @@ export class UsuariosRepository {
     return this.prisma.usuario.update({ where: { id }, data, include: cobradorInclude });
   }
 
-  async assignRoute(usuarioId: string, rutaId: string | null): Promise<void> {
+  // `adminId` acota ambas escrituras al tenant. En el segundo paso se usa
+  // `updateMany` en vez de `update` justamente para poder filtrar por `adminId`
+  // además del id: con `update` (que solo acepta el unique) un admin podía
+  // apropiarse de la ruta de otro pasando su id.
+  async assignRoute(usuarioId: string, rutaId: string | null, adminId: string): Promise<void> {
     if (rutaId === null) {
       await this.prisma.ruta.updateMany({
-        where: { cobradorId: usuarioId },
+        where: { cobradorId: usuarioId, adminId },
         data: { cobradorId: null },
       });
       return;
     }
 
     await this.prisma.$transaction([
-      this.prisma.ruta.updateMany({ where: { cobradorId: usuarioId }, data: { cobradorId: null } }),
-      this.prisma.ruta.update({ where: { id: rutaId }, data: { cobradorId: usuarioId } }),
+      this.prisma.ruta.updateMany({
+        where: { cobradorId: usuarioId, adminId },
+        data: { cobradorId: null },
+      }),
+      this.prisma.ruta.updateMany({
+        where: { id: rutaId, adminId },
+        data: { cobradorId: usuarioId },
+      }),
     ]);
   }
 }

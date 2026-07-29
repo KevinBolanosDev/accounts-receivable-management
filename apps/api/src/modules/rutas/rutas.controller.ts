@@ -57,8 +57,9 @@ export class RutasController {
   @Roles("ADMIN")
   async create(
     @Body(new ZodValidationPipe(createRutaRequestSchema)) body: CreateRutaRequest,
+    @CurrentUser() user: AuthenticatedUser,
   ): Promise<RutaListItem> {
-    const ruta = await this.rutasService.create(body);
+    const ruta = await this.rutasService.create(body, user);
     return rutaListItemSchema.parse(ruta);
   }
 
@@ -67,16 +68,17 @@ export class RutasController {
   async update(
     @Param("id") id: string,
     @Body(new ZodValidationPipe(updateRutaRequestSchema)) body: UpdateRutaRequest,
+    @CurrentUser() user: AuthenticatedUser,
   ): Promise<RutaListItem> {
-    const ruta = await this.rutasService.update(id, body);
+    const ruta = await this.rutasService.update(id, body, user);
     return rutaListItemSchema.parse(ruta);
   }
 
   @Delete(":id")
   @HttpCode(HttpStatus.NO_CONTENT)
   @Roles("ADMIN")
-  async remove(@Param("id") id: string): Promise<void> {
-    await this.rutasService.remove(id);
+  async remove(@Param("id") id: string, @CurrentUser() user: AuthenticatedUser): Promise<void> {
+    await this.rutasService.remove(id, user);
   }
 
   // Asignar/quitar clientes de una ruta (§3 — cierre de Fase 3, pantalla de

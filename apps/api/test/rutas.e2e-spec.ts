@@ -15,6 +15,7 @@ import {
   usuarioSchema,
 } from "@repo/types";
 import { AppModule } from "./../src/app.module";
+import { seedAdminId } from "./helpers/tenant";
 
 // Precondición: la base tiene el seed de la Fase 2 (`pnpm db:seed`) — Admin,
 // dos Cobradores demo con rutas propias, y Ruta Sur sin cobrador asignado.
@@ -37,16 +38,25 @@ async function login(
 }
 
 // Limpia restos de una corrida anterior (incluida una que haya fallado a
-// mitad). Borra primero los Clientes de esas rutas: `Cliente.ruta` tiene
-// `onDelete: Restrict`, así que un deleteMany de rutas huérfanas con algún
-// cliente colgado fallaría y dejaría el suite irrecuperable sin esto.
+// mitad). Borra primero los ClientAdmin y Clientes de esas rutas: la ruta
+// ahora se asigna vía ClientAdmin (relación cliente↔admin, `onDelete:
+// Restrict` hacia Cliente Y hacia Ruta), así que un deleteMany de rutas
+// huérfanas con algún cliente colgado fallaría y dejaría el suite
+// irrecuperable sin esto.
 async function limpiarFixturesE2E(): Promise<void> {
   const rutasTest = await prisma.ruta.findMany({
     where: { nombre: { startsWith: "Ruta E2E" } },
     select: { id: true },
   });
   if (rutasTest.length > 0) {
-    await prisma.cliente.deleteMany({ where: { rutaId: { in: rutasTest.map((r) => r.id) } } });
+    const routeIds = rutasTest.map((r) => r.id);
+    const clientAdmins = await prisma.clientAdmin.findMany({
+      where: { rutaId: { in: routeIds } },
+      select: { clientId: true },
+    });
+    const clienteIds = clientAdmins.map((ca) => ca.clientId);
+    await prisma.clientAdmin.deleteMany({ where: { clientId: { in: clienteIds } } });
+    await prisma.cliente.deleteMany({ where: { id: { in: clienteIds } } });
   }
   await prisma.ruta.deleteMany({ where: { nombre: { startsWith: "Ruta E2E" } } });
 }
@@ -229,14 +239,17 @@ describe("RutasController (e2e)", () => {
     it("responde 409 si la ruta tiene clientes asignados", async () => {
       const { token } = await login(app, ADMIN);
 
-      const ruta = await prisma.ruta.create({ data: { nombre: "Ruta E2E Con Clientes" } });
+      const adminId = await seedAdminId(prisma);
+      const ruta = await prisma.ruta.create({
+        data: { nombre: "Ruta E2E Con Clientes", adminId },
+      });
       const cliente = await prisma.cliente.create({
         data: {
           nombre: "Cliente E2E",
           telefono: "3000000000",
           documento: `e2e-${randomBytes(4).toString("hex")}`,
           direccion: "Dirección de prueba",
-          rutaId: ruta.id,
+          admins: { create: { adminId, rutaId: ruta.id } },
         },
       });
 
@@ -249,6 +262,8 @@ describe("RutasController (e2e)", () => {
         // finally: si el expect(409) falla, igual hay que limpiar o el
         // deleteMany de nombre de la siguiente corrida choca con la FK
         // Restrict (cliente colgado) y deja el suite roto para todos los tests.
+        // ClientAdmin primero: Restrict hacia Cliente Y hacia Ruta.
+        await prisma.clientAdmin.deleteMany({ where: { clientId: cliente.id } });
         await prisma.cliente.delete({ where: { id: cliente.id } });
         await prisma.ruta.delete({ where: { id: ruta.id } });
       }
@@ -256,7 +271,9 @@ describe("RutasController (e2e)", () => {
 
     it("elimina una ruta sin clientes", async () => {
       const { token } = await login(app, ADMIN);
-      const ruta = await prisma.ruta.create({ data: { nombre: "Ruta E2E Vacía" } });
+      const ruta = await prisma.ruta.create({
+        data: { nombre: "Ruta E2E Vacía", adminId: await seedAdminId(prisma) },
+      });
 
       await request(app.getHttpServer())
         .delete(`/routes/${ruta.id}`)

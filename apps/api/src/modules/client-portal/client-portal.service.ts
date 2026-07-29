@@ -60,7 +60,14 @@ export class ClientPortalService {
       include: {
         producto: { select: { nombre: true } },
         cliente: {
-          select: { id: true, nombre: true, ruta: { select: { id: true, nombre: true } } },
+          select: {
+            id: true,
+            nombre: true,
+            // Todas las relaciones cliente↔admin de este cliente (puede ser
+            // cartera de varios) — se resuelve la de ESTE crédito abajo, por
+            // `row.adminId` (Credito.adminId es explícito, ver schema).
+            admins: { select: { adminId: true, ruta: { select: { id: true, nombre: true } } } },
+          },
         },
         pagos: {
           orderBy: { fecha: "asc" },
@@ -77,6 +84,7 @@ export class ClientPortalService {
       cuotasPagadas: item.cuotasPagadas,
       estado: item.estado,
     });
+    const relation = row.cliente.admins.find((a) => a.adminId === row.adminId);
 
     const pagos = buildPaymentHistory(
       { id: row.id, fechaInicio: row.fechaInicio, dias: row.dias },
@@ -99,9 +107,7 @@ export class ClientPortalService {
       cliente: {
         id: row.cliente.id,
         nombre: row.cliente.nombre,
-        ruta: row.cliente.ruta
-          ? { id: row.cliente.ruta.id, nombre: row.cliente.ruta.nombre }
-          : null,
+        ruta: relation?.ruta ? { id: relation.ruta.id, nombre: relation.ruta.nombre } : null,
       },
       pagos,
     };

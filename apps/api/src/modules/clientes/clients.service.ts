@@ -21,6 +21,7 @@ import type {
 } from "@repo/types";
 
 import type { AuthenticatedUser } from "../../core/auth/auth-request";
+import { requireAdminId } from "../../core/auth/tenant.util";
 import { TEMPORARY_PASSWORD_EXPIRY_HOURS } from "../../core/security/lockout-policy";
 import {
   mapCreditoListItem,
@@ -43,33 +44,45 @@ export class ClientsService {
   ) {}
 
   async findAll(user: AuthenticatedUser, query: ClientesQuery): Promise<ClienteListItem[]> {
-    const clients = await this.clientsRepository.findMany(this.scopedWhere(user, query));
+    const adminId = requireAdminId(user);
+    const clients = await this.clientsRepository.findMany(this.scopedWhere(user, query), adminId);
     return clients.map((client) => this.toListItem(client));
   }
 
   async findOne(id: string, user: AuthenticatedUser): Promise<ClienteDetail> {
-    const client = await this.clientsRepository.findById(id, this.scopeWhere(user));
+    const adminId = requireAdminId(user);
+    const client = await this.clientsRepository.findById(id, this.scopeWhere(user), adminId);
     if (!client) throw new NotFoundException("Cliente no encontrado.");
     return this.toDetail(client);
   }
 
   async create(body: CreateClienteRequest, user: AuthenticatedUser): Promise<ClienteDetail> {
+    const adminId = requireAdminId(user);
     if (body.rutaId) {
       await this.assertRouteAccess(body.rutaId, user);
     }
 
     try {
-      const client = await this.clientsRepository.create({
-        nombre: body.nombre,
-        telefono: body.telefono,
-        documento: body.documento,
-        direccion: body.direccion,
-        ruta: body.rutaId ? { connect: { id: body.rutaId } } : undefined,
-        fotoDocumentoFrenteUrl: body.fotoDocumentoFrenteUrl,
-        fotoDocumentoReversoUrl: body.fotoDocumentoReversoUrl,
-        contactoNombre: body.contactoNombre,
-        contactoTelefono: body.contactoTelefono,
-      });
+      const client = await this.clientsRepository.create(
+        {
+          nombre: body.nombre,
+          telefono: body.telefono,
+          documento: body.documento,
+          direccion: body.direccion,
+          fotoDocumentoFrenteUrl: body.fotoDocumentoFrenteUrl,
+          fotoDocumentoReversoUrl: body.fotoDocumentoReversoUrl,
+          contactoNombre: body.contactoNombre,
+          contactoTelefono: body.contactoTelefono,
+          // El cliente nace en el tenant de quien lo da de alta (el ADMIN dueño,
+          // o el ADMIN del cobrador que lo registra) — una fila ClientAdmin, no
+          // una columna. Si el documento ya existe como cliente de OTRO admin,
+          // esto sigue fallando con 409 (ver mapError): vincular un cliente
+          // existente a un segundo admin es una acción explícita que todavía no
+          // existe, no un efecto secundario silencioso del alta.
+          admins: { create: { adminId, rutaId: body.rutaId ?? null } },
+        },
+        adminId,
+      );
       return this.toDetail(client);
     } catch (error) {
       throw this.mapError(error);
@@ -81,7 +94,8 @@ export class ClientsService {
     body: UpdateClienteRequest,
     user: AuthenticatedUser,
   ): Promise<ClienteDetail> {
-    const existing = await this.clientsRepository.findById(id, this.scopeWhere(user));
+    const adminId = requireAdminId(user);
+    const existing = await this.clientsRepository.findById(id, this.scopeWhere(user), adminId);
     if (!existing) throw new NotFoundException("Cliente no encontrado.");
 
     // `rutaId` en el body: `undefined` = no tocar, `null` = quitar de su ruta
@@ -91,43 +105,71 @@ export class ClientsService {
     }
 
     try {
-      const client = await this.clientsRepository.update(id, {
-        nombre: body.nombre,
-        telefono: body.telefono,
-        documento: body.documento,
-        direccion: body.direccion,
-        ruta:
-          body.rutaId === undefined
-            ? undefined
-            : body.rutaId === null
-              ? { disconnect: true }
-              : { connect: { id: body.rutaId } },
-        fotoDocumentoFrenteUrl: body.fotoDocumentoFrenteUrl,
-        fotoDocumentoReversoUrl: body.fotoDocumentoReversoUrl,
-        contactoNombre: body.contactoNombre,
-        contactoTelefono: body.contactoTelefono,
-      });
+      const client = await this.clientsRepository.update(
+        id,
+        {
+          nombre: body.nombre,
+          telefono: body.telefono,
+          documento: body.documento,
+          direccion: body.direccion,
+          fotoDocumentoFrenteUrl: body.fotoDocumentoFrenteUrl,
+          fotoDocumentoReversoUrl: body.fotoDocumentoReversoUrl,
+          contactoNombre: body.contactoNombre,
+          contactoTelefono: body.contactoTelefono,
+          // `rutaId` es propiedad de MI relación con el cliente (ClientAdmin),
+          // no del cliente: tocarla nunca debe afectar la ruta que otro admin
+          // le asignó a este mismo cliente.
+          admins:
+            body.rutaId === undefined
+              ? undefined
+              : {
+                  update: {
+                    where: { clientId_adminId: { clientId: id, adminId } },
+                    data: { rutaId: body.rutaId },
+                  },
+                },
+        },
+        adminId,
+      );
       return this.toDetail(client);
     } catch (error) {
       throw this.mapError(error);
     }
   }
 
-  async remove(id: string): Promise<void> {
-    const client = await this.clientsRepository.findById(id);
+  async remove(id: string, user: AuthenticatedUser): Promise<void> {
+    const adminId = requireAdminId(user);
+    // Scoped: sin el `scopeWhere` un ADMIN podía dar de baja el cliente de otro
+    // ADMIN pasando su id a mano.
+    const client = await this.clientsRepository.findById(id, this.scopeWhere(user), adminId);
     if (!client) throw new NotFoundException("Cliente no encontrado.");
-    await this.clientsRepository.update(id, { activo: false });
+    // Desactiva MI relación con el cliente, no al cliente global: si es
+    // cartera de otro admin también, ese otro admin no debe verse afectado.
+    await this.clientsRepository.update(
+      id,
+      {
+        admins: {
+          update: {
+            where: { clientId_adminId: { clientId: id, adminId } },
+            data: { activo: false },
+          },
+        },
+      },
+      adminId,
+    );
   }
 
   // Fase 4.13 — genera (o resetea) el acceso del cliente al portal: password
   // temporal + `mustChangePassword=true` + expiración de 24h. El staff ve
   // `temporaryPassword` UNA sola vez (no se persiste en claro).
   async generateAccess(id: string, user: AuthenticatedUser): Promise<GenerateAccessResponse> {
-    const client = await this.clientsRepository.findById(id);
+    const adminId = requireAdminId(user);
+    const client = await this.clientsRepository.findById(id, this.tenantWhere(user), adminId);
     if (!client) throw new NotFoundException("Cliente no encontrado.");
-    await this.assertClientRouteAccess(client.rutaId, user);
+    const myRelation = client.admins[0];
+    await this.assertClientRouteAccess(myRelation?.rutaId ?? null, user);
 
-    if (!client.activo) {
+    if (!myRelation?.activo) {
       throw new BadRequestException("No puedes generar acceso a un cliente inactivo.");
     }
 
@@ -135,14 +177,18 @@ export class ClientsService {
     const passwordHash = await bcrypt.hash(temporaryPassword, 10);
     const expiresAt = new Date(Date.now() + TEMPORARY_PASSWORD_EXPIRY_HOURS * 60 * 60 * 1000);
 
-    await this.clientsRepository.update(id, {
-      passwordHash,
-      mustChangePassword: true,
-      passwordExpiresAt: expiresAt,
-      failedLoginAttempts: 0,
-      lockedUntil: null,
-      lastLoginAt: null,
-    });
+    await this.clientsRepository.update(
+      id,
+      {
+        passwordHash,
+        mustChangePassword: true,
+        passwordExpiresAt: expiresAt,
+        failedLoginAttempts: 0,
+        lockedUntil: null,
+        lastLoginAt: null,
+      },
+      adminId,
+    );
 
     return { temporaryPassword, expiresAt: expiresAt.toISOString() };
   }
@@ -150,17 +196,22 @@ export class ClientsService {
   // Revoca el acceso: el cliente ya no puede loguearse (passwordHash null es
   // el mismo criterio que "sin acceso" en `auth-cliente.service.ts:login`).
   async deleteAccess(id: string, user: AuthenticatedUser): Promise<void> {
-    const client = await this.clientsRepository.findById(id);
+    const adminId = requireAdminId(user);
+    const client = await this.clientsRepository.findById(id, this.tenantWhere(user), adminId);
     if (!client) throw new NotFoundException("Cliente no encontrado.");
-    await this.assertClientRouteAccess(client.rutaId, user);
+    await this.assertClientRouteAccess(client.admins[0]?.rutaId ?? null, user);
 
-    await this.clientsRepository.update(id, {
-      passwordHash: null,
-      mustChangePassword: false,
-      passwordExpiresAt: null,
-      failedLoginAttempts: 0,
-      lockedUntil: null,
-    });
+    await this.clientsRepository.update(
+      id,
+      {
+        passwordHash: null,
+        mustChangePassword: false,
+        passwordExpiresAt: null,
+        failedLoginAttempts: 0,
+        lockedUntil: null,
+      },
+      adminId,
+    );
   }
 
   // Mismo criterio que `assertRouteAccess` pero partiendo de un `rutaId`
@@ -184,7 +235,8 @@ export class ClientsService {
   // igual que `findAll` (COBRADOR solo ve los suyos). Los créditos ANULADOS
   // no cuentan para la cartera ni el saldo.
   async summary(user: AuthenticatedUser): Promise<ClientesSummary> {
-    const clients = await this.clientsRepository.findManyForSummary(this.scopeWhere(user));
+    const adminId = requireAdminId(user);
+    const clients = await this.clientsRepository.findManyForSummary(this.scopeWhere(user), adminId);
 
     let cartera = 0;
     let saldo = 0;
@@ -204,20 +256,48 @@ export class ClientsService {
     };
   }
 
+  // Dos niveles de restricción, siempre combinados en la MISMA fila de
+  // `admins` (no en filtros `some` separados): un cliente puede tener una
+  // fila ClientAdmin por cada admin que lo tiene como cartera, y todas las
+  // condiciones deben cumplirse sobre la fila de ESTE admin, nunca sobre la
+  // de otro.
+  //   1. Tenant (`adminId`): aplica a TODOS los roles de staff. Es lo que
+  //      impide que un ADMIN vea la cartera de otro ADMIN.
+  //   2. Ruta (`cobradorId`): solo para COBRADOR, dentro de su propio tenant.
+  // Solo el tenant, sin el filtro `activo`. Lo usan los flujos de acceso al
+  // portal, que necesitan encontrar al cliente inactivo para responder
+  // "no puedes generar acceso a un cliente inactivo" en vez de un 404 ciego.
+  private tenantWhere(user: AuthenticatedUser): Prisma.ClienteWhereInput {
+    return { admins: { some: { adminId: requireAdminId(user) } } };
+  }
+
   private scopeWhere(user: AuthenticatedUser): Prisma.ClienteWhereInput {
+    const adminId = requireAdminId(user);
     return {
-      activo: true,
-      // Igual que en rutas.service: una ruta desactivada no debe filtrar
-      // clientes accesibles al cobrador por ningún camino (ni "Mis rutas" ni
-      // "Clientes").
-      ...(user.rol === "COBRADOR" ? { ruta: { cobradorId: user.sub, activa: true } } : {}),
+      admins: {
+        some: {
+          adminId,
+          activo: true,
+          // Igual que en rutas.service: una ruta desactivada no debe filtrar
+          // clientes accesibles al cobrador por ningún camino (ni "Mis rutas"
+          // ni "Clientes").
+          ...(user.rol === "COBRADOR" ? { ruta: { cobradorId: user.sub, activa: true } } : {}),
+        },
+      },
     };
   }
 
   private scopedWhere(user: AuthenticatedUser, query: ClientesQuery): Prisma.ClienteWhereInput {
+    const adminId = requireAdminId(user);
     return {
-      ...this.scopeWhere(user),
-      ...(query.rutaId ? { rutaId: query.rutaId } : {}),
+      admins: {
+        some: {
+          adminId,
+          activo: true,
+          ...(user.rol === "COBRADOR" ? { ruta: { cobradorId: user.sub, activa: true } } : {}),
+          ...(query.rutaId ? { rutaId: query.rutaId } : {}),
+        },
+      },
       ...(query.search
         ? {
             OR: [
@@ -231,7 +311,11 @@ export class ClientsService {
 
   private async assertRouteAccess(rutaId: string, user: AuthenticatedUser): Promise<void> {
     const route = await this.clientsRepository.findRouteById(rutaId);
-    if (!route) throw new NotFoundException("La ruta no existe.");
+    // Una ruta de otro tenant se reporta como inexistente, no como prohibida:
+    // un 403 confirmaría que ese id existe en la cartera de otro admin.
+    if (!route || route.adminId !== requireAdminId(user)) {
+      throw new NotFoundException("La ruta no existe.");
+    }
     if (user.rol === "COBRADOR" && route.cobradorId !== user.sub) {
       throw new ForbiddenException("No puedes asignar clientes a una ruta ajena.");
     }
@@ -297,6 +381,9 @@ export class ClientsService {
 
   private toListItem(client: ClientWithRoute): ClienteListItem {
     const agregados = this.computeAgregados(client.creditos);
+    // La única fila de `admins` presente es la de ESTE admin (el include la
+    // filtra por `adminId`) — ver el comentario en `clients.repository.ts`.
+    const myRelation = client.admins[0];
     return {
       id: client.id,
       nombre: client.nombre,
@@ -305,10 +392,10 @@ export class ClientsService {
       direccion: client.direccion,
       fotoDocumentoFrenteUrl: client.fotoDocumentoFrenteUrl,
       fotoDocumentoReversoUrl: client.fotoDocumentoReversoUrl,
-      rutaId: client.rutaId,
+      rutaId: myRelation?.rutaId ?? null,
       contactoNombre: client.contactoNombre,
       contactoTelefono: client.contactoTelefono,
-      ruta: client.ruta ? { id: client.ruta.id, nombre: client.ruta.nombre } : null,
+      ruta: myRelation?.ruta ? { id: myRelation.ruta.id, nombre: myRelation.ruta.nombre } : null,
       saldoPendiente: agregados.saldoPendiente,
       porcentajePagado: agregados.porcentajePagado,
       estado: agregados.estado,
@@ -321,6 +408,7 @@ export class ClientsService {
     // del flatMap, dos créditos podrían caer en días distintos al cruzar la
     // medianoche a mitad del cálculo.
     const hoy = new Date();
+    const myRelation = client.admins[0];
 
     return {
       id: client.id,
@@ -332,12 +420,12 @@ export class ClientsService {
       contactoTelefono: client.contactoTelefono,
       fotoDocumentoFrenteUrl: client.fotoDocumentoFrenteUrl,
       fotoDocumentoReversoUrl: client.fotoDocumentoReversoUrl,
-      rutaId: client.rutaId,
-      ruta: client.ruta ? { id: client.ruta.id, nombre: client.ruta.nombre } : null,
+      rutaId: myRelation?.rutaId ?? null,
+      ruta: myRelation?.ruta ? { id: myRelation.ruta.id, nombre: myRelation.ruta.nombre } : null,
       saldoPendiente: agregados.saldoPendiente,
       porcentajePagado: agregados.porcentajePagado,
       estado: agregados.estado,
-      cobradorNombre: client.ruta?.cobrador?.nombre ?? null,
+      cobradorNombre: myRelation?.ruta?.cobrador?.nombre ?? null,
       creditosActivos: agregados.creditosActivos,
       creditosHistorial: agregados.creditosHistorial,
       tieneAccesoPortal: client.passwordHash !== null,

@@ -97,8 +97,8 @@ export class ClientesController {
   @Delete(":id")
   @HttpCode(HttpStatus.NO_CONTENT)
   @Roles("ADMIN")
-  async remove(@Param("id") id: string): Promise<void> {
-    await this.clientsService.remove(id);
+  async remove(@Param("id") id: string, @CurrentUser() user: AuthenticatedUser): Promise<void> {
+    await this.clientsService.remove(id, user);
   }
 
   // Fase 4.13 — genera/resetea la contraseña temporal del portal del

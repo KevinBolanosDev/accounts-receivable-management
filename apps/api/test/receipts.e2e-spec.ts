@@ -7,6 +7,7 @@ import { PrismaPg } from "@prisma/adapter-pg";
 import { Prisma, PrismaClient } from "@prisma/client";
 import { loginResponseSchema } from "@repo/types";
 import { AppModule } from "../src/app.module";
+import { seedAdminId } from "./helpers/tenant";
 import { ReceiptTokenService } from "../src/core/receipts/receipt-token.service";
 
 const ADMIN = { documento: "1000000001", password: "admin123" };
@@ -34,11 +35,12 @@ describe("ReceiptsController (e2e)", () => {
 
   beforeAll(async () => {
     await prisma.cliente.deleteMany({ where: { documento: { startsWith: "receipts-e2e-" } } });
+    const adminId = await seedAdminId(prisma);
     const collectorA = await prisma.usuario.findUniqueOrThrow({
       where: { documento: COLLECTOR_A.documento },
     });
     routeA = await prisma.ruta.create({
-      data: { nombre: `${ROUTE_PREFIX} ${Date.now()}`, cobradorId: collectorA.id },
+      data: { nombre: `${ROUTE_PREFIX} ${Date.now()}`, cobradorId: collectorA.id, adminId },
     });
     const cliente = await prisma.cliente.create({
       data: {
@@ -46,19 +48,20 @@ describe("ReceiptsController (e2e)", () => {
         telefono: "3000000000",
         documento: `receipts-e2e-${Date.now()}`,
         direccion: "Test",
-        rutaId: routeA.id,
+        admins: { create: { adminId, rutaId: routeA.id } },
       },
     });
     const producto = await prisma.producto.upsert({
-      where: { nombre: PRODUCTO_NOMBRE },
+      where: { adminId_nombre: { adminId, nombre: PRODUCTO_NOMBRE } },
       update: {},
-      create: { nombre: PRODUCTO_NOMBRE, precioBase: new Prisma.Decimal(100000) },
+      create: { nombre: PRODUCTO_NOMBRE, precioBase: new Prisma.Decimal(100000), adminId },
     });
     const credito = await prisma.credito.create({
       data: {
         codigo: `CR-RCP-${Date.now()}`,
         clienteId: cliente.id,
         productoId: producto.id,
+        adminId,
         monto: new Prisma.Decimal(100000),
         interes: new Prisma.Decimal(0),
         dias: 10,
@@ -90,13 +93,17 @@ describe("ReceiptsController (e2e)", () => {
       select: { id: true },
     });
     const routeIds = routes.map((r) => r.id);
-    const clientes = await prisma.cliente.findMany({
+    // La ruta ahora vive en ClientAdmin (relación cliente↔admin), no en
+    // Cliente: hay que resolver los clientId por ahí, y borrar esa fila antes
+    // que el Cliente y la Ruta (ambos FK Restrict desde ClientAdmin).
+    const clientAdmins = await prisma.clientAdmin.findMany({
       where: { rutaId: { in: routeIds } },
-      select: { id: true },
+      select: { clientId: true },
     });
-    const clienteIds = clientes.map((c) => c.id);
+    const clienteIds = clientAdmins.map((ca) => ca.clientId);
     await prisma.pago.deleteMany({ where: { credito: { clienteId: { in: clienteIds } } } });
     await prisma.credito.deleteMany({ where: { clienteId: { in: clienteIds } } });
+    await prisma.clientAdmin.deleteMany({ where: { clientId: { in: clienteIds } } });
     await prisma.cliente.deleteMany({ where: { id: { in: clienteIds } } });
     await prisma.ruta.deleteMany({ where: { id: { in: routeIds } } });
     await prisma.$disconnect();

@@ -8,6 +8,7 @@ import {
   type UpdateProductoRequest,
 } from "@repo/types";
 
+import type { AuthenticatedUser } from "../../core/auth/auth-request";
 import { CurrentUser } from "../../core/auth/current-user.decorator";
 import { Roles } from "../../core/auth/roles.decorator";
 import { ZodValidationPipe } from "../../core/pipes/zod-validation.pipe";
@@ -24,8 +25,8 @@ export class ProductosController {
   constructor(private readonly productosService: ProductosService) {}
 
   @Get()
-  async findAll(): Promise<Producto[]> {
-    const rows = await this.productosService.findAll();
+  async findAll(@CurrentUser() user: AuthenticatedUser): Promise<Producto[]> {
+    const rows = await this.productosService.findAll(user);
     return productoSchema.array().parse(rows);
   }
 
@@ -33,8 +34,9 @@ export class ProductosController {
   @Roles("ADMIN")
   async create(
     @Body(new ZodValidationPipe(createProductoRequestSchema)) body: CreateProductoRequest,
+    @CurrentUser() user: AuthenticatedUser,
   ): Promise<Producto> {
-    const created = await this.productosService.create(body);
+    const created = await this.productosService.create(body, user);
     return productoSchema.parse(created);
   }
 
@@ -43,8 +45,9 @@ export class ProductosController {
   async update(
     @Param("id") id: string,
     @Body(new ZodValidationPipe(updateProductoRequestSchema)) body: UpdateProductoRequest,
+    @CurrentUser() user: AuthenticatedUser,
   ): Promise<Producto> {
-    const updated = await this.productosService.update(id, body);
+    const updated = await this.productosService.update(id, body, user);
     return productoSchema.parse(updated);
   }
 }
@@ -52,4 +55,3 @@ export class ProductosController {
 // (El controller re-parsea cada salida con el schema de @repo/types; el service
 // ya hace Decimal → number al toDto. Esta doble verificación es la convención
 // de los módulos CRUD de Fase 2 (clientes, rutas).)
-void CurrentUser;

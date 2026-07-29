@@ -7,22 +7,37 @@ const creditoListInclude = {
   producto: { select: { id: true, nombre: true } },
 } satisfies Prisma.CreditoInclude;
 
-const creditoDetailInclude = {
-  ...creditoListInclude,
-  cliente: {
-    select: { id: true, nombre: true, ruta: { select: { id: true, nombre: true } } },
-  },
-  pagos: {
-    orderBy: { fecha: "desc" },
-    include: { cobrador: { select: { nombre: true } } },
-  },
-} satisfies Prisma.CreditoInclude;
+// `cliente.admins` filtrado por `adminId` (el propio tenant del crédito, ya
+// que `Credito.adminId` es explícito): es la relación cliente↔admin que trae
+// la ruta a mostrar en el detalle. Un crédito siempre tiene `adminId` fijo,
+// así que esta relación siempre existe (el service la exige al crear, ver
+// `creditos.service.ts`).
+function buildCreditoDetailInclude(adminId: string) {
+  return {
+    ...creditoListInclude,
+    cliente: {
+      select: {
+        id: true,
+        nombre: true,
+        admins: {
+          where: { adminId },
+          take: 1,
+          select: { ruta: { select: { id: true, nombre: true } } },
+        },
+      },
+    },
+    pagos: {
+      orderBy: { fecha: "desc" },
+      include: { cobrador: { select: { nombre: true } } },
+    },
+  } satisfies Prisma.CreditoInclude;
+}
 
 export type CreditoWithProducto = Prisma.CreditoGetPayload<{
   include: typeof creditoListInclude;
 }>;
 export type CreditoWithDetail = Prisma.CreditoGetPayload<{
-  include: typeof creditoDetailInclude;
+  include: ReturnType<typeof buildCreditoDetailInclude>;
 }>;
 
 @Injectable()
@@ -39,10 +54,14 @@ export class CreditosRepository {
     });
   }
 
-  findById(id: string, where?: Prisma.CreditoWhereInput): Promise<CreditoWithDetail | null> {
+  findById(
+    id: string,
+    where: Prisma.CreditoWhereInput | undefined,
+    adminId: string,
+  ): Promise<CreditoWithDetail | null> {
     return this.prisma.credito.findFirst({
       where: { ...where, id },
-      include: creditoDetailInclude,
+      include: buildCreditoDetailInclude(adminId),
     });
   }
 
@@ -51,19 +70,6 @@ export class CreditosRepository {
       where: { codigo },
       include: creditoListInclude,
     });
-  }
-
-  // Resuelve `cliente.ruta.cobradorId = user.sub` para el scoping del cobrador.
-  scopedWhereForUser(args: {
-    userSub: string;
-    clienteId?: string;
-    estado?: "ACTIVO" | "PAGADO" | "MORA" | "ANULADO";
-  }): Prisma.CreditoWhereInput {
-    return {
-      ...(args.estado ? { estado: args.estado } : {}),
-      ...(args.clienteId ? { clienteId: args.clienteId } : {}),
-      cliente: { ruta: { cobradorId: args.userSub } },
-    };
   }
 
   create(data: Prisma.CreditoCreateInput): Promise<CreditoWithProducto> {

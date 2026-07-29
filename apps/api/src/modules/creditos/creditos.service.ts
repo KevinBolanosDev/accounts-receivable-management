@@ -17,6 +17,7 @@ import type {
 
 import { PrismaService } from "../../core/prisma/prisma.service";
 import type { AuthenticatedUser } from "../../core/auth/auth-request";
+import { requireAdminId } from "../../core/auth/tenant.util";
 
 import {
   CreditosRepository,
@@ -40,32 +41,47 @@ export class CreditosService {
   }
 
   async findOne(id: string, user: AuthenticatedUser): Promise<CreditoDetail> {
+    const adminId = requireAdminId(user);
     const where = this.scopedWhereByCliente(user);
-    const row = await this.creditosRepository.findById(id, where);
+    const row = await this.creditosRepository.findById(id, where, adminId);
     if (!row) throw new NotFoundException("Crédito no encontrado.");
     return toDetail(row);
   }
 
   async create(body: CreateCreditoRequest, user: AuthenticatedUser): Promise<Credito> {
-    // 1. Verificar que el cliente existe (con su ruta, para el scoping).
-    const cliente = await this.prisma.cliente.findUnique({
-      where: { id: body.clienteId },
-      include: { ruta: { select: { id: true, cobradorId: true } } },
+    const adminId = requireAdminId(user);
+
+    // 1. Verificar que el cliente existe Y está asignado a ESTE admin (fila
+    // ClientAdmin), con su ruta EN ESE tenant para el scoping por cobrador.
+    // Un cliente sin relación con este admin (inexistente, o cartera de OTRO
+    // admin) se reporta como inexistente, no como prohibido — y tampoco
+    // alcanza a crear el crédito: es exactamente el gate de "un cliente
+    // compartido solo es cartera de un admin si tiene la fila de unión".
+    const cliente = await this.prisma.cliente.findFirst({
+      where: { id: body.clienteId, admins: { some: { adminId } } },
+      include: {
+        admins: {
+          where: { adminId },
+          take: 1,
+          select: { ruta: { select: { id: true, cobradorId: true } } },
+        },
+      },
     });
     if (!cliente) {
       throw new NotFoundException("El cliente no existe.");
     }
+    const clientRelation = cliente.admins[0];
 
     // 2. Scoping por cobrador. Un cliente "sin ruta" (§3 — cierre de Fase 3)
     // no tiene cobrador asignado, así que ningún COBRADOR pasa.
-    if (user.rol === "COBRADOR" && cliente.ruta?.cobradorId !== user.sub) {
+    if (user.rol === "COBRADOR" && clientRelation?.ruta?.cobradorId !== user.sub) {
       throw new ForbiddenException("Solo puedes crear créditos para clientes de tus rutas.");
     }
 
-    // 3. Producto (texto libre): se registra en el catálogo por nombre (upsert).
-    // Si ya existe, se reutiliza (inventario, sin pisar su precioBase); si es
-    // nuevo, se crea con precioBase = monto de esta venta.
-    const producto = await this.upsertProducto(body.producto, body.monto);
+    // 3. Producto (texto libre): se registra en el catálogo por nombre (upsert)
+    // DENTRO del tenant. Si ya existe, se reutiliza (inventario, sin pisar su
+    // precioBase); si es nuevo, se crea con precioBase = monto de esta venta.
+    const producto = await this.upsertProducto(body.producto, body.monto, adminId);
 
     // 4. Derivar montos: montoTotal = monto + monto*interes/100; cuota = /dias.
     const { monto, interes, montoTotal, cuotaDiaria } = derivarMontos(
@@ -83,6 +99,7 @@ export class CreditosService {
           codigo,
           clienteId: body.clienteId,
           productoId: producto.id,
+          adminId,
           monto,
           interes,
           dias: body.dias,
@@ -104,8 +121,9 @@ export class CreditosService {
   }
 
   async update(id: string, body: UpdateCreditoRequest, user: AuthenticatedUser): Promise<Credito> {
+    const adminId = requireAdminId(user);
     const where = this.scopedWhereByCliente(user);
-    const existing = await this.creditosRepository.findById(id, where);
+    const existing = await this.creditosRepository.findById(id, where, adminId);
     if (!existing) throw new NotFoundException("Crédito no encontrado.");
 
     if (existing.pagos.length > 0) {
@@ -117,7 +135,11 @@ export class CreditosService {
     // Producto (texto libre): upsert por nombre si viene.
     let productoId: string | undefined;
     if (body.producto !== undefined) {
-      const producto = await this.upsertProducto(body.producto, body.monto ?? existing.monto);
+      const producto = await this.upsertProducto(
+        body.producto,
+        body.monto ?? existing.monto,
+        requireAdminId(user),
+      );
       productoId = producto.id;
     }
 
@@ -150,11 +172,16 @@ export class CreditosService {
     return toListItem(updated);
   }
 
-  async anular(id: string): Promise<Credito> {
+  async anular(id: string, user: AuthenticatedUser): Promise<Credito> {
     // ADMIN only — el controller aplica @Roles("ADMIN"). Aquí exigimos que el
-    // crédito exista y lo marcamos ANULADO, conservando todos los pagos
-    // (auditable: dinero no se borra).
-    const existing = await this.creditosRepository.findById(id);
+    // crédito exista DENTRO de su tenant (sin el scope, un ADMIN podía anular
+    // el crédito de otro ADMIN) y lo marcamos ANULADO, conservando todos los
+    // pagos (auditable: dinero no se borra).
+    const existing = await this.creditosRepository.findById(
+      id,
+      this.scopedWhereByCliente(user),
+      requireAdminId(user),
+    );
     if (!existing) throw new NotFoundException("Crédito no encontrado.");
 
     const updated = await this.prisma.credito.update({
@@ -172,42 +199,56 @@ export class CreditosService {
   private upsertProducto(
     nombre: string,
     montoReferencia: number | Prisma.Decimal,
+    adminId: string,
   ): Promise<{ id: string }> {
     const nombreNormalizado = nombre.trim();
     return this.prisma.producto.upsert({
-      where: { nombre: nombreNormalizado },
+      // Clave compuesta: el catálogo es por tenant, así que "Nevera" del admin
+      // A y "Nevera" del admin B son dos filas distintas.
+      where: { adminId_nombre: { adminId, nombre: nombreNormalizado } },
       update: { activo: true },
       create: {
         nombre: nombreNormalizado,
         precioBase: new Prisma.Decimal(montoReferencia),
         activo: true,
+        adminId,
       },
       select: { id: true },
     });
   }
 
   /**
-   * Restringe el `where` para listar/buscar créditos según el rol del usuario.
-   * ADMIN: sin scoping extra. COBRADOR: cliente.ruta.cobradorId = user.sub.
+   * Restringe el `where` para listar/buscar créditos según el usuario.
+   *
+   * `Credito.adminId` es explícito (ver el comentario en `schema.prisma`):
+   * un cliente puede ser cartera de más de un admin, así que el tenant del
+   * crédito NO se puede derivar de `cliente.adminId` — cada Credito lleva el
+   * suyo propio, stampeado al crearlo.
    */
   private scopedWhereForCreditos(
     user: AuthenticatedUser,
     query: CreditosQuery,
   ): Prisma.CreditoWhereInput {
-    const where: Prisma.CreditoWhereInput = {
+    return {
       ...(query.estado && ESTADOS_VALIDOS.includes(query.estado) ? { estado: query.estado } : {}),
       ...(query.clienteId ? { clienteId: query.clienteId } : {}),
-    };
-    if (user.rol === "ADMIN") return where;
-    return {
-      ...where,
-      cliente: { ruta: { cobradorId: user.sub } },
+      ...this.scopedWhereByCliente(user),
     };
   }
 
   private scopedWhereByCliente(user: AuthenticatedUser): Prisma.CreditoWhereInput {
-    if (user.rol === "ADMIN") return {};
-    return { cliente: { ruta: { cobradorId: user.sub } } };
+    const adminId = requireAdminId(user);
+    return {
+      adminId,
+      // El scoping por cobrador sigue viajando a través del cliente: la ruta
+      // es propiedad de la relación cliente↔admin (`ClientAdmin`), filtrada a
+      // la fila de ESTE admin (coincide con el `adminId` de arriba, así que
+      // apunta siempre a la relación correcta aunque el cliente sea cartera
+      // compartida).
+      ...(user.rol === "COBRADOR"
+        ? { cliente: { admins: { some: { adminId, ruta: { cobradorId: user.sub } } } } }
+        : {}),
+    };
   }
 }
 
@@ -277,7 +318,11 @@ function toDetail(row: CreditoWithDetail): CreditoDetail {
     cliente: {
       id: row.cliente.id,
       nombre: row.cliente.nombre,
-      ruta: row.cliente.ruta ? { id: row.cliente.ruta.id, nombre: row.cliente.ruta.nombre } : null,
+      // La única fila de `admins` presente es la de ESTE crédito (el include
+      // la filtra por `adminId` — ver `creditos.repository.ts`).
+      ruta: row.cliente.admins[0]?.ruta
+        ? { id: row.cliente.admins[0].ruta.id, nombre: row.cliente.admins[0].ruta.nombre }
+        : null,
     },
     pagos: row.pagos.map((p) => ({
       id: p.id,

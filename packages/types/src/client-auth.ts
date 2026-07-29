@@ -25,8 +25,10 @@ export type ChangePasswordRequest = z.infer<typeof changePasswordRequestSchema>;
 
 // Shape público del cliente autenticado. Nunca incluye `passwordHash`,
 // `failedLoginAttempts`, `lockedUntil` ni `passwordExpiresAt` (datos
-// sensibles — el service los filtra en `toClientAuthUser`). `rutaId` se
-// expone porque la UI del portal lo usa para mostrar el contexto.
+// sensibles — el service los filtra en `toClientAuthUser`). Sin `rutaId`: un
+// cliente puede ser cartera de varios admins (`ClientAdmin`), cada uno con su
+// propia ruta — no hay un `rutaId` global que exponer acá. La ruta relevante
+// por crédito sale de `ClientCreditDetail.cliente.ruta` (client-portal).
 export const clientAuthUserSchema = z.object({
   id: z.string(),
   nombre: z.string(),
@@ -34,7 +36,6 @@ export const clientAuthUserSchema = z.object({
   telefono: z.string(),
   direccion: z.string(),
   mustChangePassword: z.boolean(),
-  rutaId: z.string().nullable(),
 });
 export type ClientAuthUser = z.infer<typeof clientAuthUserSchema>;
 

@@ -142,7 +142,6 @@ function toClientAuthUser(c: {
   telefono: string;
   direccion: string;
   mustChangePassword: boolean;
-  rutaId: string | null;
 }): ClientAuthUser {
   return {
     id: c.id,
@@ -151,6 +150,5 @@ function toClientAuthUser(c: {
     telefono: c.telefono,
     direccion: c.direccion,
     mustChangePassword: c.mustChangePassword,
-    rutaId: c.rutaId,
   };
 }

@@ -78,8 +78,8 @@ export class CreditosController {
   @Delete(":id")
   @HttpCode(HttpStatus.OK)
   @Roles("ADMIN")
-  async anular(@Param("id") id: string): Promise<Credito> {
-    const result = await this.creditosService.anular(id);
+  async anular(@Param("id") id: string, @CurrentUser() user: AuthenticatedUser): Promise<Credito> {
+    const result = await this.creditosService.anular(id, user);
     return creditoListItemSchema.parse(result);
   }
 }

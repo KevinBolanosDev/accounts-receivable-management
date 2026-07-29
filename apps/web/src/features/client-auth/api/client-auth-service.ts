@@ -33,7 +33,6 @@ const MOCK_CLIENT_USERS: Record<string, { password: string; cliente: ClientAuthR
       telefono: "3011112222",
       direccion: "Cra 12 #34-56, Centro",
       mustChangePassword: true,
-      rutaId: "mock-ruta-centro",
     },
   },
   "1000000011": {
@@ -45,7 +44,6 @@ const MOCK_CLIENT_USERS: Record<string, { password: string; cliente: ClientAuthR
       telefono: "3012223333",
       direccion: "Cll 45 #10-20, Centro",
       mustChangePassword: true,
-      rutaId: "mock-ruta-centro",
     },
   },
 };
