@@ -34,7 +34,9 @@ interface SeedUser {
 
 const USERS: SeedUser[] = [
   { documento: "1000000001", nombre: "Admin Demo", password: "admin123", rol: "ADMIN" as const },
+  { documento: "95958979", nombre: "Sandra", password: "sandra123", rol: "ADMIN" as const },
   { documento: "36279514", nombre: "Antonio", password: "antonio123", rol: "ADMIN" as const },
+  { documento: "95846087", nombre: "Diego", password: "diego123", rol: "ADMIN" as const },
   {
     documento: "1000000002",
     nombre: "Cobrador Demo",

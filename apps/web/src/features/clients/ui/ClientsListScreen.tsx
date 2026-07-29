@@ -1,15 +1,21 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import Link from "next/link";
-import { SearchIcon } from "lucide-react";
-import type { ClienteDetail, ClienteListItem } from "@repo/types";
+import { ChevronRightIcon, PlusIcon, SearchIcon } from "lucide-react";
+import type { ClienteDetail, ClienteListItem, EstadoCliente } from "@repo/types";
 
-import { ESTADO_CLIENTE_LABEL_SHORT, getInitials } from "@/entities/client";
+import {
+  ESTADO_CLIENTE_FILTER_LABEL,
+  ESTADO_CLIENTE_LABEL_SHORT,
+  ESTADO_CLIENTE_ORDER,
+  getInitials,
+} from "@/entities/client";
 import { formatCurrency } from "@/shared/lib/format-currency";
 import { cn } from "@/shared/lib/utils";
 import { Badge } from "@/shared/ui/badge";
 import { Button } from "@/shared/ui/button";
+import { FilterChips } from "@/shared/ui/filter-chips";
 import { Input } from "@/shared/ui/input";
 import { ProgressRing } from "@/shared/ui/progress-ring";
 import { useRutas } from "@/features/routes-collectors/api/use-rutas";
@@ -17,12 +23,21 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Skeleton } from "@/shared/ui/skeleton";
 import { AdminPageHeader } from "@/widgets/admin-shell/AdminPageHeader";
 
-import { useCliente, useClientes } from "../api/use-clientes";
+import { useCliente, useClientes, useClientesSummary } from "../api/use-clientes";
+
+/** "all" = sin filtro de estado. Radix Select no admite `value=""`. */
+type EstadoFiltro = "all" | EstadoCliente;
 
 function rutaCorta(nombre: string | undefined): string {
   return nombre?.split("·")[0]?.trim() ?? "Sin ruta";
 }
 
+// La fila tiene dos comportamientos según el ancho: en escritorio SELECCIONA
+// (alimenta el panel de preview de la derecha) y en móvil NAVEGA al detalle,
+// donde no hay panel que alimentar. En vez de dos componentes, el `<button>`
+// de selección lleva encima un stretched link `lg:hidden` — el mismo patrón de
+// `entities/client/ui/ClientCard`. Anidar el `<button>` dentro de un `<a>`
+// sería HTML inválido y además navegaría al seleccionar.
 function ClientRow({
   cliente,
   selected,
@@ -33,29 +48,42 @@ function ClientRow({
   onSelect: () => void;
 }) {
   return (
-    <button
-      type="button"
-      onClick={onSelect}
-      className={cn(
-        "flex w-full items-center gap-3 border-l-2 px-4 py-3 text-left transition-colors",
-        selected
-          ? "border-primary bg-primary/10"
-          : "border-transparent hover:bg-muted",
-      )}
-    >
-      <span className="flex size-9 shrink-0 items-center justify-center rounded-full bg-secondary text-xs font-semibold">
-        {getInitials(cliente.nombre)}
-      </span>
-      <div className="flex min-w-0 flex-1 flex-col">
-        <span className="truncate text-sm font-medium">{cliente.nombre}</span>
-        <span className="truncate text-caption text-muted-foreground">
-          {rutaCorta(cliente.ruta?.nombre)} · {formatCurrency(cliente.saldoPendiente ?? 0)}
+    <div className="relative">
+      <Link
+        href={`/admin/clients/${cliente.id}`}
+        className="absolute inset-0 z-10 focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none lg:hidden"
+      >
+        <span className="sr-only">Ver detalle de {cliente.nombre}</span>
+      </Link>
+
+      <button
+        type="button"
+        onClick={onSelect}
+        className={cn(
+          "flex w-full items-center gap-3 border-l-2 px-4 py-3 text-left transition-colors",
+          selected
+            ? "border-primary bg-primary/10 lg:border-primary"
+            : "border-transparent hover:bg-muted",
+          // En móvil la selección no se pinta: la fila navega, no selecciona.
+          selected && "max-lg:border-transparent max-lg:bg-transparent",
+        )}
+      >
+        <span className="flex size-9 shrink-0 items-center justify-center rounded-full bg-secondary text-xs font-semibold">
+          {getInitials(cliente.nombre)}
         </span>
-      </div>
-      {cliente.estado ? (
-        <Badge status={cliente.estado}>{ESTADO_CLIENTE_LABEL_SHORT[cliente.estado]}</Badge>
-      ) : null}
-    </button>
+        <div className="flex min-w-0 flex-1 flex-col">
+          <span className="truncate text-sm font-medium">{cliente.nombre}</span>
+          <span className="truncate text-caption text-muted-foreground">
+            {rutaCorta(cliente.ruta?.nombre)} · {formatCurrency(cliente.saldoPendiente ?? 0)}
+          </span>
+        </div>
+        {cliente.estado ? (
+          <Badge status={cliente.estado}>{ESTADO_CLIENTE_LABEL_SHORT[cliente.estado]}</Badge>
+        ) : null}
+        {/* Afordancia de navegación: si la fila se abre, lleva chevron. */}
+        <ChevronRightIcon className="size-4 shrink-0 text-muted-foreground lg:hidden" />
+      </button>
+    </div>
   );
 }
 
@@ -128,32 +156,67 @@ export function ClientsListScreen() {
   const [search, setSearch] = useState("");
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [routeId, setRouteId] = useState("all");
+  const [estado, setEstado] = useState<EstadoFiltro>("all");
   const { data: rutas = [] } = useRutas();
+  const { data: summary } = useClientesSummary();
   const { data: clientes, isLoading } = useClientes({
     ...(search ? { search } : {}),
     ...(routeId !== "all" && routeId !== "sin-ruta" ? { rutaId: routeId } : {}),
   });
-  const clientesFiltrados =
-    routeId === "sin-ruta" ? (clientes ?? []).filter((c) => !c.rutaId) : clientes;
 
-  const activeId = selectedId ?? clientesFiltrados?.[0]?.id ?? "";
+  // `search` y `rutaId` los filtra el backend; `sin-ruta` y `estado` no están
+  // en `clientesQuerySchema`, así que se filtran acá sobre la respuesta.
+  const porRuta = useMemo(
+    () => (routeId === "sin-ruta" ? (clientes ?? []).filter((c) => !c.rutaId) : (clientes ?? [])),
+    [clientes, routeId],
+  );
+
+  const clientesFiltrados = useMemo(
+    () => (estado === "all" ? porRuta : porRuta.filter((c) => c.estado === estado)),
+    [porRuta, estado],
+  );
+
+  // Los contadores se calculan ANTES del filtro de estado (pero después del de
+  // ruta): si salieran de la lista ya filtrada, al elegir "Mora" todos los
+  // demás chips marcarían 0.
+  const estadoOptions = useMemo(
+    () => [
+      { value: "all" as const, label: "Todos", count: porRuta.length },
+      ...ESTADO_CLIENTE_ORDER.map((value) => ({
+        value,
+        label: ESTADO_CLIENTE_FILTER_LABEL[value],
+        count: porRuta.filter((c) => c.estado === value).length,
+      })),
+    ],
+    [porRuta],
+  );
+
+  const activeId = selectedId ?? clientesFiltrados[0]?.id ?? "";
   const { data: cliente } = useCliente(activeId);
+
+  const subtitle = summary
+    ? `${summary.clientes} ${summary.clientes === 1 ? "cliente" : "clientes"} · ${rutas.length} ${rutas.length === 1 ? "ruta" : "rutas"}`
+    : undefined;
 
   return (
     <>
       <AdminPageHeader
         title="Clientes"
-        subtitle="142 clientes · 7 rutas"
+        subtitle={subtitle}
         actions={
-          <Button asChild>
+          // En móvil el alta vive en el FAB, para no apretar el header.
+          <Button asChild className="hidden lg:inline-flex">
             <Link href="/admin/clients/new">Nuevo cliente</Link>
           </Button>
         }
       />
 
-      <div className="grid flex-1 gap-6 p-4 sm:p-6 lg:grid-cols-[minmax(0,480px)_minmax(0,1fr)]">
+      {/* `min-w-0` en el grid y en sus columnas: por defecto una pista de grid
+          mide `min-content`, así que un hijo con scroll propio (los chips) la
+          estiraría más allá del viewport en vez de scrollear dentro. */}
+      <div className="grid min-w-0 flex-1 gap-6 p-4 sm:p-6 lg:grid-cols-[minmax(0,480px)_minmax(0,1fr)]">
         {/* Maestro: buscador + lista */}
-        <div className="flex flex-col gap-4">
+        <div className="flex min-w-0 flex-col gap-4">
           <div className="relative flex items-center">
             <SearchIcon className="pointer-events-none absolute left-3 size-4 text-muted-foreground" />
             <Input
@@ -164,20 +227,49 @@ export function ClientsListScreen() {
             />
            </div>
 
-           <Select value={routeId} onValueChange={setRouteId}>
-             <SelectTrigger>
-               <SelectValue placeholder="Todas las rutas" />
-             </SelectTrigger>
-             <SelectContent>
-               <SelectItem value="all">Todas las rutas</SelectItem>
-               <SelectItem value="sin-ruta">Sin ruta</SelectItem>
-               {rutas.map((route) => (
-                 <SelectItem key={route.id} value={route.id}>
-                   {route.nombre}
-                 </SelectItem>
-               ))}
-             </SelectContent>
-           </Select>
+           <div className="flex flex-col gap-3 lg:flex-row">
+             <Select value={routeId} onValueChange={setRouteId}>
+               <SelectTrigger className="w-full lg:flex-1">
+                 <SelectValue placeholder="Todas las rutas" />
+               </SelectTrigger>
+               <SelectContent>
+                 <SelectItem value="all">Todas las rutas</SelectItem>
+                 <SelectItem value="sin-ruta">Sin ruta</SelectItem>
+                 {rutas.map((route) => (
+                   <SelectItem key={route.id} value={route.id}>
+                     {route.nombre}
+                   </SelectItem>
+                 ))}
+               </SelectContent>
+             </Select>
+
+             {/* El mismo filtro de estado en dos formas: chips en móvil
+                 (§2.5) y select en escritorio, donde conviven en una fila. */}
+             <Select
+               value={estado}
+               onValueChange={(value) => setEstado(value as EstadoFiltro)}
+             >
+               <SelectTrigger className="hidden w-full lg:flex lg:flex-1">
+                 <SelectValue placeholder="Todos los estados" />
+               </SelectTrigger>
+               <SelectContent>
+                 <SelectItem value="all">Todos los estados</SelectItem>
+                 {ESTADO_CLIENTE_ORDER.map((value) => (
+                   <SelectItem key={value} value={value}>
+                     {ESTADO_CLIENTE_FILTER_LABEL[value]}
+                   </SelectItem>
+                 ))}
+               </SelectContent>
+             </Select>
+           </div>
+
+           <FilterChips
+             label="Filtrar por estado"
+             value={estado}
+             onValueChange={setEstado}
+             options={estadoOptions}
+             className="lg:hidden"
+           />
 
            <div className="overflow-hidden rounded-lg border border-border bg-card">
              {isLoading ? (
@@ -200,14 +292,16 @@ export function ClientsListScreen() {
               </div>
             ) : (
               <p className="p-8 text-center text-body-sm text-muted-foreground">
-                Sin resultados para “{search}”.
+                {search ? `Sin resultados para “${search}”.` : "Ningún cliente con estos filtros."}
               </p>
             )}
           </div>
         </div>
 
-        {/* Detalle: vista previa del cliente seleccionado */}
-        <div className="flex flex-col rounded-lg border border-border bg-card p-6">
+        {/* Detalle: vista previa del cliente seleccionado. Solo en escritorio:
+            en móvil la fila navega al detalle completo y este panel quedaría
+            apilado debajo de toda la lista, fuera de la vista. */}
+        <div className="hidden min-w-0 flex-col rounded-lg border border-border bg-card p-6 lg:flex">
           {cliente ? (
             <ClientPreview cliente={cliente} />
           ) : (
@@ -217,6 +311,19 @@ export function ClientsListScreen() {
           )}
         </div>
       </div>
+
+      {/* FAB de alta en móvil, por encima de la bottom tab bar (h-16). */}
+      <Button
+        asChild
+        size="lg"
+        className="fixed right-4 z-30 rounded-full shadow-lg lg:hidden"
+        style={{ bottom: "calc(5rem + env(safe-area-inset-bottom))" }}
+      >
+        <Link href="/admin/clients/new">
+          <PlusIcon />
+          Nuevo cliente
+        </Link>
+      </Button>
     </>
   );
 }

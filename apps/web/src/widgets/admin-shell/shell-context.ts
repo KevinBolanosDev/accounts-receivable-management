@@ -3,11 +3,12 @@
 import { createContext, useContext } from "react";
 
 interface AdminShellContextValue {
-  openMobileNav: () => void;
+  /** Abre el sheet "Más" (segundo nivel de la navegación móvil). */
+  openMoreNav: () => void;
 }
 
 export const AdminShellContext = createContext<AdminShellContextValue>({
-  openMobileNav: () => {},
+  openMoreNav: () => {},
 });
 
 export function useAdminShell() {

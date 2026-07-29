@@ -1,36 +1,12 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation";
-import { LogOutIcon } from "lucide-react";
-import type { Rol } from "@repo/types";
+import { usePathname } from "next/navigation";
 
-import { useSessionStore } from "@/entities/session";
-import { getInitials } from "@/shared/lib/initials";
 import { cn } from "@/shared/lib/utils";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@/shared/ui/dropdown-menu";
 
 import { ADMIN_NAV, isNavItemActive } from "./nav-items";
-
-interface AdminSidebarProps {
-  /** Se llama al navegar (cierra el Sheet en móvil). */
-  onNavigate?: () => void;
-}
-
-const ROL_LABEL: Record<Rol, string> = {
-  ADMIN: "Administrador",
-  COBRADOR: "Cobrador",
-  // El cliente nunca llega al AdminShell (el `RouteGuard` lo bloquea), pero
-  // el tipo exige cubrir el caso — mantener el `Record<Rol, string>` exhaustivo.
-  CLIENTE: "Cliente",
-};
+import { UserMenu } from "./UserMenu";
 
 // Marca "anillo + CobroDiario" (DESIGN_SYSTEM.md §1.7, elemento de firma).
 function SidebarBrand() {
@@ -56,53 +32,10 @@ function SidebarBrand() {
   );
 }
 
-// Ficha de usuario al pie del sidebar: avatar de iniciales + nombre + rol, y
-// menú con "Cerrar sesión".
-function SidebarUser() {
-  const router = useRouter();
-  const usuario = useSessionStore((state) => state.usuario);
-  const clearSession = useSessionStore((state) => state.clearSession);
-
-  const nombre = usuario?.nombre ?? "Admin";
-
-  function handleLogout() {
-    clearSession();
-    router.push("/admin/login");
-  }
-
-  return (
-    <div className="shrink-0 border-t border-border p-3">
-      <DropdownMenu>
-        <DropdownMenuTrigger asChild>
-          <button
-            type="button"
-            className="flex w-full items-center gap-3 rounded-md p-2 text-left transition-colors hover:bg-muted focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none"
-          >
-            <span className="flex size-9 shrink-0 items-center justify-center rounded-full bg-primary text-sm font-semibold text-primary-foreground">
-              {getInitials(nombre)}
-            </span>
-            <span className="flex min-w-0 flex-1 flex-col">
-              <span className="truncate text-sm font-semibold">{nombre}</span>
-              <span className="truncate text-caption text-muted-foreground">
-                {ROL_LABEL[usuario?.rol ?? "ADMIN"]}
-              </span>
-            </span>
-          </button>
-        </DropdownMenuTrigger>
-        <DropdownMenuContent side="top" align="start" className="w-56">
-          <DropdownMenuLabel>{nombre}</DropdownMenuLabel>
-          <DropdownMenuSeparator />
-          <DropdownMenuItem variant="destructive" onSelect={handleLogout}>
-            <LogOutIcon />
-            Cerrar sesión
-          </DropdownMenuItem>
-        </DropdownMenuContent>
-      </DropdownMenu>
-    </div>
-  );
-}
-
-export function AdminSidebar({ onNavigate }: AdminSidebarProps) {
+// Navegación de escritorio del portal Admin. Solo se monta desde `lg`: en
+// móvil la navegación es la bottom tab bar + el sheet "Más", que se componen
+// aparte en vez de reutilizar este sidebar.
+export function AdminSidebar() {
   const pathname = usePathname();
 
   return (
@@ -134,7 +67,6 @@ export function AdminSidebar({ onNavigate }: AdminSidebarProps) {
             <Link
               key={item.href}
               href={item.href}
-              onClick={onNavigate}
               aria-current={active ? "page" : undefined}
               className={cn(
                 base,
@@ -150,7 +82,9 @@ export function AdminSidebar({ onNavigate }: AdminSidebarProps) {
         })}
       </nav>
 
-      <SidebarUser />
+      <div className="shrink-0 border-t border-border p-3">
+        <UserMenu variant="row" />
+      </div>
     </div>
   );
 }

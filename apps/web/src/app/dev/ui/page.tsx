@@ -37,6 +37,7 @@ import { Avatar, AvatarFallback } from "@/shared/ui/avatar";
 import { Badge } from "@/shared/ui/badge";
 import { Button } from "@/shared/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/shared/ui/card";
+import { FilterChips } from "@/shared/ui/filter-chips";
 import {
   Command,
   CommandEmpty,
@@ -453,6 +454,7 @@ export default function UiGalleryPage() {
   }
 
   const [mode, setMode] = useState<"light" | "dark">("light");
+  const [estadoFiltro, setEstadoFiltro] = useState("all");
 
   useEffect(() => {
     const root = document.documentElement;
@@ -509,6 +511,24 @@ export default function UiGalleryPage() {
           <Badge status="ruta-abierta">Ruta abierta</Badge>
           <Badge status="ruta-cerrada">Ruta cerrada</Badge>
         </div>
+      </Section>
+
+      <Section
+        title="Chips de filtro"
+        description="Filtro de lista en móvil, scroll horizontal — DESIGN_SYSTEM.md §2.5"
+      >
+        <FilterChips
+          label="Filtrar por estado"
+          value={estadoFiltro}
+          onValueChange={setEstadoFiltro}
+          options={[
+            { value: "all", label: "Todos", count: 142 },
+            { value: "activo", label: "Activos", count: 98 },
+            { value: "proximo-a-vencer", label: "Por vencer", count: 12 },
+            { value: "mora", label: "Mora", count: 19 },
+            { value: "pagado", label: "Pagados", count: 13 },
+          ]}
+        />
       </Section>
 
       <Section title="Formularios" description="Input, Select, Textarea — radius sm, foco con ring">

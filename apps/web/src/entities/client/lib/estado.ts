@@ -16,6 +16,24 @@ export const ESTADO_CLIENTE_LABEL_SHORT: Record<EstadoCliente, string> = {
   pagado: "Pagado",
 };
 
+// Orden canónico de los estados cuando se listan como filtros. Es el mismo
+// orden del enum en `@repo/types`: de sano a crítico y luego cerrado.
+export const ESTADO_CLIENTE_ORDER: EstadoCliente[] = [
+  "activo",
+  "proximo-a-vencer",
+  "mora",
+  "pagado",
+];
+
+// Etiqueta en plural para los filtros ("Activos"), frente a la del badge, que
+// califica a UN cliente y va en singular ("Activo").
+export const ESTADO_CLIENTE_FILTER_LABEL: Record<EstadoCliente, string> = {
+  activo: "Activos",
+  "proximo-a-vencer": "Por vencer",
+  mora: "Mora",
+  pagado: "Pagados",
+};
+
 export const ESTADO_CLIENTE_TEXT: Record<EstadoCliente, string> = {
   activo: "text-accent",
   "proximo-a-vencer": "text-warning",

@@ -1,13 +1,8 @@
 "use client";
 
-import { MenuIcon } from "lucide-react";
-
-import { useSessionStore } from "@/entities/session";
-import { getInitials } from "@/shared/lib/initials";
 import { cn } from "@/shared/lib/utils";
-import { Button } from "@/shared/ui/button";
 
-import { useAdminShell } from "./shell-context";
+import { UserMenu } from "./UserMenu";
 
 interface AdminPageHeaderProps {
   /** Breadcrumb/eyebrow encima del título (ej. "Rutas / Ruta 3 · Centro"). */
@@ -30,9 +25,6 @@ export function AdminPageHeader({
   actions,
   className,
 }: AdminPageHeaderProps) {
-  const { openMobileNav } = useAdminShell();
-  const usuario = useSessionStore((state) => state.usuario);
-
   return (
     <header
       className={cn(
@@ -42,16 +34,8 @@ export function AdminPageHeader({
         className,
       )}
     >
-      <Button
-        variant="ghost"
-        size="icon"
-        className="lg:hidden"
-        aria-label="Abrir menú"
-        onClick={openMobileNav}
-      >
-        <MenuIcon />
-      </Button>
-
+      {/* Sin hamburger: en móvil la navegación es la bottom tab bar del
+          AdminShell, y su pestaña "Más" abre el mismo Sheet. */}
       <div className="flex min-w-0 flex-col">
         {eyebrow ? <div className="truncate text-caption text-muted-foreground">{eyebrow}</div> : null}
         <h1 className="truncate text-lg leading-tight font-semibold">{title}</h1>
@@ -62,9 +46,9 @@ export function AdminPageHeader({
 
       <div className="ml-auto flex shrink-0 items-center gap-2 sm:gap-3">
         {actions}
-        <span className="hidden size-9 shrink-0 items-center justify-center rounded-full bg-primary text-sm font-semibold text-primary-foreground sm:flex">
-          {getInitials(usuario?.nombre ?? "Admin")}
-        </span>
+        {/* En móvil este avatar es la ÚNICA salida de sesión: la bottom tab
+            bar no tiene pie de sidebar donde colgarla. */}
+        <UserMenu variant="avatar" />
       </div>
     </header>
   );

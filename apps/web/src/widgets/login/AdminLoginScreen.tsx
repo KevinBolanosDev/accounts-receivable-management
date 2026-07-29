@@ -2,6 +2,7 @@
 
 import { LoginForm } from "@/features/auth";
 import { useReveal } from "@/shared/lib/motion";
+import { Card } from "@/shared/ui/card";
 
 import { BrandLogo } from "./BrandLogo";
 
@@ -63,24 +64,30 @@ export function AdminLoginScreen() {
         {/* Glow sutil solo en mobile, cuando el panel de marca está oculto */}
         <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(120%_80%_at_50%_0%,var(--color-primary),transparent_60%)] opacity-15 lg:hidden" />
 
-        <div ref={formRef} className="relative w-full max-w-[320px]">
-          {/* Logo compacto solo en mobile */}
-          <div className="mb-8 lg:hidden">
-            <BrandLogo />
-          </div>
+        <div ref={formRef} className="relative w-full max-w-85">
+          <Card className="gap-0 overflow-hidden py-0">
+            {/* Borde superior decorativo: índigo → cian, los dos colores de
+                firma del DS §1.1. Sin hex hardcodeados — los tokens resuelven
+                a los valores de la superficie que envuelve la pantalla. */}
+            <div aria-hidden="true" className="h-0.75 w-full bg-linear-to-r from-primary to-accent" />
 
-          <div className="flex flex-col gap-1.5">
-            <h2 className="text-[22px] font-semibold tracking-[-0.01em] text-foreground">
-              Iniciar sesión
-            </h2>
-            <p className="text-sm text-muted-foreground">Ingresa a tu panel de administración.</p>
-          </div>
+            <div className="flex flex-col gap-6 p-6">
+              <BrandLogo />
 
-          <div className="mt-6">
-            {/* Solo ADMIN: una cuenta de cobrador acá se rechaza con un
-                mensaje, no se le abre sesión. */}
-            <LoginForm allowedRoles={["ADMIN"]} redirectTo="/admin" />
-          </div>
+              <div className="flex flex-col gap-1.5">
+                <h2 className="text-[22px] font-semibold tracking-[-0.01em] text-foreground">
+                  Iniciar sesión
+                </h2>
+                <p className="text-sm text-muted-foreground">
+                  Ingresa a tu panel de administración.
+                </p>
+              </div>
+
+              {/* Solo ADMIN: una cuenta de cobrador acá se rechaza con un
+                  mensaje, no se le abre sesión. */}
+              <LoginForm allowedRoles={["ADMIN"]} redirectTo="/admin" />
+            </div>
+          </Card>
         </div>
       </section>
     </main>
