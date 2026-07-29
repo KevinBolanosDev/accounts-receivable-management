@@ -30,7 +30,7 @@ Dos convenciones (también en `specs/PLAN_DESARROLLO.md` §5):
 | **5** Cierre diario + reportes PDF | — | ⬜ |
 | **6** Hardening + tests | Unit tests + filtros globales + auditoria + CI | ⬜ |
 
-**Tests hoy:** 92 casos e2e en 12 suites de `apps/api/test/` (`app`, `auth`, `clientes`, `rutas`, `usuarios`, `auth-cliente`, `client-portal`, `receipts`, `clientes-access`, `client-sharing`, `multi-tenancy`, `cobros`) + 16 unit tests (`core/domain/payment-schedule.util.spec.ts` + `core/contracts/repo-types-integrity.spec.ts`). Cero tests en front.
+**Tests hoy:** 97 casos e2e en 13 suites de `apps/api/test/` (`app`, `auth`, `clientes`, `clientes-foto`, `rutas`, `usuarios`, `auth-cliente`, `client-portal`, `receipts`, `clientes-access`, `client-sharing`, `multi-tenancy`, `cobros`) + 16 unit tests (`core/domain/payment-schedule.util.spec.ts` + `core/contracts/repo-types-integrity.spec.ts`). Cero tests en front.
 
 **Bajas: qué se borra de verdad.** `Cliente` (relación `ClientAdmin.activo=false`) y `Usuario`/cobrador (`activo=false` + sus rutas quedan sin cobrador) son **soft-delete** — `Pago.cobradorId` y las FKs de dinero son `onDelete: Restrict` y la auditoría manda. `Ruta` es el **único borrado físico**, y solo si no le quedan clientes activos (409 en caso contrario). El login filtra por `activo`, que es lo que hace que la baja del cobrador signifique algo; sin eso el switch activo/inactivo era decorativo. Limitación conocida: `JwtAuthGuard` es stateless, así que un token ya emitido sigue válido hasta `JWT_EXPIRES_IN` (1d) — verificar `activo` por request es Fase 6.
 
@@ -51,7 +51,7 @@ Dos convenciones (también en `specs/PLAN_DESARROLLO.md` §5):
 | POST | `/clients` | Jwt + Roles | ADMIN/COBRADOR, scoping |
 | PATCH | `/clients/:id` | Jwt + Roles | ADMIN/COBRADOR, scoping |
 | DELETE | `/clients/:id` | Jwt + Roles | ADMIN (soft-delete) |
-| POST | `/clients/id-document-photo` | Jwt + Roles | ADMIN/COBRADOR, multipart, devuelve URL pública |
+| POST | `/clients/id-document-photo` | Jwt + Roles | ADMIN/COBRADOR, multipart, bucket privado — devuelve `{ path, url }` (path a persistir, URL firmada solo para el preview inmediato) |
 | GET | `/routes` | Jwt + Roles | ADMIN/COBRADOR, scoping |
 | GET | `/routes/:id` | Jwt + Roles | ADMIN/COBRADOR, scoping |
 | POST | `/routes` | Jwt + Roles | ADMIN |
@@ -113,9 +113,11 @@ Sin test runner en `apps/web` aún (lo decide Fase 6).
 
 **Gotcha Supabase:** el host "Direct connection" (`db.<project>.supabase.co`) es IPv6-only y rompe con `ENETUNREACH` en WSL/sandboxes. Usar el **connection pooler** (dashboard → Connect → "Transaction/Session pooler"), IPv4-compatible. En `.env` actual del repo ya se usa el pooler.
 
-**Gotcha `SUPABASE_SERVICE_KEY`:** debe ser la **`service_role`** real (JWT que empieza con `eyJ...`). El `.env` actual tiene una clave con prefijo `sb_publishable_…` — verificar que no sea la anon; el `StorageService.uploadImagen` requiere permisos de escritura en el bucket. **Sigue sin corregir a la fecha de cierre de Fase 4** — es una acción manual en el dashboard de Supabase, no se puede resolver por código.
+**Resuelto — `SUPABASE_SERVICE_KEY`:** el `.env` actual **sí es la `service_role`** (JWT `eyJ...`, claim `role: "service_role"` verificado). El gotcha que documentaba esto como pendiente (clave con prefijo `sb_publishable_…`) quedó obsoleto — en algún momento se corrigió sin actualizar la doc. Lo que sí faltaba de verdad era el **bucket**: `SUPABASE_STORAGE_BUCKET="documentos"` no existía en el proyecto (0 objetos en todo el Storage, ninguna foto se subió jamás). Se creó como **privado** — ver "Foto de documento" más abajo.
 
-**Gotcha e2e + connection pooler:** `test:e2e` corre con `--runInBand`. Con 8 archivos de e2e, Jest en paralelo (default) agota el pool de Supabase (`pool_size: 15` en modo sesión) — cada archivo abre su propio `PrismaClient` directo para fixtures, más el que abre cada test individual vía `Test.createTestingModule`. En serie no hay contención.
+**Gotcha e2e + connection pooler:** `test:e2e` corre con `--runInBand`. Con 12 archivos de e2e, Jest en paralelo (default) agota el pool de Supabase (`pool_size: 15` en modo sesión) — cada archivo abre su propio `PrismaClient` directo para fixtures, más el que abre cada test individual vía `Test.createTestingModule`. En serie no hay contención.
+
+**Foto de documento (Fase 5, adelantado desde el plan de Fase 2/6):** el bucket `documentos` es **privado** (documentos de identidad), no público como especificaba originalmente `FASE_2_SUBFASES.md` — el endurecimiento se adelantó en vez de diferirse. `Cliente.fotoDocumentoFrentePath`/`ReversoPath` guardan el **path** dentro del bucket, nunca una URL; `ClientsService.toDetail` firma ambos en batch con `StorageService.createSignedUrls` (TTL 1h, `core/storage/storage.constants.ts`) y expone la URL firmada como `fotoDocumentoFrenteUrl`/`ReversoUrl` — **solo en el detalle, nunca en listas** (firmar por fila en un listado sería un round-trip a Storage inútil, ver el comentario de `clienteListItemSchema`). El contrato en `@repo/types` es asimétrico a propósito: requests llevan `*Path` sin `.url()`, el detalle devuelve ambos. Un fallo al firmar no tumba el `GET`: devuelve `null` y queda logueado (`Logger.warn`), nunca lanza. El único endpoint que toca Storage tiene e2e real (`apps/api/test/clientes-foto.e2e-spec.ts`, sube/borra objetos de verdad — `describe.skip` si faltan credenciales).
 
 **`apps/web/.env`:** copiar de `apps/web/.env.example` (creado en Fase 4.6). Lee `NEXT_PUBLIC_API_URL` (default `http://localhost:3001`) y `NEXT_PUBLIC_APP_URL` (default `http://localhost:3000`, usado para el enlace compartible del recibo por WhatsApp).
 

@@ -86,8 +86,12 @@ model Cliente {
   telefono                String
   documento               String        @unique
   direccion               String
-  fotoDocumentoFrenteUrl  String?
-  fotoDocumentoReversoUrl String?
+  // Guardan el PATH dentro del bucket privado de Supabase, no una URL: el
+  // bucket dejó de ser público (documentos de identidad), así que la URL
+  // pública ya no existe — se firma al vuelo con expiración cuando se pide
+  // el detalle del cliente (ver `StorageService.createSignedUrls`).
+  fotoDocumentoFrentePath  String?
+  fotoDocumentoReversoPath String?
   // Contacto de referencia (a quién llamar si no se ubica al cliente). Ambos
   // nullable e independientes: los clientes dados de alta antes de este campo
   // no lo tienen, y el alta no lo exige.

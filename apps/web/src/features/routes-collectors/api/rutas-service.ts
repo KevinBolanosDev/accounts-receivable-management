@@ -72,6 +72,8 @@ function sampleClientes(rutaId: string, rutaNombre: string): RutaDetail["cliente
     telefono: "300 000 0000",
     documento: `1.0${i}0.000.00${i}`,
     direccion: "Calle 00 # 00-00",
+    fotoDocumentoFrentePath: null,
+    fotoDocumentoReversoPath: null,
     fotoDocumentoFrenteUrl: null,
     fotoDocumentoReversoUrl: null,
     rutaId,

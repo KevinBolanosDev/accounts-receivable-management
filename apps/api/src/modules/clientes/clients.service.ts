@@ -30,6 +30,7 @@ import {
 } from "../../core/domain/credito-cliente.util";
 import { buildPaymentHistory } from "../../core/domain/payment-schedule.util";
 import { ReceiptTokenService } from "../../core/receipts/receipt-token.service";
+import { StorageService } from "../../core/storage/storage.service";
 import {
   ClientsRepository,
   type ClientWithDetail,
@@ -41,11 +42,15 @@ export class ClientsService {
   constructor(
     private readonly clientsRepository: ClientsRepository,
     private readonly receiptToken: ReceiptTokenService,
+    private readonly storage: StorageService,
   ) {}
 
   async findAll(user: AuthenticatedUser, query: ClientesQuery): Promise<ClienteListItem[]> {
     const adminId = requireAdminId(user);
     const clients = await this.clientsRepository.findMany(this.scopedWhere(user, query), adminId);
+    // Sin firmar: ninguna lista pinta la foto (solo el detalle), así que
+    // firmar N×2 URLs por fila sería un round-trip a Storage completamente
+    // inútil en el camino más transitado (listar clientes).
     return clients.map((client) => this.toListItem(client));
   }
 
@@ -53,7 +58,8 @@ export class ClientsService {
     const adminId = requireAdminId(user);
     const client = await this.clientsRepository.findById(id, this.scopeWhere(user), adminId);
     if (!client) throw new NotFoundException("Cliente no encontrado.");
-    return this.toDetail(client);
+    const signedUrls = await this.signDocumentPhotos([client]);
+    return this.toDetail(client, signedUrls);
   }
 
   async create(body: CreateClienteRequest, user: AuthenticatedUser): Promise<ClienteDetail> {
@@ -69,8 +75,8 @@ export class ClientsService {
           telefono: body.telefono,
           documento: body.documento,
           direccion: body.direccion,
-          fotoDocumentoFrenteUrl: body.fotoDocumentoFrenteUrl,
-          fotoDocumentoReversoUrl: body.fotoDocumentoReversoUrl,
+          fotoDocumentoFrentePath: body.fotoDocumentoFrentePath,
+          fotoDocumentoReversoPath: body.fotoDocumentoReversoPath,
           contactoNombre: body.contactoNombre,
           contactoTelefono: body.contactoTelefono,
           // El cliente nace en el tenant de quien lo da de alta (el ADMIN dueño,
@@ -83,7 +89,8 @@ export class ClientsService {
         },
         adminId,
       );
-      return this.toDetail(client);
+      const signedUrls = await this.signDocumentPhotos([client]);
+      return this.toDetail(client, signedUrls);
     } catch (error) {
       throw this.mapError(error);
     }
@@ -112,8 +119,8 @@ export class ClientsService {
           telefono: body.telefono,
           documento: body.documento,
           direccion: body.direccion,
-          fotoDocumentoFrenteUrl: body.fotoDocumentoFrenteUrl,
-          fotoDocumentoReversoUrl: body.fotoDocumentoReversoUrl,
+          fotoDocumentoFrentePath: body.fotoDocumentoFrentePath,
+          fotoDocumentoReversoPath: body.fotoDocumentoReversoPath,
           contactoNombre: body.contactoNombre,
           contactoTelefono: body.contactoTelefono,
           // `rutaId` es propiedad de MI relación con el cliente (ClientAdmin),
@@ -131,7 +138,8 @@ export class ClientsService {
         },
         adminId,
       );
-      return this.toDetail(client);
+      const signedUrls = await this.signDocumentPhotos([client]);
+      return this.toDetail(client, signedUrls);
     } catch (error) {
       throw this.mapError(error);
     }
@@ -386,6 +394,18 @@ export class ClientsService {
     };
   }
 
+  // Un solo round-trip a Storage para TODOS los clientes que se vayan a
+  // mapear con `toDetail` (hoy siempre es uno, pero la firma en batch evita
+  // que un futuro caller con varios clientes reintroduzca N llamadas).
+  private async signDocumentPhotos(
+    clients: Array<Pick<ClientWithDetail, "fotoDocumentoFrentePath" | "fotoDocumentoReversoPath">>,
+  ): Promise<Map<string, string>> {
+    const paths = clients
+      .flatMap((c) => [c.fotoDocumentoFrentePath, c.fotoDocumentoReversoPath])
+      .filter((path): path is string => path !== null);
+    return this.storage.createSignedUrls(paths);
+  }
+
   private toListItem(client: ClientWithRoute): ClienteListItem {
     const agregados = this.computeAgregados(client.creditos);
     // La única fila de `admins` presente es la de ESTE admin (el include la
@@ -397,8 +417,11 @@ export class ClientsService {
       telefono: client.telefono,
       documento: client.documento,
       direccion: client.direccion,
-      fotoDocumentoFrenteUrl: client.fotoDocumentoFrenteUrl,
-      fotoDocumentoReversoUrl: client.fotoDocumentoReversoUrl,
+      fotoDocumentoFrentePath: client.fotoDocumentoFrentePath,
+      fotoDocumentoReversoPath: client.fotoDocumentoReversoPath,
+      // Nunca firmadas en una lista — ver el comentario del schema.
+      fotoDocumentoFrenteUrl: null,
+      fotoDocumentoReversoUrl: null,
       rutaId: myRelation?.rutaId ?? null,
       contactoNombre: client.contactoNombre,
       contactoTelefono: client.contactoTelefono,
@@ -409,7 +432,7 @@ export class ClientsService {
     };
   }
 
-  private toDetail(client: ClientWithDetail): ClienteDetail {
+  private toDetail(client: ClientWithDetail, signedUrls: Map<string, string>): ClienteDetail {
     const agregados = this.computeAgregados(client.creditos);
     // Una sola referencia de "hoy" para todos los créditos: si se tomara dentro
     // del flatMap, dos créditos podrían caer en días distintos al cruzar la
@@ -425,8 +448,16 @@ export class ClientsService {
       direccion: client.direccion,
       contactoNombre: client.contactoNombre,
       contactoTelefono: client.contactoTelefono,
-      fotoDocumentoFrenteUrl: client.fotoDocumentoFrenteUrl,
-      fotoDocumentoReversoUrl: client.fotoDocumentoReversoUrl,
+      fotoDocumentoFrentePath: client.fotoDocumentoFrentePath,
+      fotoDocumentoReversoPath: client.fotoDocumentoReversoPath,
+      // `null` si el path es null, o si falló la firma (bucket caído, path
+      // borrado a mano) — nunca lanza, ver `StorageService.createSignedUrls`.
+      fotoDocumentoFrenteUrl: client.fotoDocumentoFrentePath
+        ? (signedUrls.get(client.fotoDocumentoFrentePath) ?? null)
+        : null,
+      fotoDocumentoReversoUrl: client.fotoDocumentoReversoPath
+        ? (signedUrls.get(client.fotoDocumentoReversoPath) ?? null)
+        : null,
       rutaId: myRelation?.rutaId ?? null,
       ruta: myRelation?.ruta ? { id: myRelation.ruta.id, nombre: myRelation.ruta.nombre } : null,
       saldoPendiente: agregados.saldoPendiente,

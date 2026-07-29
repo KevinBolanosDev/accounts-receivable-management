@@ -49,6 +49,7 @@ import {
   useDeleteClientAccess,
   useGenerateClientAccess,
 } from "../api/use-clientes";
+import { ClientDocumentPhotos } from "./ClientDocumentPhotos";
 
 // DESIGN_SYSTEM.md §3.3 — enriquecimiento del detalle de cliente (#5c).
 // Header con saldo **agregado** (suma de los créditos activos) y badge de
@@ -255,6 +256,10 @@ export function ClientDetailScreen({ clienteId }: { clienteId: string }) {
         {/* Los datos de contacto solo se veían en la app del cobrador; el
             Admin únicamente tenía el documento embutido en el encabezado. */}
         <ClientContactPanel cliente={cliente} />
+
+        {/* La foto se subía desde Fase 2 pero nunca se mostraba en ningún
+            lado — DoD pendiente hasta ahora. */}
+        <ClientDocumentPhotos cliente={cliente} />
 
         {/* Fase 4.14 — acceso del cliente al Portal Cliente */}
         <ClientAccessSection cliente={cliente} />

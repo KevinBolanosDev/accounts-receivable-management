@@ -18,6 +18,16 @@ export const clienteSchema = z.object({
   telefono: z.string(),
   documento: z.string(),
   direccion: z.string(),
+  // El bucket de Supabase es PRIVADO (documentos de identidad): `*Path` es lo
+  // que se persiste — un path dentro del bucket, no una URL — y viaja tanto en
+  // requests como en responses. `*Url` es de SOLO LECTURA: una URL firmada con
+  // expiración que el backend emite en cada respuesta del DETALLE (nunca en
+  // listas — ver `clienteListItemSchema`) y que nunca se persiste ni se manda
+  // de vuelta en un request. Mandar la URL firmada como si fuera el path
+  // corrompería la columna en silencio, por eso son dos campos y no uno que
+  // signifique cosas distintas según la dirección.
+  fotoDocumentoFrentePath: z.string().nullable(),
+  fotoDocumentoReversoPath: z.string().nullable(),
   fotoDocumentoFrenteUrl: z.string().url().nullable(),
   fotoDocumentoReversoUrl: z.string().url().nullable(),
   // Nullable desde el cierre de Fase 3: un cliente puede quedar "sin ruta" si
@@ -33,6 +43,10 @@ export type Cliente = z.infer<typeof clienteSchema>;
 // Fila de la tabla (pantalla 3c) y forma que consume la Client card.
 // `saldoPendiente`/`estado`/`porcentajePagado` son opcionales por compatibilidad
 // con la Fase 2; el backend de la Fase 3 los puebla de verdad.
+// `fotoDocumento*Url` siempre viene `null` en las listas: firmar N×2 URLs por
+// fila sería un round-trip a Storage por cada cliente listado, y hoy ninguna
+// lista pinta la foto (solo el detalle la muestra). El *Path sí viaja, por si
+// el listado necesitara saber si el cliente tiene foto sin mostrarla.
 export const clienteListItemSchema = clienteSchema.extend({
   ruta: z.object({ id: z.string(), nombre: z.string() }).nullable(),
   saldoPendiente: z.number().optional(),
@@ -94,8 +108,11 @@ export const createClienteRequestSchema = z.object({
     .nullable()
     .optional()
     .transform((value) => (value === "" ? null : value)),
-  fotoDocumentoFrenteUrl: z.string().url().nullable().optional(),
-  fotoDocumentoReversoUrl: z.string().url().nullable().optional(),
+  // Solo el PATH (sin `.url()`): es lo único que el request puede llevar. La
+  // URL firmada es de solo lectura y sale del backend en cada `GET` — nunca
+  // entra por acá.
+  fotoDocumentoFrentePath: z.string().nullable().optional(),
+  fotoDocumentoReversoPath: z.string().nullable().optional(),
   // Contacto de referencia: ambos opcionales e independientes entre sí.
   contactoNombre: z.string().nullable().optional(),
   contactoTelefono: z.string().nullable().optional(),
@@ -128,10 +145,21 @@ export type ClientesSummary = z.infer<typeof clientesSummarySchema>;
 
 // Respuesta del endpoint de subida de foto. El request es multipart (lo valida
 // Multer + un file-pipe en el backend), no un schema Zod de body.
+// `path` es lo que el form debe guardar y volver a mandar al crear/editar el
+// cliente; `url` es la firmada, solo para el preview inmediato tras subir.
 export const uploadFotoDocumentoResponseSchema = z.object({
-  fotoDocumentoUrl: z.string().url(),
+  path: z.string(),
+  url: z.string().url(),
 });
 export type UploadFotoDocumentoResponse = z.infer<typeof uploadFotoDocumentoResponseSchema>;
+
+// Límite y tipos compartidos entre front y back para la foto de documento.
+// Antes solo existían en el pipe del backend (`ImageFileValidationPipe`); el
+// frontend no los conocía y dejaba pasar cualquier archivo hasta que el
+// servidor lo rechazaba — un viaje de red completo (a veces varios MB) solo
+// para enterarse de que el archivo no servía.
+export const MAX_DOCUMENT_PHOTO_BYTES = 5 * 1024 * 1024;
+export const ALLOWED_DOCUMENT_PHOTO_MIME = ["image/jpeg", "image/png", "image/webp"] as const;
 
 // Fase 4.13 — respuesta de `POST /clients/:id/access` (genera/resetea la
 // contraseña temporal del portal). `temporaryPassword` se muestra UNA vez al

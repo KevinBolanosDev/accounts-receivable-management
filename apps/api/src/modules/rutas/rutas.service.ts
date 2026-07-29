@@ -339,8 +339,12 @@ function summarizeRuta(ruta: RutaWithClientesHoy): {
       telefono: cliente.telefono,
       documento: cliente.documento,
       direccion: cliente.direccion,
-      fotoDocumentoFrenteUrl: cliente.fotoDocumentoFrenteUrl,
-      fotoDocumentoReversoUrl: cliente.fotoDocumentoReversoUrl,
+      fotoDocumentoFrentePath: cliente.fotoDocumentoFrentePath,
+      fotoDocumentoReversoPath: cliente.fotoDocumentoReversoPath,
+      // Es un listado (extiende `clienteListItemSchema`): nunca se firma acá,
+      // igual que en `ClientsService.toListItem`.
+      fotoDocumentoFrenteUrl: null,
+      fotoDocumentoReversoUrl: null,
       // La ruta es siempre ESTA ruta: `ruta.clientAdmins` ya viene filtrado a
       // las relaciones activas de esta misma ruta (ver `buildRutaReadInclude`).
       rutaId: ruta.id,

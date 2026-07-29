@@ -85,8 +85,8 @@ export function FieldClientCreateScreen() {
       // `null` y no `""`: la cadena vacía pasa el schema pero llega a Prisma
       // como FK inválida (mismo bug que ya se corrigió en `ClientFormScreen`).
       rutaId: activeRoute?.id ?? null,
-      fotoDocumentoFrenteUrl: null,
-      fotoDocumentoReversoUrl: null,
+      fotoDocumentoFrentePath: null,
+      fotoDocumentoReversoPath: null,
       contactoNombre: "",
       contactoTelefono: "",
       abrirCredito: false,
@@ -98,9 +98,15 @@ export function FieldClientCreateScreen() {
     },
   });
 
-  const fotos = useWatch({ control, name: ["fotoDocumentoFrenteUrl", "fotoDocumentoReversoUrl"] });
+  const fotos = useWatch({ control, name: ["fotoDocumentoFrentePath", "fotoDocumentoReversoPath"] });
   const abrirCredito = useWatch({ control, name: "abrirCredito" });
   const values = useWatch({ control });
+  // Mismo motivo que en `ClientFormScreen`: sin esto, guardar mientras la foto
+  // todavía sube deja el cliente creado con la foto en `null`.
+  const [uploadingCount, setUploadingCount] = useState(0);
+  function handleUploadingChange(uploading: boolean) {
+    setUploadingCount((count) => count + (uploading ? 1 : -1));
+  }
   const rutaSeleccionada = rutas.find((r) => r.id === values.rutaId) ?? activeRoute;
 
   async function onSubmit(v: FormValues) {
@@ -134,8 +140,8 @@ export function FieldClientCreateScreen() {
         documento: v.documento,
         direccion: v.direccion,
         rutaId: v.rutaId,
-        fotoDocumentoFrenteUrl: v.fotoDocumentoFrenteUrl ?? null,
-        fotoDocumentoReversoUrl: v.fotoDocumentoReversoUrl ?? null,
+        fotoDocumentoFrentePath: v.fotoDocumentoFrentePath ?? null,
+        fotoDocumentoReversoPath: v.fotoDocumentoReversoPath ?? null,
         contactoNombre: v.contactoNombre?.trim() || null,
         contactoTelefono: v.contactoTelefono?.trim() || null,
       });
@@ -231,13 +237,15 @@ export function FieldClientCreateScreen() {
               capture
               placeholder="Frente"
               value={fotos[0] ?? null}
-              onChange={(url) => setValue("fotoDocumentoFrenteUrl", url)}
+              onChange={(path) => setValue("fotoDocumentoFrentePath", path)}
+              onUploadingChange={handleUploadingChange}
             />
             <DocumentUploader
               capture
               placeholder="Reverso"
               value={fotos[1] ?? null}
-              onChange={(url) => setValue("fotoDocumentoReversoUrl", url)}
+              onChange={(path) => setValue("fotoDocumentoReversoPath", path)}
+              onUploadingChange={handleUploadingChange}
             />
           </div>
 
@@ -450,8 +458,9 @@ export function FieldClientCreateScreen() {
             size="lg"
             className="w-full bg-linear-to-r from-primary to-accent"
             loading={saving}
+            disabled={uploadingCount > 0}
           >
-            Guardar cliente
+            {uploadingCount > 0 ? "Esperando la foto…" : "Guardar cliente"}
           </Button>
         </div>
 

@@ -9,6 +9,7 @@ import {
   Patch,
   Post,
   Query,
+  ServiceUnavailableException,
   UploadedFile,
   UseInterceptors,
 } from "@nestjs/common";
@@ -125,13 +126,27 @@ export class ClientesController {
   @UseInterceptors(
     FileInterceptor("file", {
       storage: memoryStorage(),
-      limits: { fileSize: 5 * 1024 * 1024 },
+      // 6MB, no 5MB: el límite real (5MB, ver ImageFileValidationPipe) lo
+      // hace cumplir el pipe con un mensaje en español. Si Multer usara el
+      // mismo número, SIEMPRE gana Multer (corta el stream antes de que el
+      // pipe llegue a correr) y el rechazo sale como `PayloadTooLargeException`
+      // — un 413 "File too large" en inglés que el pipe nunca llega a evitar.
+      // Este límite queda solo como tope duro de memoria.
+      limits: { fileSize: 6 * 1024 * 1024 },
     }),
   )
   async uploadFotoDocumento(
     @UploadedFile(new ImageFileValidationPipe()) file: Express.Multer.File,
   ): Promise<UploadFotoDocumentoResponse> {
-    const fotoDocumentoUrl = await this.storageService.uploadImagen(file.buffer, file.mimetype);
-    return uploadFotoDocumentoResponseSchema.parse({ fotoDocumentoUrl });
+    const { path } = await this.storageService.uploadImagen(file.buffer, file.mimetype);
+    // La URL firmada es solo para el preview inmediato tras subir: el front
+    // persiste `path`, no `url` — ver el comentario del schema en @repo/types.
+    const url = await this.storageService.createSignedUrl(path);
+    if (!url) {
+      throw new ServiceUnavailableException(
+        "La imagen se guardó, pero no se pudo generar el enlace.",
+      );
+    }
+    return uploadFotoDocumentoResponseSchema.parse({ path, url });
   }
 }

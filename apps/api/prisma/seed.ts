@@ -217,8 +217,8 @@ async function seedClientes(adminId: string): Promise<void> {
         passwordExpiresAt: cliente.passwordExpiresAt ?? null,
         failedLoginAttempts: 0,
         lockedUntil: null,
-        fotoDocumentoFrenteUrl: null,
-        fotoDocumentoReversoUrl: null,
+        fotoDocumentoFrentePath: null,
+        fotoDocumentoReversoPath: null,
       },
     });
 

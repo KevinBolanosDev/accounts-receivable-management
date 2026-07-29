@@ -9,7 +9,10 @@ import type {
 
 import { clientesService } from "./clientes-service";
 
-const clientesKeys = {
+// Exportado: `ClientDocumentPhotos` lo necesita para invalidar el detalle de
+// un cliente puntual cuando una URL firmada expira (`onError` del `<img>`),
+// sin depender de `clientesKeys.all` y refrescar de más.
+export const clientesKeys = {
   all: ["clientes"] as const,
   list: (query?: ClientesQuery) => ["clientes", "list", query ?? {}] as const,
   summary: ["clientes", "summary"] as const,

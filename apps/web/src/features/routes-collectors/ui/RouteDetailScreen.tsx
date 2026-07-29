@@ -130,8 +130,13 @@ export function RouteDetailScreen({ rutaId }: { rutaId: string }) {
       />
 
       <div className="grid gap-6 p-4 sm:p-6 lg:grid-cols-[340px_minmax(0,1fr)]">
+        {/* `min-w-0` en ambas columnas: por debajo de `lg` no hay `grid-cols`
+            explícito, así que las dos comparten un único track implícito. Sin
+            esto, el ancho mínimo de contenido de la tabla de la derecha (5
+            columnas) arrastraba también a esta columna — los KPI mostraban la
+            etiqueta pero el valor quedaba empujado fuera de la pantalla. */}
         {/* Columna izquierda */}
-        <div className="flex flex-col gap-4">
+        <div className="flex min-w-0 flex-col gap-4">
           {/* Tarjeta de cobrador */}
           <div className="flex flex-col items-center gap-3 rounded-lg border border-border bg-card p-6 text-center">
             <span className="flex size-20 items-center justify-center rounded-full bg-secondary text-xl font-semibold">
@@ -172,7 +177,7 @@ export function RouteDetailScreen({ rutaId }: { rutaId: string }) {
         </div>
 
         {/* Columna derecha: clientes de la ruta */}
-        <div className="flex flex-col gap-3 rounded-lg border border-border bg-card p-5">
+        <div className="flex min-w-0 flex-col gap-3 rounded-lg border border-border bg-card p-5">
           <div className="flex items-center justify-between">
             <p className="text-caption text-muted-foreground uppercase">Clientes de la ruta</p>
             <span className="text-caption text-muted-foreground">Ordenado por estado</span>

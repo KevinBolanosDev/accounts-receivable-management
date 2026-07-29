@@ -77,6 +77,8 @@ function toListItem(c: MockCliente): ClienteListItem {
     telefono: c.telefono,
     documento: c.documento,
     direccion: "Calle 00 # 00-00",
+    fotoDocumentoFrentePath: null,
+    fotoDocumentoReversoPath: null,
     fotoDocumentoFrenteUrl: null,
     fotoDocumentoReversoUrl: null,
     rutaId: c.rutaId,
@@ -137,6 +139,8 @@ function toDetail(c: MockCliente): ClienteDetail {
     telefono: c.telefono,
     documento: c.documento,
     direccion: "Calle 00 # 00-00",
+    fotoDocumentoFrentePath: null,
+    fotoDocumentoReversoPath: null,
     fotoDocumentoFrenteUrl: null,
     fotoDocumentoReversoUrl: null,
     rutaId: c.rutaId,
@@ -190,8 +194,11 @@ export const mockClientesService: ClientesService = {
       telefono: body.telefono,
       documento: body.documento,
       direccion: body.direccion,
-      fotoDocumentoFrenteUrl: body.fotoDocumentoFrenteUrl ?? null,
-      fotoDocumentoReversoUrl: body.fotoDocumentoReversoUrl ?? null,
+      fotoDocumentoFrentePath: body.fotoDocumentoFrentePath ?? null,
+      fotoDocumentoReversoPath: body.fotoDocumentoReversoPath ?? null,
+      // El mock nunca firma nada — no hay Storage real detrás.
+      fotoDocumentoFrenteUrl: null,
+      fotoDocumentoReversoUrl: null,
       rutaId: body.rutaId,
     });
   },
@@ -204,8 +211,10 @@ export const mockClientesService: ClientesService = {
       telefono: body.telefono ?? c.telefono,
       documento: body.documento ?? c.documento,
       direccion: body.direccion ?? "Calle 00 # 00-00",
-      fotoDocumentoFrenteUrl: body.fotoDocumentoFrenteUrl ?? null,
-      fotoDocumentoReversoUrl: body.fotoDocumentoReversoUrl ?? null,
+      fotoDocumentoFrentePath: body.fotoDocumentoFrentePath ?? null,
+      fotoDocumentoReversoPath: body.fotoDocumentoReversoPath ?? null,
+      fotoDocumentoFrenteUrl: null,
+      fotoDocumentoReversoUrl: null,
       rutaId: body.rutaId ?? c.rutaId,
     });
   },
@@ -215,7 +224,8 @@ export const mockClientesService: ClientesService = {
   async uploadFotoDocumento() {
     await delay(600);
     return uploadFotoDocumentoResponseSchema.parse({
-      fotoDocumentoUrl: "https://example.com/mock/documento.jpg",
+      path: "id-documents/mock.jpg",
+      url: "https://example.com/mock/documento.jpg",
     });
   },
   async generateAccess() {

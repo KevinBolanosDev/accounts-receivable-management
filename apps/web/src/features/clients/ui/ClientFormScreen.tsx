@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useState } from "react";
 import { Controller, useForm, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useRouter } from "next/navigation";
@@ -86,8 +87,8 @@ const DEFAULTS: FormValues = {
   // pintaba como "Sin ruta" pero que se enviaba como un id de ruta vacío:
   // quien no tocaba el desplegable creaba el cliente con un `rutaId` inválido.
   rutaId: null,
-  fotoDocumentoFrenteUrl: null,
-  fotoDocumentoReversoUrl: null,
+  fotoDocumentoFrentePath: null,
+  fotoDocumentoReversoPath: null,
   contactoNombre: "",
   contactoTelefono: "",
   abrirCredito: false,
@@ -186,8 +187,8 @@ function ClientFormBody({
           documento: cliente.documento,
           direccion: cliente.direccion,
           rutaId: cliente.rutaId ?? null,
-          fotoDocumentoFrenteUrl: cliente.fotoDocumentoFrenteUrl,
-          fotoDocumentoReversoUrl: cliente.fotoDocumentoReversoUrl,
+          fotoDocumentoFrentePath: cliente.fotoDocumentoFrentePath,
+          fotoDocumentoReversoPath: cliente.fotoDocumentoReversoPath,
           contactoNombre: cliente.contactoNombre ?? "",
           contactoTelefono: cliente.contactoTelefono ?? "",
         }
@@ -203,6 +204,15 @@ function ClientFormBody({
     formState: { errors },
     setError,
   } = form;
+
+  // Cuenta cuántos de los 2 uploaders están subiendo ahora mismo, para
+  // bloquear el submit mientras cualquiera esté en curso: antes el guardado
+  // no esperaba nada, así que guardar rápido dejaba la foto en `null` pese a
+  // que la subida seguía en progreso en segundo plano.
+  const [uploadingCount, setUploadingCount] = useState(0);
+  function handleUploadingChange(uploading: boolean) {
+    setUploadingCount((count) => count + (uploading ? 1 : -1));
+  }
 
   const abrirCredito = useWatch({ control, name: "abrirCredito" });
   const values = useWatch({ control });
@@ -246,8 +256,8 @@ function ClientFormBody({
           documento: v.documento,
           direccion: v.direccion,
           rutaId: v.rutaId,
-          fotoDocumentoFrenteUrl: v.fotoDocumentoFrenteUrl ?? null,
-          fotoDocumentoReversoUrl: v.fotoDocumentoReversoUrl ?? null,
+          fotoDocumentoFrentePath: v.fotoDocumentoFrentePath ?? null,
+          fotoDocumentoReversoPath: v.fotoDocumentoReversoPath ?? null,
           // Explícitos y normalizando "" → null: en un update, `undefined`
           // significa "no tocar", así que omitirlos haría imposible borrar un
           // contacto ya guardado.
@@ -265,8 +275,8 @@ function ClientFormBody({
         documento: v.documento,
         direccion: v.direccion,
         rutaId: v.rutaId,
-        fotoDocumentoFrenteUrl: v.fotoDocumentoFrenteUrl ?? null,
-        fotoDocumentoReversoUrl: v.fotoDocumentoReversoUrl ?? null,
+        fotoDocumentoFrentePath: v.fotoDocumentoFrentePath ?? null,
+        fotoDocumentoReversoPath: v.fotoDocumentoReversoPath ?? null,
         contactoNombre: v.contactoNombre?.trim() || null,
         contactoTelefono: v.contactoTelefono?.trim() || null,
       });
@@ -406,13 +416,17 @@ function ClientFormBody({
               <div className="grid gap-3 sm:grid-cols-2">
                 <DocumentUploader
                   placeholder="Frente"
-                  value={values.fotoDocumentoFrenteUrl ?? null}
-                  onChange={(url) => setValue("fotoDocumentoFrenteUrl", url)}
+                  value={values.fotoDocumentoFrentePath ?? null}
+                  previewUrl={cliente?.fotoDocumentoFrenteUrl}
+                  onChange={(path) => setValue("fotoDocumentoFrentePath", path)}
+                  onUploadingChange={handleUploadingChange}
                 />
                 <DocumentUploader
                   placeholder="Reverso"
-                  value={values.fotoDocumentoReversoUrl ?? null}
-                  onChange={(url) => setValue("fotoDocumentoReversoUrl", url)}
+                  value={values.fotoDocumentoReversoPath ?? null}
+                  previewUrl={cliente?.fotoDocumentoReversoUrl}
+                  onChange={(path) => setValue("fotoDocumentoReversoPath", path)}
+                  onUploadingChange={handleUploadingChange}
                 />
               </div>
             </div>
@@ -509,8 +523,17 @@ function ClientFormBody({
             <Button type="button" variant="secondary" onClick={() => router.back()}>
               Cancelar
             </Button>
-            <Button type="submit" loading={saving}>
-              {isEdit ? "Guardar cambios" : "Guardar cliente"}
+            <Button
+              type="submit"
+              loading={saving}
+              disabled={uploadingCount > 0}
+              title={uploadingCount > 0 ? "Espera a que terminen de subirse las fotos." : undefined}
+            >
+              {uploadingCount > 0
+                ? "Esperando la foto…"
+                : isEdit
+                  ? "Guardar cambios"
+                  : "Guardar cliente"}
             </Button>
           </div>
         </div>
