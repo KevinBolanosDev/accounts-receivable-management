@@ -328,6 +328,13 @@ export class ClientsService {
     if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2025") {
       return new NotFoundException("La ruta o el cliente no existe.");
     }
+    // P2003 = FK inválida. Con el `rutaId` ya normalizado en el contrato el
+    // caso conocido (cadena vacía) no llega hasta acá, pero cualquier id de
+    // ruta inexistente que se cuele debe leerse como "esa ruta no existe" y
+    // no como un 500 opaco que obliga a mirar los logs del servidor.
+    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2003") {
+      return new BadRequestException("La ruta indicada no existe.");
+    }
     return error as Error;
   }
 

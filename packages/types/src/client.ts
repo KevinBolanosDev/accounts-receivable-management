@@ -82,7 +82,18 @@ export const createClienteRequestSchema = z.object({
   direccion: z.string().min(1, "La dirección es obligatoria."),
   // Opcional/nullable: el alta puede dejar al cliente "sin ruta" (bucket
   // "Sin asignar" en Admin); se asigna después desde la pantalla de Ruta.
-  rutaId: z.string().nullable().optional(),
+  //
+  // El `""` se normaliza a null porque es lo que emite un <select> sin opción
+  // elegida, y en el contrato eso significa "sin ruta", no "una ruta cuyo id
+  // es la cadena vacía". Sin esto, `""` es un string válido para el schema
+  // pero falsy en JS: el backend se saltaba la validación de acceso a la ruta
+  // (`if (body.rutaId)`) y le pasaba el `""` a Prisma, que reventaba contra la
+  // FK — un 500 en cada alta de cliente sin ruta.
+  rutaId: z
+    .string()
+    .nullable()
+    .optional()
+    .transform((value) => (value === "" ? null : value)),
   fotoDocumentoFrenteUrl: z.string().url().nullable().optional(),
   fotoDocumentoReversoUrl: z.string().url().nullable().optional(),
   // Contacto de referencia: ambos opcionales e independientes entre sí.

@@ -88,7 +88,11 @@ const DEFAULTS: FormValues = {
   telefono: "",
   documento: "",
   direccion: "",
-  rutaId: "",
+  // `null` = "Sin ruta", el mismo valor que emite el Select al elegir esa
+  // opción. Con `""` el formulario arrancaba en un estado que el Select ya
+  // pintaba como "Sin ruta" pero que se enviaba como un id de ruta vacío:
+  // quien no tocaba el desplegable creaba el cliente con un `rutaId` inválido.
+  rutaId: null,
   fotoDocumentoFrenteUrl: null,
   fotoDocumentoReversoUrl: null,
   abrirCredito: false,
@@ -138,7 +142,7 @@ export function ClientFormScreen({ clienteId }: { clienteId?: string }) {
         telefono: cliente.telefono,
         documento: cliente.documento,
         direccion: cliente.direccion,
-        rutaId: cliente.rutaId ?? "",
+        rutaId: cliente.rutaId ?? null,
         fotoDocumentoFrenteUrl: cliente.fotoDocumentoFrenteUrl,
         fotoDocumentoReversoUrl: cliente.fotoDocumentoReversoUrl,
         abrirCredito: false,
