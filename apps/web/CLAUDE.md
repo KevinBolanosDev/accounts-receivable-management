@@ -143,7 +143,9 @@ async function uploadFile<T>(path, schema, { file, fieldName="file", fields?, to
 **Decisiones clave:**
 - **Token explícito por llamada** (no interceptor). Razón: `shared` no puede importar de `entities/session` (rompe FSD). Quien llama lee `useSessionStore.getState().token`.
 - **Validación Zod con el MISMO schema del backend**. Errores de shape → `ZodError` propagado.
-- **No maneja 401/403** automáticamente. `useValidateSession` los detecta vía `useQuery.isError` y limpia la sesión.
+- **`apiFetchVoid` para los 204.** Los DELETE del sistema (`/clients/:id`, `/clients/:id/access`, `/users/:id`, `/routes/:id`) responden **204 sin cuerpo**: `apiFetch` hacía `res.json()` incondicional y reventaba con un `SyntaxError` **después** de que el servidor ya había ejecutado la acción — el borrado ocurría pero la UI decía "no se pudo" y no invalidaba nada. `apiFetch` ahora **lanza un error nombrando `apiFetchVoid`** si recibe un 204, para que el mal uso se diagnostique al instante. Ojo: `DELETE /credits/:id` y `DELETE /routes/:id/clients/:clienteId` **sí devuelven body** y usan `apiFetch` normal — al agregar un DELETE, contrastar siempre contra el `@HttpCode` de su controller.
+- **401 → cierra sesión, global.** `providers.tsx` registra `QueryCache`/`MutationCache` `onError`: ante un `ApiError` 401 limpia la sesión de la superficie activa (staff o cliente, por `pathname`) y no reintenta 4xx. `useValidateSession` sigue validando el token al montar, pero no basta por sí solo: `GET /auth/me` no valida el tenant, así que un token viejo pasaba esa comprobación y fallaba en todo lo demás.
+- **Mostrar el error real.** En los `catch`, `error instanceof ApiError ? error.message : "<fallback>"`. Un `catch {}` ciego borra mensajes de negocio accionables (el 409 de "la ruta tiene N clientes asignados", el 409 de documento duplicado).
 
 ## Estado de sesión (Zustand)
 
@@ -179,7 +181,19 @@ Tokens en `app/globals.css`:
 
 **Modo por superficie (DESIGN_SYSTEM §0):** Admin=dark, Cobrador/Cliente=light. Aplicado a nivel de layout del route-group (`className="dark"` solo en `(admin)/layout.tsx:6`). Sin FOUC, sin JS para el default.
 
-**Primitivos en `shared/ui/`** (23): avatar, badge (cva con status variant), button (cva con variant+size+loading+asChild), card, command (cmdk), dialog, dropdown-menu, form (wrapper RHF), input, label, metric-card (cva tone), popover, progress-bar, progress-ring (32/64/120px, cambio cian→verde >90%), select, sheet (Radix), skeleton, sonner (Toaster), switch, table, tabs (variant underline), textarea, tooltip. **Sin Storybook**: la galería vive en `/dev/ui` (404 en producción).
+**Primitivos en `shared/ui/`**: alert-dialog, avatar, badge (cva con status variant), button (cva con variant+size+loading+asChild), card, command (cmdk), **confirm-dialog**, dialog, dropdown-menu, form (wrapper RHF), input, label, metric-card (cva tone), popover, progress-bar, progress-ring (32/64/120px, cambio cian→verde >90%), select, sheet (Radix), skeleton, sonner (Toaster), switch, table, tabs (variant underline), textarea, tooltip. **Sin Storybook**: la galería vive en `/dev/ui` (404 en producción).
+
+**Confirmaciones destructivas: siempre `ConfirmDialog`**, nunca un `<Dialog>` a mano (antes había tres copias divergentes). Va sobre `AlertDialog` de Radix por `role="alertdialog"` y foco inicial en Cancelar. La fricción se escala según el daño, no por defecto:
+
+| Acción | Reversible | Confirmación |
+|---|---|---|
+| Eliminar cliente · Eliminar acceso al portal · Anular crédito | Sí, o auditable | `ConfirmDialog` simple |
+| Eliminar cobrador | Parcial (el Switch revierte `activo`; la desasignación de rutas no) | `confirmPhrase={cobrador.documento}` |
+| Eliminar ruta | **No — es el único borrado físico** | `confirmPhrase={ruta.nombre}` |
+
+`confirmPhrase` obliga a escribir un identificador **corto y visible en pantalla**. Se descartaron los dos diálogos encadenados y el checkbox "entiendo": ambos se despachan por reflejo sin leer nada.
+
+**Acciones de página: `widgets/admin-shell/PageActions`.** Se declaran como lista (`PageAction[]`) y el componente las pinta como botones en `md:` y como menú "…" (`DropdownMenu`) debajo. El detalle de cliente tenía tres botones `whitespace-nowrap shrink-0` en un header `h-16` sin wrap: pedía ~440px y desbordaba a toda la página en un teléfono de 360px. `AdminPageHeader` no cambió su API (`actions?: React.ReactNode`), así que solo lo usan las pantallas que lo necesitan.
 
 **Animación con GSAP** (`shared/lib/motion/`):
 - `gsap.ts` registra `useGSAP`, `ScrollTrigger`, `Flip` una sola vez
@@ -213,7 +227,23 @@ const onSubmit = form.handleSubmit(async (values) => {
 
 - Sin optimistic updates.
 - Validación cruzada (campos opcionales que se vuelven requeridos condicionalmente) se hace manual con `form.setError(name, { type: "manual", message })`.
-- Edición: `useEffect(() => form.reset(...), [isEdit, entity])`.
+
+**Formularios de edición: gate + `key`, nunca `reset()` dentro de un `useEffect`.**
+
+1. El contenedor espera a que **todas** las queries que alimentan los valores iniciales estén resueltas (Skeleton mientras).
+2. Entidad inexistente → estado vacío con salida, jamás Skeleton eterno.
+3. El cuerpo recibe los datos ya resueltos, calcula `defaultValues` una sola vez y se monta con `key={entity?.id ?? "new"}`.
+4. `reset()` queda reservado para acciones explícitas del usuario.
+
+```tsx
+if (isEdit && (loadingEntity || loadingDeps)) return <FormSkeleton />;
+if (isEdit && (isError || !entity))          return <NotFound />;
+return <FormBody key={entity?.id ?? "new"} entity={entity ?? null} deps={deps} />;
+```
+
+Razón: TanStack devuelve una **referencia nueva** en cada refetch y `refetchOnWindowFocus` está activo, así que un `reset` en efecto se re-dispara y **pisa lo que el usuario está escribiendo**. Y si el reset corre antes de que lleguen las opciones de un `<Select>`, Radix pinta el placeholder aunque el valor esté puesto (era el "no precarga la ruta al editar").
+
+Implementado en `ClientFormScreen` y `CollectorDialog` (form montado solo con el diálogo abierto). **Excepción documentada:** `RouteFormScreen` conserva el efecto pero depende de `ruta?.id`, no del objeto — ahí `ruta` también alimenta métricas y la lista de clientes asignados, que **sí** deben re-renderizar con cada mutación.
 
 ## Rutas (App Router)
 

@@ -89,8 +89,11 @@ export class RutasRepository {
     return this.prisma.ruta.update({ where: { id }, data, include: rutaWriteInclude });
   }
 
+  // Solo las relaciones ACTIVAS cuentan como "clientes asignados". Sin el
+  // filtro, un cliente dado de baja seguía bloqueando el borrado de la ruta
+  // para siempre: la ruta se veía vacía en pantalla pero devolvía 409.
   countClientes(rutaId: string): Promise<number> {
-    return this.prisma.clientAdmin.count({ where: { rutaId } });
+    return this.prisma.clientAdmin.count({ where: { rutaId, activo: true } });
   }
 
   // Para validar que el cobrador que se asigna a una ruta pertenece al mismo
@@ -102,8 +105,19 @@ export class RutasRepository {
     });
   }
 
+  // Las relaciones inactivas se sueltan primero: `ClientAdmin.rutaId` es
+  // `onDelete: Restrict`, así que un cliente dado de baja que todavía apunta a
+  // esta ruta haría fallar el delete con P2003 aunque el service ya haya
+  // verificado que no quedan clientes activos. En transacción para que no
+  // queden relaciones sueltas si el delete falla por otro motivo.
   async delete(id: string): Promise<void> {
-    await this.prisma.ruta.delete({ where: { id } });
+    await this.prisma.$transaction([
+      this.prisma.clientAdmin.updateMany({
+        where: { rutaId: id, activo: false },
+        data: { rutaId: null },
+      }),
+      this.prisma.ruta.delete({ where: { id } }),
+    ]);
   }
 
   // Asignar/quitar clientes de una ruta (§3 — cierre de Fase 3, pantalla de

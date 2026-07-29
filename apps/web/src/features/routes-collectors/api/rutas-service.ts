@@ -10,7 +10,7 @@ import {
 } from "@repo/types";
 
 import { useSessionStore } from "@/entities/session";
-import { apiFetch } from "@/shared/api/client";
+import { apiFetch, apiFetchVoid } from "@/shared/api/client";
 
 // Resumen de la tira superior de la lista de rutas (pantalla 6c). Es un
 // agregado de UI; el mock lo fija a los valores del prototipo.
@@ -177,7 +177,7 @@ export const httpRutasService: RutasService = {
     return apiFetch(`/routes/${id}`, rutaSchema, { method: "PATCH", body, token: useSessionStore.getState().token });
   },
   async deleteRuta(id) {
-    await apiFetch(`/routes/${id}`, rutaSchema, { method: "DELETE", token: useSessionStore.getState().token });
+    await apiFetchVoid(`/routes/${id}`, { method: "DELETE", token: useSessionStore.getState().token });
   },
   assignClientes(id, clienteIds) {
     return apiFetch(`/routes/${id}/clients`, rutaDetailSchema, {

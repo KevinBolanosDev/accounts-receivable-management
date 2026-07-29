@@ -15,7 +15,8 @@ import type { ClienteDetail } from "@repo/types";
 import { toast } from "sonner";
 
 import { CreditCard } from "@/entities/credit";
-import { ESTADO_CLIENTE_LABEL } from "@/entities/client";
+import { ClientContactPanel, ESTADO_CLIENTE_LABEL } from "@/entities/client";
+import { ApiError } from "@/shared/api/client";
 import { getInitials } from "@/shared/lib/initials";
 import { formatCurrency } from "@/shared/lib/format-currency";
 import { cn } from "@/shared/lib/utils";
@@ -29,6 +30,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/shared/ui/dialog";
+import { ConfirmDialog } from "@/shared/ui/confirm-dialog";
 import { Input } from "@/shared/ui/input";
 import { ProgressRing } from "@/shared/ui/progress-ring";
 import { Skeleton } from "@/shared/ui/skeleton";
@@ -39,6 +41,7 @@ import {
   TabsTrigger,
 } from "@/shared/ui/tabs";
 import { AdminPageHeader } from "@/widgets/admin-shell/AdminPageHeader";
+import { PageActions } from "@/widgets/admin-shell/PageActions";
 
 import {
   useCliente,
@@ -65,11 +68,14 @@ function StatCard({
   subClassName?: string;
 }) {
   return (
-    <div className="flex flex-col gap-1 rounded-lg border border-border bg-card p-5">
+    <div className="flex min-w-0 flex-col gap-1 rounded-lg border border-border bg-card p-4 sm:p-5">
       <span className="text-caption text-muted-foreground uppercase">{label}</span>
-      <span className="text-h1 font-semibold tabular-nums">{value}</span>
+      {/* Un saldo de 8 dígitos a 28px no cabe en un teléfono de 360px. */}
+      <span className="truncate text-h2 font-semibold tabular-nums sm:text-h1">{value}</span>
       {sub ? (
-        <span className={cn("text-body-sm text-muted-foreground", subClassName)}>{sub}</span>
+        <span className={cn("truncate text-body-sm text-muted-foreground", subClassName)}>
+          {sub}
+        </span>
       ) : null}
     </div>
   );
@@ -77,7 +83,7 @@ function StatCard({
 
 export function ClientDetailScreen({ clienteId }: { clienteId: string }) {
   const router = useRouter();
-  const { data: cliente, isLoading } = useCliente(clienteId);
+  const { data: cliente, isLoading, isError } = useCliente(clienteId);
   const deleteCliente = useDeleteCliente();
   const [confirmOpen, setConfirmOpen] = useState(false);
 
@@ -107,7 +113,7 @@ export function ClientDetailScreen({ clienteId }: { clienteId: string }) {
     );
   }, [montoTotalAgregado, saldoAgregado]);
 
-  if (isLoading || !cliente) {
+  if (isLoading) {
     return (
       <>
         <AdminPageHeader eyebrow="Clientes" title="Detalle de cliente" />
@@ -118,13 +124,36 @@ export function ClientDetailScreen({ clienteId }: { clienteId: string }) {
     );
   }
 
+  // "No cargó" y "no existe" son estados distintos. Antes ambos caían en el
+  // Skeleton de arriba, así que un cliente borrado (404) dejaba la pantalla
+  // cargando para siempre, sin decir nada ni ofrecer salida.
+  if (isError || !cliente) {
+    return (
+      <>
+        <AdminPageHeader eyebrow="Clientes" title="Detalle de cliente" />
+        <div className="flex flex-col items-center gap-4 p-4 sm:p-6">
+          <EmptyState
+            title="Este cliente no existe o fue eliminado"
+            description="Puede que lo hayas eliminado desde otra pestaña, o que ya no pertenezca a tu cartera."
+          />
+          <Button asChild variant="secondary">
+            <Link href="/admin/clients">Volver a Clientes</Link>
+          </Button>
+        </div>
+      </>
+    );
+  }
+
   async function handleDelete() {
     try {
       await deleteCliente.mutateAsync(clienteId);
       toast.success("Cliente eliminado");
       router.push("/admin/clients");
-    } catch {
-      toast.error("No se pudo eliminar el cliente");
+    } catch (error) {
+      // El backend manda mensajes de negocio útiles (por ejemplo el 409 de una
+      // ruta con clientes); tragárselos con un texto genérico deja al usuario
+      // sin saber qué hacer.
+      toast.error(error instanceof ApiError ? error.message : "No se pudo eliminar el cliente");
     }
   }
 
@@ -134,55 +163,56 @@ export function ClientDetailScreen({ clienteId }: { clienteId: string }) {
         eyebrow={`Clientes / ${cliente.nombre}`}
         title="Detalle de cliente"
         actions={
-          <>
-            <Button
-              asChild
-              variant="secondary"
-              aria-label={`Agregar crédito a ${cliente.nombre}`}
-            >
-              <Link
-                href={{
-                  pathname: "/admin/credits/new",
-                  query: { clienteId: cliente.id },
-                }}
-              >
-                <PlusIcon />
-                Agregar crédito
-              </Link>
-            </Button>
-            <Button asChild variant="secondary">
-              <Link href={`/admin/clients/${cliente.id}/edit`}>
-                <PencilIcon />
-                Editar
-              </Link>
-            </Button>
-            <Button variant="secondary" className="text-destructive" onClick={() => setConfirmOpen(true)}>
-              <Trash2Icon />
-              Eliminar
-            </Button>
-          </>
+          <PageActions
+            actions={[
+              {
+                id: "add-credit",
+                label: "Agregar crédito",
+                icon: <PlusIcon />,
+                href: `/admin/credits/new?clienteId=${cliente.id}`,
+              },
+              {
+                id: "edit",
+                label: "Editar",
+                icon: <PencilIcon />,
+                href: `/admin/clients/${cliente.id}/edit`,
+              },
+              {
+                id: "delete",
+                label: "Eliminar",
+                icon: <Trash2Icon />,
+                variant: "destructive",
+                onSelect: () => setConfirmOpen(true),
+              },
+            ]}
+          />
         }
       />
 
       <div className="flex flex-col gap-6 p-4 sm:p-6">
         {/* Identidad + saldo agregado + badge de rollup */}
-        <div className="flex flex-wrap items-start justify-between gap-4">
-          <div className="flex items-center gap-4">
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+          <div className="flex min-w-0 items-center gap-3 sm:gap-4">
             <span className="flex size-14 shrink-0 items-center justify-center rounded-full bg-secondary text-lg font-semibold">
               {getInitials(cliente.nombre)}
             </span>
-            <div className="flex flex-col gap-1">
-              <div className="flex items-center gap-2">
-                <span className="text-h2 font-semibold">{cliente.nombre}</span>
+            <div className="flex min-w-0 flex-col gap-1">
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="truncate text-h2 font-semibold">{cliente.nombre}</span>
                 {cliente.estado ? (
                   <Badge status={cliente.estado}>
                     {ESTADO_CLIENTE_LABEL[cliente.estado]}
                   </Badge>
                 ) : null}
               </div>
-              <span className="text-body-sm text-muted-foreground">
-                {cliente.ruta?.nombre ?? "Sin ruta"} · Cobrador {cliente.cobradorNombre ?? "Sin asignar"} ·
-                Doc {cliente.documento}
+              {/* Envuelve en vez de truncar: en móvil esta línea es el único
+                  sitio donde se ven la ruta y el cobrador del cliente. */}
+              <span className="flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-body-sm text-muted-foreground">
+                <span>{cliente.ruta?.nombre ?? "Sin ruta"}</span>
+                <span aria-hidden>·</span>
+                <span>Cobrador {cliente.cobradorNombre ?? "Sin asignar"}</span>
+                <span aria-hidden>·</span>
+                <span>Doc {cliente.documento}</span>
               </span>
             </div>
           </div>
@@ -211,16 +241,20 @@ export function ClientDetailScreen({ clienteId }: { clienteId: string }) {
             value={String(cliente.creditosHistorial.length)}
             sub="pagados / anulados"
           />
-          <div className="flex items-center gap-4 rounded-lg border border-border bg-card p-5">
+          <div className="flex items-center gap-4 rounded-lg border border-border bg-card p-4 sm:p-5">
             <ProgressRing value={porcentajeAgregado} size="md" />
-            <div className="flex flex-col">
+            <div className="flex min-w-0 flex-col">
               <span className="text-caption text-muted-foreground uppercase">Avance</span>
-              <span className="text-body-sm text-muted-foreground">
+              <span className="truncate text-body-sm text-muted-foreground">
                 Pagado del total agregado
               </span>
             </div>
           </div>
         </div>
+
+        {/* Los datos de contacto solo se veían en la app del cobrador; el
+            Admin únicamente tenía el documento embutido en el encabezado. */}
+        <ClientContactPanel cliente={cliente} />
 
         {/* Fase 4.14 — acceso del cliente al Portal Cliente */}
         <ClientAccessSection cliente={cliente} />
@@ -250,7 +284,7 @@ export function ClientDetailScreen({ clienteId }: { clienteId: string }) {
                     href={`/admin/credits/${credito.id}`}
                     className="block focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-lg"
                   >
-                    <CreditCard credito={credito} clienteNombre={cliente.nombre} />
+                    <CreditCard credito={credito} clienteNombre={cliente.nombre} density="compact" />
                   </Link>
                 ))}
               </div>
@@ -271,7 +305,7 @@ export function ClientDetailScreen({ clienteId }: { clienteId: string }) {
                     href={`/admin/credits/${credito.id}`}
                     className="block focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-lg"
                   >
-                    <CreditCard credito={credito} clienteNombre={cliente.nombre} />
+                    <CreditCard credito={credito} clienteNombre={cliente.nombre} density="compact" />
                   </Link>
                 ))}
               </div>
@@ -280,24 +314,16 @@ export function ClientDetailScreen({ clienteId }: { clienteId: string }) {
         </TabsRoot>
       </div>
 
-      <Dialog open={confirmOpen} onOpenChange={setConfirmOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>¿Eliminar cliente?</DialogTitle>
-            <DialogDescription>
-              Se eliminará a {cliente.nombre}. Esta acción no se puede deshacer.
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter>
-            <Button variant="secondary" onClick={() => setConfirmOpen(false)}>
-              Cancelar
-            </Button>
-            <Button variant="destructive" loading={deleteCliente.isPending} onClick={handleDelete}>
-              Eliminar
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <ConfirmDialog
+        open={confirmOpen}
+        onOpenChange={setConfirmOpen}
+        title="¿Eliminar cliente?"
+        description={`${cliente.nombre} saldrá de tu cartera y dejará de aparecer en su ruta. Sus créditos y pagos se conservan.`}
+        confirmLabel="Eliminar"
+        variant="destructive"
+        loading={deleteCliente.isPending}
+        onConfirm={handleDelete}
+      />
     </>
   );
 }
@@ -317,8 +343,8 @@ function ClientAccessSection({ cliente }: { cliente: ClienteDetail }) {
     try {
       const result = await generateAccess.mutateAsync(cliente.id);
       setTempPassword({ value: result.temporaryPassword, expiresAt: result.expiresAt });
-    } catch {
-      toast.error("No se pudo generar el acceso");
+    } catch (error) {
+      toast.error(error instanceof ApiError ? error.message : "No se pudo generar el acceso");
     }
   }
 
@@ -327,8 +353,8 @@ function ClientAccessSection({ cliente }: { cliente: ClienteDetail }) {
       await deleteAccess.mutateAsync(cliente.id);
       toast.success("Acceso eliminado");
       setConfirmDeleteOpen(false);
-    } catch {
-      toast.error("No se pudo eliminar el acceso");
+    } catch (error) {
+      toast.error(error instanceof ApiError ? error.message : "No se pudo eliminar el acceso");
     }
   }
 
@@ -341,14 +367,14 @@ function ClientAccessSection({ cliente }: { cliente: ClienteDetail }) {
         : "Acceso activo · sin ingresos todavía";
 
   return (
-    <div className="flex flex-wrap items-center justify-between gap-4 rounded-lg border border-border bg-card p-5">
-      <div>
+    <div className="flex flex-wrap items-center justify-between gap-4 rounded-lg border border-border bg-card p-4 sm:p-5">
+      <div className="min-w-0">
         <p className="text-caption uppercase tracking-wider text-muted-foreground">
           Acceso del cliente al portal
         </p>
         <p className="text-body font-medium">{estadoLabel}</p>
       </div>
-      <div className="flex gap-2">
+      <div className="flex flex-wrap gap-2">
         <Button
           variant="secondary"
           size="sm"
@@ -407,28 +433,16 @@ function ClientAccessSection({ cliente }: { cliente: ClienteDetail }) {
         </DialogContent>
       </Dialog>
 
-      <Dialog open={confirmDeleteOpen} onOpenChange={setConfirmDeleteOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>¿Eliminar acceso al portal?</DialogTitle>
-            <DialogDescription>
-              El cliente ya no podrá ingresar con sus credenciales actuales.
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter>
-            <Button variant="secondary" onClick={() => setConfirmDeleteOpen(false)}>
-              Cancelar
-            </Button>
-            <Button
-              variant="destructive"
-              loading={deleteAccess.isPending}
-              onClick={handleDelete}
-            >
-              Eliminar acceso
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <ConfirmDialog
+        open={confirmDeleteOpen}
+        onOpenChange={setConfirmDeleteOpen}
+        title="¿Eliminar acceso al portal?"
+        description="El cliente ya no podrá ingresar con sus credenciales actuales. Puedes volver a generarle una contraseña cuando quieras."
+        confirmLabel="Eliminar acceso"
+        variant="destructive"
+        loading={deleteAccess.isPending}
+        onConfirm={handleDelete}
+      />
     </div>
   );
 }

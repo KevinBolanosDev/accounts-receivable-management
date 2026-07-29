@@ -20,6 +20,7 @@ import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, Command
 import { Input } from "@/shared/ui/input";
 import { Popover, PopoverContent, PopoverTrigger } from "@/shared/ui/popover";
 import { ProgressBar } from "@/shared/ui/progress-bar";
+import { Skeleton } from "@/shared/ui/skeleton";
 import { AdminPageHeader } from "@/widgets/admin-shell/AdminPageHeader";
 
 import { rutasService } from "../api/rutas-service";
@@ -213,7 +214,7 @@ export function RouteFormScreen({ rutaId }: { rutaId?: string }) {
   const router = useRouter();
   const queryClient = useQueryClient();
   const isEdit = !!rutaId;
-  const { data: ruta } = useRuta(rutaId ?? "");
+  const { data: ruta, isLoading: loadingRuta } = useRuta(rutaId ?? "");
   const createRuta = useCreateRuta();
   const updateRuta = useUpdateRuta(rutaId ?? "");
   const assignClientes = useAssignClientesToRuta(rutaId ?? "");
@@ -232,11 +233,21 @@ export function RouteFormScreen({ rutaId }: { rutaId?: string }) {
   });
   const { register, handleSubmit, control, setValue, reset } = form;
 
+  // Depende del ID, NO del objeto `ruta`. Con el objeto, cada asignación de
+  // cliente hacía `setQueryData` (ver `useAssignClientesToRuta`) → referencia
+  // nueva → este efecto volvía a correr → el nombre que el usuario acababa de
+  // escribir se revertía al del servidor.
+  //
+  // Aquí no se usa el patrón contenedor+`key` de `ClientFormScreen` porque
+  // `ruta` alimenta además las métricas y la lista de clientes asignados, que
+  // SÍ deben re-renderizar con cada mutación. Lo que no debe reaccionar es el
+  // formulario, y eso es exactamente lo que acota la dependencia por id.
   useEffect(() => {
     if (ruta) {
       reset({ nombre: ruta.nombre, cobradorId: ruta.cobradorId });
     }
-  }, [ruta, reset]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ruta?.id, reset]);
 
   const nombre = useWatch({ control, name: "nombre" });
   const cobradorId = useWatch({ control, name: "cobradorId" }) ?? null;
@@ -330,6 +341,20 @@ export function RouteFormScreen({ rutaId }: { rutaId?: string }) {
   }
 
   const saving = createRuta.isPending || updateRuta.isPending;
+
+  // En edición se espera a la ruta antes de pintar: si no, el formulario
+  // aparece vacío y "salta" a los valores reales un instante después, y lo que
+  // el usuario haya alcanzado a escribir en esa ventana se pierde.
+  if (isEdit && loadingRuta) {
+    return (
+      <>
+        <AdminPageHeader eyebrow="Rutas" title="Editar ruta" />
+        <div className="p-4 sm:p-6">
+          <Skeleton className="h-96 w-full" />
+        </div>
+      </>
+    );
+  }
 
   return (
     <>

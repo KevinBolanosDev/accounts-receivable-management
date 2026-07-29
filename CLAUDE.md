@@ -30,7 +30,9 @@ Dos convenciones (también en `specs/PLAN_DESARROLLO.md` §5):
 | **5** Cierre diario + reportes PDF | — | ⬜ |
 | **6** Hardening + tests | Unit tests + filtros globales + auditoria + CI | ⬜ |
 
-**Tests hoy:** 65 casos e2e en `apps/api/test/` (`app`, `auth`, `clientes`, `rutas`, `auth-cliente`, `client-portal`, `receipts`, `clientes-access`, `cobros`) + 16 unit tests (`core/domain/payment-schedule.util.spec.ts` + `core/contracts/repo-types-integrity.spec.ts`). Cero tests en front.
+**Tests hoy:** 92 casos e2e en 12 suites de `apps/api/test/` (`app`, `auth`, `clientes`, `rutas`, `usuarios`, `auth-cliente`, `client-portal`, `receipts`, `clientes-access`, `client-sharing`, `multi-tenancy`, `cobros`) + 16 unit tests (`core/domain/payment-schedule.util.spec.ts` + `core/contracts/repo-types-integrity.spec.ts`). Cero tests en front.
+
+**Bajas: qué se borra de verdad.** `Cliente` (relación `ClientAdmin.activo=false`) y `Usuario`/cobrador (`activo=false` + sus rutas quedan sin cobrador) son **soft-delete** — `Pago.cobradorId` y las FKs de dinero son `onDelete: Restrict` y la auditoría manda. `Ruta` es el **único borrado físico**, y solo si no le quedan clientes activos (409 en caso contrario). El login filtra por `activo`, que es lo que hace que la baja del cobrador signifique algo; sin eso el switch activo/inactivo era decorativo. Limitación conocida: `JwtAuthGuard` es stateless, así que un token ya emitido sigue válido hasta `JWT_EXPIRES_IN` (1d) — verificar `activo` por request es Fase 6.
 
 **Endpoints implementados** (en inglés, ver refactor reciente):
 
@@ -42,6 +44,7 @@ Dos convenciones (también en `specs/PLAN_DESARROLLO.md` §5):
 | GET | `/auth/admin-only` | Jwt + Roles | ADMIN |
 | GET, POST | `/users` | Jwt + Roles | ADMIN |
 | PATCH | `/users/:id` | Jwt + Roles | ADMIN |
+| DELETE | `/users/:id` | Jwt + Roles | ADMIN — baja lógica del cobrador (`activo:false` + libera sus rutas); 403 al auto-borrarse, 404 fuera del tenant |
 | GET | `/clients` | Jwt + Roles | ADMIN/COBRADOR, scoping por rol |
 | GET | `/clients/summary` | Jwt + Roles | ADMIN/COBRADOR, scoping |
 | GET | `/clients/:id` | Jwt + Roles | ADMIN/COBRADOR, scoping |

@@ -36,7 +36,9 @@ export function AdminPageHeader({
   return (
     <header
       className={cn(
-        "sticky top-0 z-10 flex h-16 shrink-0 items-center gap-3 border-b border-border bg-background/95 px-4 backdrop-blur sm:px-6",
+        // `min-h-16` y no `h-16`: con una altura fija, cualquier contenido que
+        // no quepa desborda en vez de crecer.
+        "sticky top-0 z-10 flex min-h-16 shrink-0 items-center gap-3 border-b border-border bg-background/95 px-4 py-2 backdrop-blur sm:px-6",
         className,
       )}
     >
@@ -58,7 +60,7 @@ export function AdminPageHeader({
         ) : null}
       </div>
 
-      <div className="ml-auto flex items-center gap-3">
+      <div className="ml-auto flex shrink-0 items-center gap-2 sm:gap-3">
         {actions}
         <span className="hidden size-9 shrink-0 items-center justify-center rounded-full bg-primary text-sm font-semibold text-primary-foreground sm:flex">
           {getInitials(usuario?.nombre ?? "Admin")}

@@ -1,4 +1,15 @@
-import { Body, Controller, Get, Param, Patch, Post, Query } from "@nestjs/common";
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  HttpCode,
+  HttpStatus,
+  Param,
+  Patch,
+  Post,
+  Query,
+} from "@nestjs/common";
 import {
   cobradorListItemSchema,
   createCobradorRequestSchema,
@@ -46,5 +57,13 @@ export class UsuariosController {
     @CurrentUser() user: AuthenticatedUser,
   ): Promise<CobradorListItem> {
     return cobradorListItemSchema.parse(await this.usuariosService.update(id, body, user));
+  }
+
+  // Baja lógica del cobrador (ver `UsuariosService.remove`). El `@Roles("ADMIN")`
+  // de la clase ya cubre este handler.
+  @Delete(":id")
+  @HttpCode(HttpStatus.NO_CONTENT)
+  async remove(@Param("id") id: string, @CurrentUser() user: AuthenticatedUser): Promise<void> {
+    await this.usuariosService.remove(id, user);
   }
 }

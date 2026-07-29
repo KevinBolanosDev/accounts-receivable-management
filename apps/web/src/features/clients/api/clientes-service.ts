@@ -17,7 +17,7 @@ import {
 } from "@repo/types";
 
 import { useSessionStore } from "@/entities/session";
-import { apiFetch, apiUrl, authHeaders, uploadFile } from "@/shared/api/client";
+import { apiFetch, apiFetchVoid, uploadFile } from "@/shared/api/client";
 
 export interface ClientesService {
   listClientes(query?: ClientesQuery): Promise<ClienteListItem[]>;
@@ -264,7 +264,7 @@ export const httpClientesService: ClientesService = {
     });
   },
   async deleteCliente(id) {
-    await apiFetch(`/clients/${id}`, clienteSchema, { method: "DELETE", token: useSessionStore.getState().token });
+    await apiFetchVoid(`/clients/${id}`, { method: "DELETE", token: useSessionStore.getState().token });
   },
   uploadFotoDocumento(file) {
     return uploadFile("/clients/id-document-photo", uploadFotoDocumentoResponseSchema, {
@@ -278,21 +278,11 @@ export const httpClientesService: ClientesService = {
       token: useSessionStore.getState().token,
     });
   },
-  // 204 sin body — `apiFetch` no sirve aquí (hace `res.json()` incondicional,
-  // ver `getClientReceiptHtml` para el mismo patrón con `fetch` crudo).
   async deleteAccess(id) {
-    const token = useSessionStore.getState().token;
-    const res = await fetch(apiUrl(`/clients/${id}/access`), {
+    await apiFetchVoid(`/clients/${id}/access`, {
       method: "DELETE",
-      headers: { ...authHeaders(token) },
+      token: useSessionStore.getState().token,
     });
-    if (!res.ok) {
-      const message = await res
-        .json()
-        .then((j: { message?: string }) => j.message)
-        .catch(() => undefined);
-      throw new Error(message ?? `Error ${res.status} al eliminar el acceso`);
-    }
   },
 };
 

@@ -17,7 +17,14 @@ export class AuthService {
   async login({ documento, password }: LoginRequest): Promise<LoginResponse> {
     const usuario = await this.prisma.usuario.findUnique({ where: { documento } });
 
-    if (!usuario || !(await bcrypt.compare(password, usuario.passwordHash))) {
+    // `activo` se comprueba acá y no en el guard: sin esto, el switch
+    // activo/inactivo de la pantalla de cobradores era decorativo — un
+    // cobrador desactivado (o eliminado, que es una baja lógica) seguía
+    // pudiendo entrar y registrar cobros.
+    //
+    // Mismo mensaje que las credenciales malas, a propósito: decir "tu cuenta
+    // está inactiva" confirmaría que ese documento existe en el sistema.
+    if (!usuario || !usuario.activo || !(await bcrypt.compare(password, usuario.passwordHash))) {
       throw new UnauthorizedException("Documento o contraseña incorrectos.");
     }
 

@@ -21,7 +21,14 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
           <AdminSidebar />
         </aside>
 
-        <main className="flex min-w-0 flex-1 flex-col lg:overflow-y-auto">{children}</main>
+        {/* `overflow-x-clip` y NO `overflow-x-hidden`: con `overflow-y` visible,
+            `hidden` computa a `auto` y crea un contenedor de scroll que rompe
+            el `sticky` del AdminPageHeader. `clip` contiene el desborde sin
+            crear ese contenedor. Es una red de seguridad — el ancho de cada
+            pantalla debe arreglarse en la pantalla. */}
+        <main className="flex min-w-0 flex-1 flex-col overflow-x-clip lg:overflow-y-auto">
+          {children}
+        </main>
 
         <Sheet open={mobileOpen} onOpenChange={setMobileOpen}>
           <SheetContent side="left" className="w-64 p-0">

@@ -50,7 +50,16 @@ export function useDeleteRuta() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (id: string) => rutasService.deleteRuta(id),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: rutasKeys.all }),
+    onSuccess: (_data, id) => {
+      queryClient.invalidateQueries({ queryKey: rutasKeys.all });
+      // Descartar el detalle en vez de invalidarlo: la ruta ya no existe, así
+      // que un refetch solo traería 404.
+      queryClient.removeQueries({ queryKey: rutasKeys.detail(id) });
+      // Cross-feature: los clientes de la ruta quedan sin ruta, y el cobrador
+      // que la tenía asignada pierde una.
+      queryClient.invalidateQueries({ queryKey: ["clientes"] });
+      queryClient.invalidateQueries({ queryKey: ["cobradores"] });
+    },
   });
 }
 

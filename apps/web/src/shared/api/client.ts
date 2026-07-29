@@ -46,14 +46,11 @@ async function toApiError(res: Response, path: string): Promise<ApiError> {
   return new ApiError(res.status, body?.message ?? `Error ${res.status} al llamar ${path}`, body?.code);
 }
 
-// Fetch tipado: arma la URL, adjunta el Bearer si hay token, serializa el
-// body como JSON y valida la respuesta con el mismo schema que usa el resto
-// del sistema. Lanza ApiError (con el status) en cualquier respuesta no-2xx.
-export async function apiFetch<T>(
-  path: string,
-  schema: Parseable<T>,
-  options: ApiFetchOptions = {},
-): Promise<T> {
+// Parte común de apiFetch/apiFetchVoid: arma la URL, adjunta el Bearer si hay
+// token, serializa el body como JSON y traduce cualquier no-2xx a ApiError.
+// Devuelve la Response sin tocar el cuerpo — quién y cómo se lee lo decide
+// cada variante.
+async function performRequest(path: string, options: ApiFetchOptions): Promise<Response> {
   const { token, headers, body, ...rest } = options;
 
   const res = await fetch(apiUrl(path), {
@@ -68,8 +65,38 @@ export async function apiFetch<T>(
 
   if (!res.ok) throw await toApiError(res, path);
 
+  return res;
+}
+
+// Fetch tipado: valida la respuesta con el mismo schema que usa el resto del
+// sistema. Lanza ApiError (con el status) en cualquier respuesta no-2xx.
+export async function apiFetch<T>(
+  path: string,
+  schema: Parseable<T>,
+  options: ApiFetchOptions = {},
+): Promise<T> {
+  const res = await performRequest(path, options);
+
+  // Un 204 no trae cuerpo: `res.json()` reventaría con un `SyntaxError`
+  // opaco DESPUÉS de que el servidor ya ejecutó la acción — el bug que hacía
+  // que borrar un cliente dijera "no se pudo" con el cliente ya borrado.
+  // Fallar acá, nombrando la salida, convierte ese misterio en una línea.
+  if (res.status === 204) {
+    throw new Error(
+      `El endpoint ${path} respondió 204 sin cuerpo; usa apiFetchVoid en vez de apiFetch.`,
+    );
+  }
+
   const json: unknown = await res.json();
   return schema.parse(json);
+}
+
+// Variante para endpoints que responden 204 No Content (los DELETE del
+// sistema). No lee el cuerpo, así que no hay nada que pueda fallar al
+// parsearlo — el problema desaparece por construcción, no por heurística
+// sobre `content-length` (que no es fiable con `Transfer-Encoding: chunked`).
+export async function apiFetchVoid(path: string, options: ApiFetchOptions = {}): Promise<void> {
+  await performRequest(path, options);
 }
 
 interface UploadFileOptions {

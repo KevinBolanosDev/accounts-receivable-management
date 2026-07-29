@@ -6,7 +6,7 @@ import {
 } from "@repo/types";
 
 import { useSessionStore } from "@/entities/session";
-import { apiFetch } from "@/shared/api/client";
+import { apiFetch, apiFetchVoid } from "@/shared/api/client";
 
 // Resumen de la tira superior de Cobradores (pantalla 11a). Agregado de UI.
 export interface CobradoresSummary {
@@ -21,6 +21,8 @@ export interface CobradoresService {
   getCobradoresSummary(): Promise<CobradoresSummary>;
   createCobrador(body: CreateCobradorRequest): Promise<CobradorListItem>;
   updateCobrador(id: string, body: UpdateCobradorRequest): Promise<CobradorListItem>;
+  /** Baja lógica: desactiva al cobrador y libera sus rutas. Conserva sus pagos. */
+  deleteCobrador(id: string): Promise<void>;
 }
 
 const delay = (ms = 280) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -71,6 +73,9 @@ export const mockCobradoresService: CobradoresService = {
       activo: body.activo ?? item.activo,
     });
   },
+  async deleteCobrador() {
+    await delay();
+  },
 };
 
 // ---- Implementación real (se activa en el cableado, sub-fase 2.14) -----------
@@ -93,6 +98,9 @@ export const httpCobradoresService: CobradoresService = {
   },
   updateCobrador(id, body) {
     return apiFetch(`/users/${id}`, cobradorListItemSchema, { method: "PATCH", body, token: useSessionStore.getState().token });
+  },
+  async deleteCobrador(id) {
+    await apiFetchVoid(`/users/${id}`, { method: "DELETE", token: useSessionStore.getState().token });
   },
 };
 

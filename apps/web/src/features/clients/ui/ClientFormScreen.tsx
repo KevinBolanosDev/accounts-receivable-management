@@ -1,24 +1,25 @@
 "use client";
 
-import { useEffect } from "react";
+import Link from "next/link";
 import { Controller, useForm, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useRouter } from "next/navigation";
 import {
   createClienteRequestSchema,
+  type ClienteDetail,
   type CreateClienteRequest,
+  type RutaListItem,
 } from "@repo/types";
 import { toast } from "sonner";
 import { ChevronsUpDownIcon } from "lucide-react";
 
 import { calcularCredito } from "@/entities/credit";
-import { getInitials } from "@/shared/lib/initials";
+import { ApiError } from "@/shared/api/client";
 import { formatCurrency } from "@/shared/lib/format-currency";
-import { Badge } from "@/shared/ui/badge";
 import { Button } from "@/shared/ui/button";
 import { Input } from "@/shared/ui/input";
 import { Label } from "@/shared/ui/label";
-import { ProgressRing } from "@/shared/ui/progress-ring";
+import { Skeleton } from "@/shared/ui/skeleton";
 import {
   Select,
   SelectContent,
@@ -33,6 +34,7 @@ import { useCreateCredito } from "@/features/creditos/api/use-creditos";
 import { ProductoField } from "@/features/creditos/ui/CreditoFields";
 
 import { useCliente, useCreateCliente, useUpdateCliente } from "../api/use-clientes";
+import { ClientFormPreview } from "./ClientFormPreview";
 import { DocumentUploader } from "./DocumentUploader";
 
 // Radix Select no admite `value=""`; se usa este centinela para el ítem "Sin
@@ -64,15 +66,6 @@ function Field({
   );
 }
 
-function PreviewRow({ label, children }: { label: string; children: React.ReactNode }) {
-  return (
-    <div className="flex items-center justify-between gap-2">
-      <span className="text-sm text-muted-foreground">{label}</span>
-      <span className="truncate text-sm font-medium tabular-nums">{children}</span>
-    </div>
-  );
-}
-
 interface CreditoOpcional {
   abrirCredito: boolean;
   producto: string;
@@ -95,6 +88,8 @@ const DEFAULTS: FormValues = {
   rutaId: null,
   fotoDocumentoFrenteUrl: null,
   fotoDocumentoReversoUrl: null,
+  contactoNombre: "",
+  contactoTelefono: "",
   abrirCredito: false,
   producto: "",
   monto: undefined,
@@ -102,11 +97,75 @@ const DEFAULTS: FormValues = {
   dias: undefined,
 };
 
+// Contenedor: espera a que estén TODAS las queries que alimentan los valores
+// iniciales antes de montar el formulario, y decide la identidad del form con
+// `key`. El cuerpo recibe los datos ya resueltos.
+//
+// Antes esto era un `reset()` dentro de un `useEffect` que dependía del objeto
+// `cliente`. TanStack devuelve una referencia nueva en cada refetch y
+// `refetchOnWindowFocus` está activo, así que volver a la pestaña re-disparaba
+// el efecto y PISABA lo que el usuario estuviera escribiendo. Y como el reset
+// podía correr antes de que llegaran las rutas, el <Select> se quedaba en el
+// placeholder (Radix pinta el placeholder si el `value` no tiene `SelectItem`):
+// eso era el "no precarga la ruta al editar".
 export function ClientFormScreen({ clienteId }: { clienteId?: string }) {
   const isEdit = !!clienteId;
+  const { data: cliente, isLoading: loadingCliente, isError } = useCliente(clienteId ?? "");
+  const { data: rutas = [], isLoading: loadingRutas } = useRutas();
+
+  // Solo el alta se pinta de inmediato: no tiene nada que precargar y el
+  // cobrador la usa en la calle, donde cada segundo cuenta.
+  if (isEdit && (loadingCliente || loadingRutas)) {
+    return (
+      <>
+        <AdminPageHeader eyebrow="Clientes" title="Editar cliente" />
+        <div className="p-4 sm:p-6">
+          <Skeleton className="h-96 w-full" />
+        </div>
+      </>
+    );
+  }
+
+  if (isEdit && (isError || !cliente)) {
+    return (
+      <>
+        <AdminPageHeader eyebrow="Clientes" title="Editar cliente" />
+        <div className="flex flex-col items-center gap-4 p-4 sm:p-6">
+          <div className="flex flex-col items-center gap-2 rounded-lg border border-dashed border-border bg-card p-8 text-center">
+            <p className="text-sm font-medium">Este cliente no existe o fue eliminado</p>
+            <p className="text-caption text-muted-foreground">No hay nada que editar.</p>
+          </div>
+          <Button asChild variant="secondary">
+            <Link href="/admin/clients">Volver a Clientes</Link>
+          </Button>
+        </div>
+      </>
+    );
+  }
+
+  return (
+    <ClientFormBody
+      // Remonta el formulario si cambia la entidad. Es lo que reemplaza al
+      // `reset` en efecto: los valores iniciales se calculan una sola vez.
+      key={cliente?.id ?? "new"}
+      cliente={cliente ?? null}
+      rutas={rutas}
+      clienteId={clienteId}
+    />
+  );
+}
+
+function ClientFormBody({
+  cliente,
+  rutas,
+  clienteId,
+}: {
+  cliente: ClienteDetail | null;
+  rutas: RutaListItem[];
+  clienteId?: string;
+}) {
+  const isEdit = !!clienteId;
   const router = useRouter();
-  const { data: cliente } = useCliente(clienteId ?? "");
-  const { data: rutas = [] } = useRutas();
   const createCliente = useCreateCliente();
   const updateCliente = useUpdateCliente(clienteId ?? "");
   const createCredito = useCreateCredito();
@@ -119,7 +178,20 @@ export function ClientFormScreen({ clienteId }: { clienteId?: string }) {
     // (bug preexistente: el crédito opcional nunca se creaba).
     resolver: zodResolver(createClienteRequestSchema, undefined, { raw: true }) as never,
     mode: "onBlur",
-    defaultValues: DEFAULTS,
+    defaultValues: cliente
+      ? {
+          ...DEFAULTS,
+          nombre: cliente.nombre,
+          telefono: cliente.telefono,
+          documento: cliente.documento,
+          direccion: cliente.direccion,
+          rutaId: cliente.rutaId ?? null,
+          fotoDocumentoFrenteUrl: cliente.fotoDocumentoFrenteUrl,
+          fotoDocumentoReversoUrl: cliente.fotoDocumentoReversoUrl,
+          contactoNombre: cliente.contactoNombre ?? "",
+          contactoTelefono: cliente.contactoTelefono ?? "",
+        }
+      : DEFAULTS,
   });
 
   const {
@@ -128,36 +200,19 @@ export function ClientFormScreen({ clienteId }: { clienteId?: string }) {
     control,
     setValue,
     getValues,
-    reset,
     formState: { errors },
     setError,
   } = form;
 
-  // En edición, precargar el formulario con los datos reales del cliente.
-  // Sin esto, los campos salen en blanco y al guardar sobrescriben datos.
-  useEffect(() => {
-    if (isEdit && cliente) {
-      reset({
-        nombre: cliente.nombre,
-        telefono: cliente.telefono,
-        documento: cliente.documento,
-        direccion: cliente.direccion,
-        rutaId: cliente.rutaId ?? null,
-        fotoDocumentoFrenteUrl: cliente.fotoDocumentoFrenteUrl,
-        fotoDocumentoReversoUrl: cliente.fotoDocumentoReversoUrl,
-        abrirCredito: false,
-        producto: "",
-        monto: undefined,
-        interes: undefined,
-        dias: undefined,
-      });
-    }
-  }, [isEdit, cliente, reset]);
-
   const abrirCredito = useWatch({ control, name: "abrirCredito" });
   const values = useWatch({ control });
+  // Fallback al nombre que ya trae el propio cliente: si `useRutas` falla o
+  // devuelve una lista sin esa ruta, la vista previa diría "Sin ruta" sobre un
+  // cliente que sí la tiene.
   const rutaNombre =
-    rutas.find((route) => route.id === values.rutaId)?.nombre ?? "Sin ruta";
+    rutas.find((route) => route.id === values.rutaId)?.nombre ??
+    (values.rutaId && values.rutaId === cliente?.rutaId ? cliente?.ruta?.nombre : null) ??
+    "Sin ruta";
 
   async function onSubmit(v: FormValues) {
     // Validación inline del bloque opcional (sub-fase 3.4). RHF no entiende
@@ -193,6 +248,11 @@ export function ClientFormScreen({ clienteId }: { clienteId?: string }) {
           rutaId: v.rutaId,
           fotoDocumentoFrenteUrl: v.fotoDocumentoFrenteUrl ?? null,
           fotoDocumentoReversoUrl: v.fotoDocumentoReversoUrl ?? null,
+          // Explícitos y normalizando "" → null: en un update, `undefined`
+          // significa "no tocar", así que omitirlos haría imposible borrar un
+          // contacto ya guardado.
+          contactoNombre: v.contactoNombre?.trim() || null,
+          contactoTelefono: v.contactoTelefono?.trim() || null,
         });
         toast.success("Cliente actualizado");
         router.push(`/admin/clients/${clienteId}`);
@@ -207,6 +267,8 @@ export function ClientFormScreen({ clienteId }: { clienteId?: string }) {
         rutaId: v.rutaId,
         fotoDocumentoFrenteUrl: v.fotoDocumentoFrenteUrl ?? null,
         fotoDocumentoReversoUrl: v.fotoDocumentoReversoUrl ?? null,
+        contactoNombre: v.contactoNombre?.trim() || null,
+        contactoTelefono: v.contactoTelefono?.trim() || null,
       });
 
       if (
@@ -234,8 +296,10 @@ export function ClientFormScreen({ clienteId }: { clienteId?: string }) {
         toast.success("Cliente creado");
       }
       router.push(`/admin/clients/${clienteCreado.id}`);
-    } catch {
-      toast.error("No se pudo guardar el cliente");
+    } catch (error) {
+      // El backend distingue casos accionables (documento duplicado → 409,
+      // ruta inexistente → 404); un texto genérico los borra todos.
+      toast.error(error instanceof ApiError ? error.message : "No se pudo guardar el cliente");
     }
   }
 
@@ -306,6 +370,36 @@ export function ClientFormScreen({ clienteId }: { clienteId?: string }) {
                 )}
               />
             </Field>
+
+            {/* Contacto de referencia: a quién llamar si no se ubica al
+                cliente. El contrato y el backend ya lo soportaban, y el
+                cobrador ya lo ve en su pantalla de cobro, pero ningún
+                formulario permitía escribirlo — siempre llegaba vacío. */}
+            <div className="grid gap-4 sm:grid-cols-2">
+              <Field
+                id="contactoNombre"
+                label="Contacto de referencia (opcional)"
+                error={errors.contactoNombre?.message}
+              >
+                <Input
+                  id="contactoNombre"
+                  placeholder="Nombre de un familiar o vecino"
+                  {...register("contactoNombre")}
+                />
+              </Field>
+              <Field
+                id="contactoTelefono"
+                label="Teléfono del contacto (opcional)"
+                error={errors.contactoTelefono?.message}
+              >
+                <Input
+                  id="contactoTelefono"
+                  inputMode="tel"
+                  placeholder="300 000 0000"
+                  {...register("contactoTelefono")}
+                />
+              </Field>
+            </div>
 
             <div className="flex flex-col gap-2">
               <Label>Foto del documento</Label>
@@ -421,35 +515,7 @@ export function ClientFormScreen({ clienteId }: { clienteId?: string }) {
           </div>
         </div>
 
-        <div className="flex flex-col gap-3">
-          <p className="text-caption text-muted-foreground uppercase">Vista previa</p>
-
-          <div className="flex items-center gap-4 rounded-lg border border-border bg-card p-4">
-            <span className="flex size-11 shrink-0 items-center justify-center rounded-full bg-secondary text-sm font-semibold">
-              {getInitials(values.nombre || "?")}
-            </span>
-            <div className="flex min-w-0 flex-1 flex-col">
-              <span className="truncate font-semibold">
-                {values.nombre || "Nombre del cliente"}
-              </span>
-              <span className="truncate text-caption text-muted-foreground">
-                {rutaNombre}
-              </span>
-            </div>
-            <ProgressRing value={0} size="md" showLabel={false} />
-          </div>
-
-          <div className="flex flex-col gap-3 rounded-lg border border-border bg-card p-4">
-            <PreviewRow label="Estado">
-              <Badge status="ruta-cerrada">Sin crédito aún</Badge>
-            </PreviewRow>
-            <PreviewRow label="Documento">{values.documento || "—"}</PreviewRow>
-            <PreviewRow label="Teléfono">{values.telefono || "—"}</PreviewRow>
-            <PreviewRow label="Crédito al guardar">
-              {values.abrirCredito ? "Se creará tras guardar" : "No"}
-            </PreviewRow>
-          </div>
-        </div>
+        <ClientFormPreview values={values} rutaNombre={rutaNombre} cliente={cliente} />
       </form>
     </>
   );

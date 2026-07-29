@@ -43,3 +43,18 @@ export function useUpdateCobrador() {
     },
   });
 }
+
+export function useDeleteCobrador() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => cobradoresService.deleteCobrador(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: cobradoresKeys.all });
+      queryClient.invalidateQueries({ queryKey: cobradoresKeys.summary });
+      // Cross-feature: sus rutas quedan sin cobrador, y el detalle del cliente
+      // muestra `cobradorNombre`.
+      queryClient.invalidateQueries({ queryKey: ["rutas"] });
+      queryClient.invalidateQueries({ queryKey: ["clientes"] });
+    },
+  });
+}

@@ -1,12 +1,12 @@
 "use client";
 
-import { useEffect } from "react";
 import { Controller, useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { createCobradorRequestSchema, type CobradorListItem, type CreateCobradorRequest } from "@repo/types";
 import { toast } from "sonner";
 
 import { useRutas } from "@/features/routes-collectors/api/use-rutas";
+import { ApiError } from "@/shared/api/client";
 import { Button } from "@/shared/ui/button";
 import {
   Dialog,
@@ -28,7 +28,36 @@ interface CollectorDialogProps {
   cobrador?: CobradorListItem;
 }
 
+// El formulario se monta solo cuando el modal está abierto y lleva `key` por
+// cobrador, así que sus valores iniciales se calculan UNA vez. Es el mismo
+// patrón de `ClientFormScreen` y reemplaza al `reset` en `useEffect`, que
+// dependía del objeto `cobrador` y podía pisar lo que el usuario escribiera.
 export function CollectorDialog({ open, onOpenChange, cobrador }: CollectorDialogProps) {
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>{cobrador ? "Editar cobrador" : "Nuevo cobrador"}</DialogTitle>
+        </DialogHeader>
+        {open ? (
+          <CollectorForm
+            key={cobrador?.id ?? "new"}
+            cobrador={cobrador}
+            onDone={() => onOpenChange(false)}
+          />
+        ) : null}
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function CollectorForm({
+  cobrador,
+  onDone,
+}: {
+  cobrador?: CobradorListItem;
+  onDone: () => void;
+}) {
   const isEdit = !!cobrador;
   const createCobrador = useCreateCobrador();
   const updateCobrador = useUpdateCobrador();
@@ -38,28 +67,19 @@ export function CollectorDialog({ open, onOpenChange, cobrador }: CollectorDialo
     register,
     handleSubmit,
     control,
-    reset,
     formState: { errors },
   } = useForm<CreateCobradorRequest>({
     resolver: zodResolver(createCobradorRequestSchema),
-    defaultValues: { nombre: "", telefono: "", documento: "", password: "", rutaId: null },
+    defaultValues: cobrador
+      ? {
+          nombre: cobrador.nombre,
+          telefono: cobrador.telefono ?? "",
+          documento: cobrador.documento,
+          password: "",
+          rutaId: cobrador.rutas[0]?.id ?? null,
+        }
+      : { nombre: "", telefono: "", documento: "", password: "", rutaId: null },
   });
-
-  useEffect(() => {
-    if (open) {
-      reset(
-        cobrador
-          ? {
-              nombre: cobrador.nombre,
-              telefono: cobrador.telefono ?? "",
-              documento: cobrador.documento,
-              password: "",
-              rutaId: cobrador.rutas[0]?.id ?? null,
-            }
-          : { nombre: "", telefono: "", documento: "", password: "", rutaId: null },
-      );
-    }
-  }, [open, cobrador, reset]);
 
   async function onSubmit(values: CreateCobradorRequest) {
     try {
@@ -74,22 +94,18 @@ export function CollectorDialog({ open, onOpenChange, cobrador }: CollectorDialo
         await createCobrador.mutateAsync(values);
         toast.success("Cobrador creado");
       }
-      onOpenChange(false);
-    } catch {
-      toast.error("No se pudo guardar el cobrador");
+      onDone();
+    } catch (error) {
+      toast.error(
+        error instanceof ApiError ? error.message : "No se pudo guardar el cobrador",
+      );
     }
   }
 
   const saving = createCobrador.isPending || updateCobrador.isPending;
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent>
-        <DialogHeader>
-          <DialogTitle>{isEdit ? "Editar cobrador" : "Nuevo cobrador"}</DialogTitle>
-        </DialogHeader>
-
-        <form onSubmit={handleSubmit(onSubmit)} className="flex flex-col gap-4">
+    <form onSubmit={handleSubmit(onSubmit)} className="flex flex-col gap-4">
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="cobrador-nombre">Nombre completo</Label>
             <Input id="cobrador-nombre" placeholder="Ej. Diana Reyes" {...register("nombre")} />
@@ -152,16 +168,14 @@ export function CollectorDialog({ open, onOpenChange, cobrador }: CollectorDialo
             />
           </div>
 
-          <DialogFooter>
-            <Button type="button" variant="secondary" onClick={() => onOpenChange(false)}>
-              Cancelar
-            </Button>
-            <Button type="submit" loading={saving}>
-              {isEdit ? "Guardar cambios" : "Crear cobrador"}
-            </Button>
-          </DialogFooter>
-        </form>
-      </DialogContent>
-    </Dialog>
+      <DialogFooter>
+        <Button type="button" variant="secondary" onClick={onDone}>
+          Cancelar
+        </Button>
+        <Button type="submit" loading={saving}>
+          {isEdit ? "Guardar cambios" : "Crear cobrador"}
+        </Button>
+      </DialogFooter>
+    </form>
   );
 }

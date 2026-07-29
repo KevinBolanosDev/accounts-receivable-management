@@ -82,9 +82,13 @@ export function FieldClientCreateScreen() {
       telefono: "",
       documento: "",
       direccion: "",
-      rutaId: activeRoute?.id ?? "",
+      // `null` y no `""`: la cadena vacía pasa el schema pero llega a Prisma
+      // como FK inválida (mismo bug que ya se corrigió en `ClientFormScreen`).
+      rutaId: activeRoute?.id ?? null,
       fotoDocumentoFrenteUrl: null,
       fotoDocumentoReversoUrl: null,
+      contactoNombre: "",
+      contactoTelefono: "",
       abrirCredito: false,
       producto: "",
       monto: undefined,
@@ -132,6 +136,8 @@ export function FieldClientCreateScreen() {
         rutaId: v.rutaId,
         fotoDocumentoFrenteUrl: v.fotoDocumentoFrenteUrl ?? null,
         fotoDocumentoReversoUrl: v.fotoDocumentoReversoUrl ?? null,
+        contactoNombre: v.contactoNombre?.trim() || null,
+        contactoTelefono: v.contactoTelefono?.trim() || null,
       });
 
       if (
@@ -257,6 +263,29 @@ export function FieldClientCreateScreen() {
             <Label htmlFor="f-direccion">Dirección</Label>
             <Input id="f-direccion" className="h-12 bg-muted" placeholder="Ej. Cra 12 #34-56, Centro" {...register("direccion")} />
             {errors.direccion ? <p className="text-body-sm text-destructive" role="alert">{errors.direccion.message}</p> : null}
+          </div>
+
+          {/* El cobrador en campo es justamente quien recoge el contacto de
+              referencia; ambos opcionales para no alargar el alta rápida. */}
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="f-contacto-nombre">Contacto de referencia (opcional)</Label>
+            <Input
+              id="f-contacto-nombre"
+              className="h-12 bg-muted"
+              placeholder="Ej. un familiar o vecino"
+              {...register("contactoNombre")}
+            />
+          </div>
+
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="f-contacto-telefono">Teléfono del contacto (opcional)</Label>
+            <Input
+              id="f-contacto-telefono"
+              className="h-12 bg-muted"
+              inputMode="tel"
+              placeholder="Ej. 300 123 4567"
+              {...register("contactoTelefono")}
+            />
           </div>
 
           {tieneVariasRutas ? (

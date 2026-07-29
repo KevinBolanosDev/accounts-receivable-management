@@ -63,4 +63,24 @@ export class UsuariosRepository {
       }),
     ]);
   }
+
+  // Baja lógica del cobrador + liberación de sus rutas, atómica: una ruta sin
+  // cobrador es un estado válido (la vuelve a asignar el admin), pero una ruta
+  // asignada a un cobrador inactivo no lo es.
+  //
+  // `updateMany` en ambos pasos por el mismo motivo que `assignRoute`: es la
+  // única forma de filtrar por `adminId` además del id. `Pago` no se toca —
+  // el histórico de cobros conserva su autor.
+  async softDelete(id: string, adminId: string): Promise<void> {
+    await this.prisma.$transaction([
+      this.prisma.ruta.updateMany({
+        where: { cobradorId: id, adminId },
+        data: { cobradorId: null },
+      }),
+      this.prisma.usuario.updateMany({
+        where: { id, adminId, rol: "COBRADOR" },
+        data: { activo: false },
+      }),
+    ]);
+  }
 }

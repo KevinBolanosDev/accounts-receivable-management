@@ -1,6 +1,7 @@
 import {
   BadRequestException,
   ConflictException,
+  ForbiddenException,
   Injectable,
   NotFoundException,
 } from "@nestjs/common";
@@ -82,6 +83,34 @@ export class UsuariosService {
     } catch (error) {
       throw this.mapError(error);
     }
+  }
+
+  // Baja de un cobrador: `activo: false` + sus rutas quedan sin cobrador.
+  //
+  // NO es un borrado físico: `Pago.cobradorId` es `onDelete: Restrict`, así que
+  // un cobrador con pagos registrados no se puede borrar sin perder el rastro
+  // de quién cobró qué. La baja lógica conserva la auditoría y, junto con el
+  // filtro `activo` del login, le cierra el acceso de verdad.
+  async remove(id: string, user: AuthenticatedUser): Promise<void> {
+    const adminId = requireAdminId(user);
+
+    // Antes del check de tenant: el paso siguiente también lo bloquearía (un
+    // ADMIN nunca cumple `rol === "COBRADOR"`), pero respondería 404, que para
+    // "intentaste eliminarte a ti mismo" es desconcertante.
+    if (id === user.sub) {
+      throw new ForbiddenException("No puedes eliminar tu propio usuario.");
+    }
+
+    const existing = await this.usuariosRepository.findById(id, { adminId });
+    // 404 y no 403 para un cobrador de otro tenant: un 403 confirmaría que ese
+    // id existe en la cartera de otro admin.
+    if (!existing || existing.rol !== "COBRADOR") {
+      throw new NotFoundException("Cobrador no encontrado.");
+    }
+
+    // Idempotente a propósito: si ya estaba inactivo, desasignar sus rutas
+    // igual es correcto y devolver 204 evita un error inútil.
+    await this.usuariosRepository.softDelete(id, adminId);
   }
 
   // `/users` es la gestión de staff del admin autenticado.

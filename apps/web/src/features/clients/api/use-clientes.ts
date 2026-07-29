@@ -58,7 +58,15 @@ export function useDeleteCliente() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (id: string) => clientesService.deleteCliente(id),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: clientesKeys.all }),
+    onSuccess: (_data, id) => {
+      queryClient.invalidateQueries({ queryKey: clientesKeys.all });
+      // El detalle del cliente borrado se descarta en vez de invalidarse: si
+      // solo se invalida, sigue en caché y vuelve a pedirse (404) en cuanto la
+      // pestaña recupera el foco.
+      queryClient.removeQueries({ queryKey: clientesKeys.detail(id) });
+      // Cross-feature: la ruta muestra `clientesCount`, que acaba de cambiar.
+      queryClient.invalidateQueries({ queryKey: ["rutas"] });
+    },
   });
 }
 

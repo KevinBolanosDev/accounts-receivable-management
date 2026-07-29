@@ -11,14 +11,8 @@ import { formatCurrency } from "@/shared/lib/format-currency";
 import { cn } from "@/shared/lib/utils";
 import { Badge } from "@/shared/ui/badge";
 import { Button } from "@/shared/ui/button";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/shared/ui/dialog";
+import { ApiError } from "@/shared/api/client";
+import { ConfirmDialog } from "@/shared/ui/confirm-dialog";
 import { ProgressRing } from "@/shared/ui/progress-ring";
 import { Skeleton } from "@/shared/ui/skeleton";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/shared/ui/table";
@@ -58,8 +52,8 @@ export function CreditoDetailScreen({ creditoId }: { creditoId: string }) {
       toast.success("Crédito anulado");
       setConfirmOpen(false);
       router.push(`/admin/clients/${credito.clienteId}`);
-    } catch {
-      toast.error("No se pudo anular el crédito");
+    } catch (error) {
+      toast.error(error instanceof ApiError ? error.message : "No se pudo anular el crédito");
     }
   }
 
@@ -97,31 +91,20 @@ export function CreditoDetailScreen({ creditoId }: { creditoId: string }) {
         <PagosCard credito={credito} />
       </div>
 
-      <Dialog open={confirmOpen} onOpenChange={setConfirmOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>¿Anular crédito?</DialogTitle>
-            <DialogDescription>
-              {credito.estado === "ANULADO"
-                ? "Este crédito ya está anulado."
-                : `El crédito ${credito.codigo} quedará anulado (no se borra); sus pagos siguen siendo auditables.`}
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter>
-            <Button variant="secondary" onClick={() => setConfirmOpen(false)}>
-              Cancelar
-            </Button>
-            <Button
-              variant="destructive"
-              loading={anular.isPending}
-              disabled={credito.estado === "ANULADO"}
-              onClick={handleAnular}
-            >
-              Anular crédito
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <ConfirmDialog
+        open={confirmOpen}
+        onOpenChange={setConfirmOpen}
+        title="¿Anular crédito?"
+        description={
+          credito.estado === "ANULADO"
+            ? "Este crédito ya está anulado."
+            : `El crédito ${credito.codigo} quedará anulado (no se borra); sus pagos siguen siendo auditables.`
+        }
+        confirmLabel="Anular crédito"
+        variant="destructive"
+        loading={anular.isPending}
+        onConfirm={handleAnular}
+      />
     </>
   );
 }
