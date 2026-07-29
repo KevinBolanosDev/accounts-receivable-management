@@ -91,7 +91,10 @@ function buildClientDetailInclude(adminId: string) {
 // `clientDetailInclude`. Igual que arriba, filtrado por `adminId`.
 function buildClientSummaryInclude(adminId: string) {
   return {
-    creditos: { where: { adminId }, select: { montoTotal: true, saldoPendiente: true, estado: true } },
+    creditos: {
+      where: { adminId },
+      select: { montoTotal: true, saldoPendiente: true, estado: true },
+    },
   } satisfies Prisma.ClienteInclude;
 }
 
@@ -109,7 +112,10 @@ export type ClientForSummary = Prisma.ClienteGetPayload<{
 export class ClientsRepository {
   constructor(private readonly prisma: PrismaService) {}
 
-  findMany(where: Prisma.ClienteWhereInput | undefined, adminId: string): Promise<ClientWithRoute[]> {
+  findMany(
+    where: Prisma.ClienteWhereInput | undefined,
+    adminId: string,
+  ): Promise<ClientWithRoute[]> {
     return this.prisma.cliente.findMany({
       where,
       include: buildClientListInclude(adminId),
@@ -139,11 +145,7 @@ export class ClientsRepository {
     return this.prisma.cliente.create({ data, include: buildClientDetailInclude(adminId) });
   }
 
-  update(
-    id: string,
-    data: Prisma.ClienteUpdateInput,
-    adminId: string,
-  ): Promise<ClientWithDetail> {
+  update(id: string, data: Prisma.ClienteUpdateInput, adminId: string): Promise<ClientWithDetail> {
     return this.prisma.cliente.update({
       where: { id },
       data,

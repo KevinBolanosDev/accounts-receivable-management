@@ -1,4 +1,5 @@
 import { Body, Controller, Get, HttpCode, HttpStatus, Post } from "@nestjs/common";
+import { Throttle } from "@nestjs/throttler";
 import {
   loginRequestSchema,
   usuarioSchema,
@@ -18,7 +19,12 @@ import { AuthService } from "./auth.service";
 export class AuthController {
   constructor(private readonly authService: AuthService) {}
 
+  // Throttle propio, como el login del cliente: antes lo cubría de rebote el
+  // default global (10/min), pero ese techo se subió a 200/min porque asfixiaba
+  // la navegación normal. El login sí necesita el límite bajo — es la superficie
+  // de fuerza bruta del staff.
   @Public()
+  @Throttle({ default: { limit: 10, ttl: 60_000 } })
   @Post("login")
   @HttpCode(HttpStatus.OK)
   login(

@@ -28,11 +28,14 @@ import { ClientPortalModule } from "./modules/client-portal/client-portal.module
     }),
     PrismaModule,
     CoreAuthModule,
-    // Fase 4 — rate-limit por IP. Default 10 req/min global; el login del
-    // cliente usa `@Throttle({ default: { limit: 5, ttl: 60_000 } })` local
-    // para endurecer ese endpoint (el `documento` es enumerable, la única
-    // defensa contra fuerza bruta es esta).
-    ThrottlerModule.forRoot([{ ttl: 60_000, limit: 10 }]),
+    // Fase 4 — rate-limit por IP. El default es un techo anti-abuso, NO una
+    // cuota de uso: una sola pantalla del admin dispara 3-5 requests, y con
+    // el límite anterior (10/min) un usuario normal se auto-bloqueaba a los
+    // pocos segundos de navegar. Los endpoints sensibles se endurecen uno
+    // por uno con `@Throttle(...)` local — el login del cliente usa 5/min
+    // porque el `documento` es enumerable y esa es su única defensa contra
+    // fuerza bruta.
+    ThrottlerModule.forRoot([{ ttl: 60_000, limit: 200 }]),
     HealthModule,
     AuthModule,
     RutasModule,
