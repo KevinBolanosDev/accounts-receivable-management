@@ -12,6 +12,7 @@ import { CheckIcon, StarIcon, XIcon } from "lucide-react";
 import { toast } from "sonner";
 
 import { useSessionStore } from "@/entities/session";
+import { formatPhone } from "@/shared/lib/phone";
 import { formatCurrency } from "@/shared/lib/format-currency";
 import { getInitials } from "@/shared/lib/initials";
 import { cn } from "@/shared/lib/utils";
@@ -87,7 +88,7 @@ function CobradorPicker({
           </span>
           <div className="flex min-w-0 flex-1 flex-col">
             <span className="truncate text-sm font-medium">{selected.nombre}</span>
-            <span className="truncate text-caption text-muted-foreground">Tel. {selected.telefono}</span>
+            <span className="truncate text-caption text-muted-foreground">Tel. {formatPhone(selected.telefono)}</span>
           </div>
         </>
       ) : (

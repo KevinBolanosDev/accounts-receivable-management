@@ -47,16 +47,21 @@ export function printHtmlDocument(html: string, options: PrintOptions = {}): boo
   }
 
   const iframe = document.createElement("iframe");
-  // Fuera de pantalla en vez de `display:none`: algunos navegadores no
-  // renderizan (y por tanto no imprimen) un iframe sin layout.
+  // El iframe tiene que estar RENDERIZADO y con tamaño real. Antes se ocultaba
+  // con `visibility:hidden` y `0×0`: Chrome ignora un frame sin caja de
+  // impresión y cae al documento de arriba, así que "Descargar recibo" abría
+  // el diálogo con una captura de la PANTALLA (la app entera) en vez del
+  // recibo. Se esconde sacándolo del viewport — sigue teniendo layout, que es
+  // lo único que el motor de impresión mira.
   iframe.setAttribute("aria-hidden", "true");
   iframe.style.position = "fixed";
-  iframe.style.right = "0";
-  iframe.style.bottom = "0";
-  iframe.style.width = "0";
-  iframe.style.height = "0";
+  iframe.style.top = "0";
+  iframe.style.left = "-10000px";
+  // Tamaño de hoja (A4 a 96dpi): el documento maqueta contra un ancho real y
+  // no contra 0px, que es lo que producía saltos de página absurdos.
+  iframe.style.width = "794px";
+  iframe.style.height = "1123px";
   iframe.style.border = "0";
-  iframe.style.visibility = "hidden";
   if (options.title) iframe.title = options.title;
 
   let cleaned = false;
@@ -75,14 +80,19 @@ export function printHtmlDocument(html: string, options: PrintOptions = {}): boo
     // `afterprint` es el camino normal; el timeout es la red de seguridad para
     // los navegadores que no lo emiten (si no, el iframe queda huérfano).
     win.addEventListener("afterprint", cleanup);
-    try {
-      win.focus();
-      win.print();
-    } catch {
-      cleanup();
-      return;
-    }
-    window.setTimeout(cleanup, 60_000);
+    // Un frame de gracia: `load` dispara con el DOM listo, pero el layout del
+    // documento recién insertado puede no haberse resuelto todavía e imprimir
+    // en ese instante sale en blanco.
+    window.requestAnimationFrame(() => {
+      try {
+        win.focus();
+        win.print();
+      } catch {
+        cleanup();
+        return;
+      }
+      window.setTimeout(cleanup, 60_000);
+    });
   };
 
   document.body.appendChild(iframe);

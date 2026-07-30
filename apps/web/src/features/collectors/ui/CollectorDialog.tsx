@@ -17,6 +17,7 @@ import {
 } from "@/shared/ui/dialog";
 import { Input } from "@/shared/ui/input";
 import { Label } from "@/shared/ui/label";
+import { PhoneInput } from "@/shared/ui/phone-input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/shared/ui/select";
 
 import { useCreateCobrador, useUpdateCobrador } from "../api/use-cobradores";
@@ -118,7 +119,19 @@ function CollectorForm({
 
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="cobrador-telefono">Teléfono</Label>
-            <Input id="cobrador-telefono" placeholder="Ej. 300 123 4567" {...register("telefono")} />
+            <Controller
+              control={control}
+              name="telefono"
+              render={({ field }) => (
+                <PhoneInput
+                  id="cobrador-telefono"
+                  placeholder="Ej. 300 123 4567"
+                  value={field.value}
+                  onChange={field.onChange}
+                  onBlur={field.onBlur}
+                />
+              )}
+            />
             {errors.telefono ? (
               <p className="text-body-sm text-destructive" role="alert">
                 {errors.telefono.message}

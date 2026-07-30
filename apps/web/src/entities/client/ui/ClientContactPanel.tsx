@@ -1,6 +1,7 @@
 import * as React from "react";
 import { IdCardIcon, MapPinIcon, PhoneIcon, UserRoundIcon } from "lucide-react";
 
+import { formatPhone, toDialableE164 } from "@/shared/lib/phone";
 import { cn } from "@/shared/lib/utils";
 import { DataField, DataFieldList } from "@/shared/ui/data-field";
 
@@ -47,10 +48,11 @@ export function ClientContactPanel({
         />
         <DataField
           label="Teléfono"
-          value={cliente.telefono}
+          value={formatPhone(cliente.telefono) || cliente.telefono}
           icon={<PhoneIcon className="size-3.5" />}
           copyValue={cliente.telefono}
-          href={cliente.telefono ? `tel:${cliente.telefono}` : undefined}
+          // `tel:` con indicativo: sin él, marcar desde otro país falla.
+          href={cliente.telefono ? `tel:${toDialableE164(cliente.telefono)}` : undefined}
         />
         <DataField
           label="Ubicación"
@@ -70,10 +72,14 @@ export function ClientContactPanel({
             />
             <DataField
               label="Teléfono del contacto"
-              value={cliente.contactoTelefono}
+              value={formatPhone(cliente.contactoTelefono) || cliente.contactoTelefono}
               icon={<PhoneIcon className="size-3.5" />}
               copyValue={cliente.contactoTelefono}
-              href={cliente.contactoTelefono ? `tel:${cliente.contactoTelefono}` : undefined}
+              href={
+                cliente.contactoTelefono
+                  ? `tel:${toDialableE164(cliente.contactoTelefono)}`
+                  : undefined
+              }
             />
           </>
         ) : null}

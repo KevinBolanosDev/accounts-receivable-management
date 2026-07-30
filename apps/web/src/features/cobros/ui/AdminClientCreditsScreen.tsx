@@ -20,6 +20,7 @@ import {
   type CobroDeHoy,
 } from "@/entities/payment";
 import { useCliente } from "@/features/clients/api/use-clientes";
+import { formatPhone } from "@/shared/lib/phone";
 import { formatCurrency } from "@/shared/lib/format-currency";
 import { formatRelativeDateTime } from "@/shared/lib/format-date";
 import { cn } from "@/shared/lib/utils";
@@ -129,8 +130,8 @@ export function AdminClientCreditsScreen({
         title="Créditos del cliente"
         subtitle={
           cliente.estado
-            ? `${ESTADO_CLIENTE_LABEL[cliente.estado]} · ${cliente.telefono}`
-            : cliente.telefono
+            ? `${ESTADO_CLIENTE_LABEL[cliente.estado]} · ${formatPhone(cliente.telefono)}`
+            : formatPhone(cliente.telefono)
         }
         actions={
           <PageActions

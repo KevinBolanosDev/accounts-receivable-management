@@ -4,6 +4,7 @@ import type { ClienteDetail } from "@repo/types";
 
 import { ClientContactPanel, ESTADO_CLIENTE_LABEL } from "@/entities/client";
 import { CreditCard, saldoPendienteDeCreditos } from "@/entities/credit";
+import { formatPhone } from "@/shared/lib/phone";
 import { formatCurrency } from "@/shared/lib/format-currency";
 import { getInitials } from "@/shared/lib/initials";
 import { Badge } from "@/shared/ui/badge";
@@ -77,7 +78,7 @@ export function ClientFormPreview({ values, rutaNombre, cliente }: ClientFormPre
           )}
         </PreviewRow>
         <PreviewRow label="Documento">{values.documento || "—"}</PreviewRow>
-        <PreviewRow label="Teléfono">{values.telefono || "—"}</PreviewRow>
+        <PreviewRow label="Teléfono">{formatPhone(values.telefono) || "—"}</PreviewRow>
 
         {isEdit ? (
           <>

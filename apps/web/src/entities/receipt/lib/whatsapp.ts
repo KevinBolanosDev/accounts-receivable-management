@@ -1,5 +1,6 @@
 import { formatCurrency } from "@/shared/lib/format-currency";
 import { formatDateTime } from "@/shared/lib/format-date";
+import { toDialableE164 } from "@/shared/lib/phone";
 
 // Construcción del enlace de WhatsApp para compartir un recibo.
 //
@@ -8,12 +9,13 @@ import { formatDateTime } from "@/shared/lib/format-date";
 // `ReceiptCard` que compartía un enlace a `/client/login` — el destinatario
 // tenía que tener acceso al portal y buscar el recibo a mano.
 
-/** Deja solo dígitos: `wa.me` no acepta espacios, guiones ni paréntesis. */
+/**
+ * `wa.me` quiere el número en E.164 sin `+` ni separadores. `toDialableE164`
+ * resuelve el indicativo: el explícito si el teléfono se guardó con selector
+ * de país, o `DEFAULT_COUNTRY` para los números legados sin `+`.
+ */
 function normalizePhone(phone: string): string {
-  const digits = phone.replace(/\D/g, "");
-  // Colombia: los teléfonos locales vienen a 10 dígitos, sin indicativo.
-  if (digits.length === 10) return `57${digits}`;
-  return digits;
+  return toDialableE164(phone).replace(/\D/g, "");
 }
 
 interface BuildWhatsAppUrlOptions {

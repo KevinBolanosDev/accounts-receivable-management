@@ -29,11 +29,17 @@ import {
 } from "@/shared/ui/dialog";
 import { Input } from "@/shared/ui/input";
 import { Label } from "@/shared/ui/label";
+import { PhoneInput } from "@/shared/ui/phone-input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/shared/ui/select";
 import { Switch } from "@/shared/ui/switch";
 
 import { useCreateCliente, useGenerateClientAccess } from "../api/use-clientes";
 import { DocumentUploader } from "./DocumentUploader";
+
+// El `<input type="date">` emite "YYYY-MM-DD"; es el mismo formato que espera
+// `createCreditoRequestSchema.fechaInicio` y el que `parseFechaInicio` ancla al
+// mediodía UTC para que no se corra un día al formatear en America/Bogota.
+const hoyISO = () => new Date().toISOString().slice(0, 10);
 
 const RUTA_CORTA = "Mi ruta";
 
@@ -44,6 +50,7 @@ interface CreditoOpcional {
   interes?: number | undefined;
   frecuencia?: FrecuenciaPago | undefined;
   cuotas?: number | undefined;
+  fechaInicio?: string | undefined;
 }
 
 interface AccesoOpcional {
@@ -100,7 +107,8 @@ export function FieldClientCreateScreen() {
       monto: undefined,
       interes: undefined,
       frecuencia: "DIARIO",
-  cuotas: undefined,
+      cuotas: undefined,
+      fechaInicio: hoyISO(),
       crearAcceso: false,
     },
   });
@@ -168,6 +176,7 @@ export function FieldClientCreateScreen() {
             interes: v.interes,
             frecuencia: v.frecuencia ?? "DIARIO",
             cuotas: v.cuotas,
+            fechaInicio: v.fechaInicio || hoyISO(),
           });
           toast.success("Cliente y crédito creados");
         } catch (error) {
@@ -273,7 +282,20 @@ export function FieldClientCreateScreen() {
 
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="f-telefono">Teléfono</Label>
-            <Input id="f-telefono" className="h-12 bg-muted" placeholder="Ej. 300 123 4567" {...register("telefono")} />
+            <Controller
+              control={control}
+              name="telefono"
+              render={({ field }) => (
+                <PhoneInput
+                  id="f-telefono"
+                  className="h-12 bg-muted"
+                  placeholder="Ej. 300 123 4567"
+                  value={field.value}
+                  onChange={field.onChange}
+                  onBlur={field.onBlur}
+                />
+              )}
+            />
             {errors.telefono ? <p className="text-body-sm text-destructive" role="alert">{errors.telefono.message}</p> : null}
           </div>
 
@@ -297,12 +319,19 @@ export function FieldClientCreateScreen() {
 
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="f-contacto-telefono">Teléfono del contacto (opcional)</Label>
-            <Input
-              id="f-contacto-telefono"
-              className="h-12 bg-muted"
-              inputMode="tel"
-              placeholder="Ej. 300 123 4567"
-              {...register("contactoTelefono")}
+            <Controller
+              control={control}
+              name="contactoTelefono"
+              render={({ field }) => (
+                <PhoneInput
+                  id="f-contacto-telefono"
+                  className="h-12 bg-muted"
+                  placeholder="Ej. 300 123 4567"
+                  value={field.value}
+                  onChange={field.onChange}
+                  onBlur={field.onBlur}
+                />
+              )}
             />
           </div>
 
@@ -457,11 +486,30 @@ export function FieldClientCreateScreen() {
                 />
               </div>
 
+              {/* La fecha de inicio faltaba acá y sí estaba en "Crear crédito":
+                  el crédito nacía siempre hoy, sin forma de registrar uno
+                  otorgado ayer. */}
+              <div className="flex flex-col gap-1.5">
+                <Label htmlFor="f-credito-fecha-inicio">Fecha de inicio</Label>
+                <Input
+                  id="f-credito-fecha-inicio"
+                  type="date"
+                  className="h-12 bg-muted"
+                  {...register("fechaInicio")}
+                />
+                {errors.fechaInicio ? (
+                  <p className="text-body-sm text-destructive" role="alert">
+                    {errors.fechaInicio.message}
+                  </p>
+                ) : null}
+              </div>
+
               <CreditoCalculoPanel
                 monto={Number(values.monto ?? 0)}
                 interes={Number(values.interes ?? 0)}
                 cuotas={Number(values.cuotas ?? 0)}
                 frecuencia={values.frecuencia ?? "DIARIO"}
+                fechaInicio={values.fechaInicio || hoyISO()}
               />
             </div>
           ) : null}

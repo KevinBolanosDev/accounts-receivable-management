@@ -19,6 +19,7 @@ import { ApiError } from "@/shared/api/client";
 import { Button } from "@/shared/ui/button";
 import { Input } from "@/shared/ui/input";
 import { Label } from "@/shared/ui/label";
+import { PhoneInput } from "@/shared/ui/phone-input";
 import { Skeleton } from "@/shared/ui/skeleton";
 import {
   Select,
@@ -67,6 +68,11 @@ function Field({
   );
 }
 
+// El `<input type="date">` emite "YYYY-MM-DD"; es el mismo formato que espera
+// `createCreditoRequestSchema.fechaInicio` y el que `parseFechaInicio` ancla al
+// mediodía UTC para que no se corra un día al formatear en America/Bogota.
+const hoyISO = () => new Date().toISOString().slice(0, 10);
+
 interface CreditoOpcional {
   abrirCredito: boolean;
   producto: string;
@@ -74,6 +80,7 @@ interface CreditoOpcional {
   interes?: number | undefined;
   frecuencia?: FrecuenciaPago | undefined;
   cuotas?: number | undefined;
+  fechaInicio?: string | undefined;
 }
 
 type FormValues = CreateClienteRequest & CreditoOpcional;
@@ -98,6 +105,7 @@ const DEFAULTS: FormValues = {
   interes: undefined,
   frecuencia: "DIARIO",
   cuotas: undefined,
+  fechaInicio: hoyISO(),
 };
 
 // Contenedor: espera a que estén TODAS las queries que alimentan los valores
@@ -298,6 +306,7 @@ function ClientFormBody({
             interes: v.interes,
             frecuencia: v.frecuencia ?? "DIARIO",
             cuotas: v.cuotas,
+            fechaInicio: v.fechaInicio || hoyISO(),
           });
           toast.success("Cliente y crédito creados");
         } catch (error) {
@@ -349,7 +358,19 @@ function ClientFormBody({
 
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <Field id="telefono" label="Teléfono" error={errors.telefono?.message}>
-                <Input id="telefono" placeholder="300 123 4567" {...register("telefono")} />
+                <Controller
+                  control={control}
+                  name="telefono"
+                  render={({ field }) => (
+                    <PhoneInput
+                      id="telefono"
+                      placeholder="300 123 4567"
+                      value={field.value}
+                      onChange={field.onChange}
+                      onBlur={field.onBlur}
+                    />
+                  )}
+                />
               </Field>
               <Field id="documento" label="Documento" error={errors.documento?.message}>
                 <Input id="documento" placeholder="1.020.456.789" {...register("documento")} />
@@ -410,11 +431,18 @@ function ClientFormBody({
                 label="Teléfono del contacto (opcional)"
                 error={errors.contactoTelefono?.message}
               >
-                <Input
-                  id="contactoTelefono"
-                  inputMode="tel"
-                  placeholder="300 000 0000"
-                  {...register("contactoTelefono")}
+                <Controller
+                  control={control}
+                  name="contactoTelefono"
+                  render={({ field }) => (
+                    <PhoneInput
+                      id="contactoTelefono"
+                      placeholder="300 000 0000"
+                      value={field.value}
+                      onChange={field.onChange}
+                      onBlur={field.onBlur}
+                    />
+                  )}
                 />
               </Field>
             </div>
@@ -519,23 +547,36 @@ function ClientFormBody({
                     </Field>
                   </div>
 
-                  <Controller
-                    control={control}
-                    name="frecuencia"
-                    render={({ field }) => (
-                      <FrecuenciaField
-                        value={field.value ?? "DIARIO"}
-                        onChange={field.onChange}
-                        error={errors.frecuencia?.message}
-                      />
-                    )}
-                  />
+                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                    <Controller
+                      control={control}
+                      name="frecuencia"
+                      render={({ field }) => (
+                        <FrecuenciaField
+                          value={field.value ?? "DIARIO"}
+                          onChange={field.onChange}
+                          error={errors.frecuencia?.message}
+                        />
+                      )}
+                    />
+                    {/* La fecha de inicio faltaba acá y sí estaba en "Crear
+                        crédito": el crédito nacía siempre hoy, sin forma de
+                        registrar uno otorgado ayer. */}
+                    <Field
+                      id="credito-fecha-inicio"
+                      label="Fecha de inicio"
+                      error={errors.fechaInicio?.message}
+                    >
+                      <Input id="credito-fecha-inicio" type="date" {...register("fechaInicio")} />
+                    </Field>
+                  </div>
 
                   <CreditoCalculoPanel
                     monto={Number(values.monto ?? 0)}
                     interes={Number(values.interes ?? 0)}
                     cuotas={Number(values.cuotas ?? 0)}
                     frecuencia={values.frecuencia ?? "DIARIO"}
+                    fechaInicio={values.fechaInicio || hoyISO()}
                   />
                 </div>
               ) : null}
