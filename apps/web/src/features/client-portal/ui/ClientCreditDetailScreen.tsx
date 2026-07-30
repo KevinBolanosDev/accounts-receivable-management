@@ -4,6 +4,7 @@ import { useState } from "react";
 import Link from "next/link";
 import { ArrowLeftIcon } from "lucide-react";
 
+import { FRECUENCIA_LABEL } from "@/entities/credit";
 import { useClientSessionStore } from "@/entities/session";
 import { PaymentHistory, esCuotaSinPagar } from "@/entities/payment";
 import { ReceiptActions, useReceiptActions } from "@/entities/receipt";
@@ -71,7 +72,7 @@ export function ClientCreditDetailScreen({ creditoId }: { creditoId: string }) {
             {credito.proximaFechaCuota ? (
               <div>
                 <p className="text-caption uppercase tracking-wider text-muted-foreground">
-                  Próxima cuota
+                  Próxima cuota · {FRECUENCIA_LABEL[credito.frecuencia].toLowerCase()}
                 </p>
                 <p className="text-h3 font-semibold tabular-nums">
                   {formatDateShort(credito.proximaFechaCuota)} ·{" "}

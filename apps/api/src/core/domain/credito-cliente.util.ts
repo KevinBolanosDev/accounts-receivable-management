@@ -1,5 +1,7 @@
 import { Prisma } from "@prisma/client";
-import type { CreditoListItem, EstadoCliente, EstadoCredito } from "@repo/types";
+import type { CreditoListItem, EstadoCliente, EstadoCredito, FrecuenciaPago } from "@repo/types";
+
+import { cuotasVencidasAlDia } from "./payment-schedule.util";
 
 // Compartido entre los módulos `clientes` y `rutas` — ambos necesitan mapear
 // filas de Credito a `CreditoListItem` y derivar el rollup de estado del
@@ -13,6 +15,8 @@ export interface CreditoRowForMapping {
   clienteId: string;
   monto: Prisma.Decimal;
   interes: Prisma.Decimal;
+  frecuencia: FrecuenciaPago;
+  cuotas: number;
   dias: number;
   montoTotal: Prisma.Decimal;
   cuotaDiaria: Prisma.Decimal;
@@ -31,9 +35,9 @@ export function mapCreditoListItem(c: CreditoRowForMapping): CreditoListItem {
   const porcentajePagado =
     montoTotal > 0 ? Number(((totalPagado / montoTotal) * 100).toFixed(2)) : 0;
   const cuotaDiaria = Number(c.cuotaDiaria.toString());
-  const cuotasTotal = c.dias;
+  const cuotasTotal = c.cuotas;
   const cuotasPagadas =
-    cuotaDiaria > 0 ? Math.min(c.dias, Math.round(totalPagado / cuotaDiaria)) : 0;
+    cuotaDiaria > 0 ? Math.min(c.cuotas, Math.round(totalPagado / cuotaDiaria)) : 0;
 
   return {
     id: c.id,
@@ -42,6 +46,7 @@ export function mapCreditoListItem(c: CreditoRowForMapping): CreditoListItem {
     producto: c.producto.nombre,
     monto,
     interes,
+    frecuencia: c.frecuencia,
     dias: c.dias,
     montoTotal,
     cuotaDiaria,
@@ -65,27 +70,33 @@ export function rollupEstadoCliente(args: {
   creditosActivos: CreditoListItem[];
   creditosHistorial: CreditoListItem[];
   hoy: Date;
-  cuotaSugerida: number;
 }): EstadoCliente {
-  const { creditosActivos, creditosHistorial, hoy, cuotaSugerida } = args;
+  const { creditosActivos, creditosHistorial, hoy } = args;
   if (creditosActivos.some((c) => c.estado === "MORA")) return "mora";
 
-  if (creditosActivos.length > 0 && cuotaSugerida > 0) {
+  if (creditosActivos.length > 0) {
     // "Próximo a vencer" si lo esperado a HOY supera a lo ya pagado del crédito
     // más antiguo (proxy: el de saldo más grande). Es provisional (Fase 5 lo
     // cierra con el cierre diario).
     const masAntiguo = [...creditosActivos].sort((a, b) =>
       a.fechaInicio.localeCompare(b.fechaInicio),
     )[0];
-    if (masAntiguo) {
-      const inicio = new Date(masAntiguo.fechaInicio);
-      const diasTranscurridos = Math.max(
-        0,
-        Math.floor((hoy.getTime() - inicio.getTime()) / (1000 * 60 * 60 * 24)),
+    if (masAntiguo && masAntiguo.cuotaDiaria > 0) {
+      // Se cuentan CUOTAS vencidas, no días transcurridos: en un crédito
+      // semanal o mensual los días corren igual pero la deuda solo crece
+      // cuando vence un período. Con la cuenta por días, un crédito mensual
+      // aparecía "próximo a vencer" al tercer día de haberse otorgado.
+      const cuotasVencidas = cuotasVencidasAlDia(
+        {
+          id: masAntiguo.id,
+          fechaInicio: new Date(masAntiguo.fechaInicio),
+          cuotas: masAntiguo.cuotasTotal,
+          frecuencia: masAntiguo.frecuencia,
+        },
+        hoy,
       );
-      const esperado = diasTranscurridos * cuotaSugerida;
-      const cuotaTolerada = cuotaSugerida * 1;
-      if (esperado - masAntiguo.totalPagado > cuotaTolerada * 1.5) {
+      const esperado = cuotasVencidas * masAntiguo.cuotaDiaria;
+      if (esperado - masAntiguo.totalPagado > masAntiguo.cuotaDiaria * 1.5) {
         return "proximo-a-vencer";
       }
     }

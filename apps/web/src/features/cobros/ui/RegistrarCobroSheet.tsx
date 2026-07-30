@@ -12,6 +12,7 @@ import {
 } from "@repo/types";
 import { toast } from "sonner";
 
+import { CUOTA_LABEL } from "@/entities/credit";
 import { formatCurrency } from "@/shared/lib/format-currency";
 import { formatDateTime } from "@/shared/lib/format-date";
 import { cn } from "@/shared/lib/utils";
@@ -44,16 +45,24 @@ interface RegistrarCobroSheetProps {
   creditos: CreditoListItem[];
   /** Crédito preseleccionado cuando solo hay uno activo. */
   creditoPreseleccionado?: CreditoListItem;
-  /** Nombre del cliente para el subtítulo ("Cuota diaria de …"). */
+  /** Nombre del cliente para el subtítulo ("Cuota semanal de …"). */
   clienteNombre?: string;
   /** Trigger personalizado (botón "Registrar cobro" en #16c). */
   children: React.ReactNode;
   /** Callback tras un cobro exitoso. */
   onCobrado?: (resp: CobroResponse) => void;
+  /**
+   * Dónde vive la pantalla del recibo de la superficie que monta el sheet. El
+   * mismo componente lo usan el Cobrador (`/collector/receipts`) y el Admin
+   * (`/admin/receipts`): con la ruta hardcodeada, cobrar desde el panel del
+   * admin lo expulsaba al shell del cobrador (y el `RouteGuard` de esa
+   * superficie lo rebotaba al login del cobrador).
+   */
+  receiptBasePath?: string;
 }
 
 // DESIGN_SYSTEM.md §3.5 / #16c — bottom sheet de cobro. El monto llega
-// prellenado con la cuota diaria en MODO LECTURA (tarjeta con "Editar"); al
+// prellenado con la cuota del período en MODO LECTURA (tarjeta con "Editar"); al
 // editar se vuelve input. Muestra la vista previa del "Nuevo saldo pendiente"
 // y confirma con el botón en degradado de marca. Si hay varios créditos
 // activos se obliga a elegir uno. La actualización es optimista (use-cobros).
@@ -64,6 +73,7 @@ export function RegistrarCobroSheet({
   clienteNombre,
   children,
   onCobrado,
+  receiptBasePath = "/collector/receipts",
 }: RegistrarCobroSheetProps) {
   const router = useRouter();
   const [open, setOpen] = React.useState(false);
@@ -92,7 +102,7 @@ export function RegistrarCobroSheet({
   const nuevoSaldo = Math.max(0, saldo - montoNum);
 
   // Cuando el cobrador cambia el crédito del selector, re-rellenamos el monto
-  // con la cuota diaria del nuevo crédito (sin pisar un valor editado a mano).
+  // con la cuota del nuevo crédito (sin pisar un valor editado a mano).
   React.useEffect(() => {
     if (creditoElegido && Number.isFinite(monto)) {
       const current = form.getValues("monto");
@@ -125,7 +135,7 @@ export function RegistrarCobroSheet({
       setEditandoMonto(false);
       // Navega al recibo fresco. El back lo sirve siempre en vivo
       // (GET /payments/:pagoId/receipt) — sin cache local.
-      router.push(`/collector/receipts/${result.pago.id}`);
+      router.push(`${receiptBasePath}/${result.pago.id}`);
     } catch (error) {
       // El backend puede rechazar por carrera de saldo (409), scoping (403) o
       // validación (400/404) — dejamos el sheet abierto para que el cobrador
@@ -148,8 +158,8 @@ export function RegistrarCobroSheet({
         <SheetHeader>
           <SheetTitle className="text-h3">Registrar cobro</SheetTitle>
           <SheetDescription>
-            {clienteNombre
-              ? `Cuota diaria de ${clienteNombre}`
+            {clienteNombre && creditoElegido
+              ? `${CUOTA_LABEL[creditoElegido.frecuencia]} de ${clienteNombre}`
               : "El saldo se actualiza al instante al confirmar."}
           </SheetDescription>
         </SheetHeader>

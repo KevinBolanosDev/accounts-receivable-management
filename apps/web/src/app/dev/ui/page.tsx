@@ -206,6 +206,7 @@ const CREDIT_DEMO_HERO: CreditoListItem = {
   producto: "Nevera Mabe 360L",
   monto: 800_000,
   interes: 25,
+  frecuencia: "DIARIO",
   dias: 50,
   montoTotal: 1_000_000,
   cuotaDiaria: 20_000,
@@ -936,7 +937,7 @@ export default function UiGalleryPage() {
             <SheetContent side="bottom">
               <SheetHeader>
                 <SheetTitle>Registrar cobro</SheetTitle>
-                <SheetDescription>Monto prellenado con la cuota diaria.</SheetDescription>
+                <SheetDescription>Monto prellenado con la cuota del período.</SheetDescription>
               </SheetHeader>
               <div className="px-4">
                 <Input defaultValue={formatCurrency(20000)} />

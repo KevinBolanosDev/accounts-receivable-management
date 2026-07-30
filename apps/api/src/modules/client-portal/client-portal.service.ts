@@ -42,7 +42,8 @@ export class ClientPortalService {
         ...item,
         proximaFechaCuota: computeProximaFechaCuota({
           fechaInicio: row.fechaInicio,
-          dias: row.dias,
+          cuotas: row.cuotas,
+          frecuencia: row.frecuencia,
           cuotasPagadas: item.cuotasPagadas,
           estado: item.estado,
         }),
@@ -80,14 +81,15 @@ export class ClientPortalService {
     const item = mapCreditoListItem(row);
     const proximaFechaCuota = computeProximaFechaCuota({
       fechaInicio: row.fechaInicio,
-      dias: row.dias,
+      cuotas: row.cuotas,
+      frecuencia: row.frecuencia,
       cuotasPagadas: item.cuotasPagadas,
       estado: item.estado,
     });
     const relation = row.cliente.admins.find((a) => a.adminId === row.adminId);
 
     const pagos = buildPaymentHistory(
-      { id: row.id, fechaInicio: row.fechaInicio, dias: row.dias },
+      { id: row.id, fechaInicio: row.fechaInicio, cuotas: row.cuotas, frecuencia: row.frecuencia },
       row.pagos.map((p) => ({
         id: p.id,
         creditoId: p.creditoId,

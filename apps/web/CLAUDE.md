@@ -33,7 +33,7 @@ apps/web/src/
 ├── widgets/              ← Bloques compuestos (shells, login, health-status)
 │   ├── admin-shell/      ← sidebar + topbar + sheet móvil + nav-items
 │   ├── collector-shell/  ← bottom tab bar + hero
-│   ├── login/            ← AdminLoginScreen, CollectorLoginScreen, BrandLogo
+│   ├── login/            ← AdminLoginScreen, CollectorLoginScreen, BrandLogo, SurfaceSwitchLink
 │   └── health-status/    ← fetch /health (esquiva la api tipada, único caso)
 ├── features/             ← Acciones de usuario (7 features con api/ + ui/)
 │   ├── auth/             ← login, RouteGuard, LogoutButton
@@ -45,7 +45,7 @@ apps/web/src/
 │   └── routes-collectors/← CRUD de rutas + asignar/desasignar clientes
 ├── entities/             ← Modelos de dominio UI
 │   ├── client/           ← ClientCard (API de slots) + ClientContactPanel + lib estado
-│   ├── credit/           ← CreditCard (admin) + CreditSummaryCard (fila tappable) + lib progress/agregados
+│   ├── credit/           ← CreditCard (admin) + CreditSummaryCard (fila tappable) + lib progress/agregados/frecuencia
 │   ├── payment/          ← PaymentRow/PaymentHistoryTable/PaymentHistory + cuota-estado + helpers de historial
 │   ├── receipt/          ← ReceiptActions + useReceiptActions + fetchReceiptHtml + buildWhatsAppUrl
 │   └── session/          ← Zustand useSessionStore + useClientSessionStore
@@ -167,6 +167,8 @@ Persistencia: `persist(..., { name: "session-storage", onRehydrateStorage: () =>
 
 **`RouteGuard`** (`features/auth/ui/RouteGuard.tsx`): server-component-friendly, espera `hasHydrated`, redirige a `loginPath` si no autenticado o si rol no está en `allowedRoles`. En la propia ruta de login **solo** salta el formulario quien ya tiene sesión **con un rol válido para esa superficie** — si no, se muestra el login para poder cambiar de cuenta.
 
+**Los dos logins de staff se enlazan entre sí** (`widgets/login/SurfaceSwitchLink`). Como cada uno acepta solo su rol, quien llegaba al equivocado escribía sus credenciales, recibía "esta cuenta no puede ingresar acá" y no tenía forma de cruzar salvo editando la URL.
+
 **Cada login acepta solo SUS roles.** `LoginForm` recibe `allowedRoles` + `redirectTo`; si el backend autentica bien pero devuelve otro rol, **la sesión no se establece** y se muestra el error indicando dónde ingresar. Antes el formulario redirigía según el rol devuelto sin mirar la superficie: con credenciales de admin en `/collector/login` la sesión se abría igual y rebotaba a `/admin`. `POST /auth/login` sigue siendo agnóstico de superficie a propósito (un endpoint, el rol viaja en el JWT); quien decide qué rol acepta cada pantalla es el front.
 
 ## Design system
@@ -259,7 +261,11 @@ Implementado en `ClientFormScreen` y `CollectorDialog` (form montado solo con el
 
 Las `page.tsx` son server components. Toda la lógica vive en features/widgets con `"use client"`. Pages dinámicas usan Next 16: `params: Promise<{ id: string }>` (se hace `await params`).
 
-**Rutas del Admin implementadas:** `/admin`, `/admin/login`, `/admin/clients`, `/admin/clients/new`, `/admin/clients/[id]`, `/admin/clients/[id]/edit`, `/admin/collectors`, `/admin/credits/new`, `/admin/credits/[id]`, `/admin/credits/[id]/edit`, `/admin/routes-collectors`, `/admin/routes-collectors/new`, `/admin/routes-collectors/[id]`, `/admin/routes-collectors/[id]/edit`. Falta `credits/page.tsx` (placeholder) — `redirect("/admin/credits/new")`.
+**Rutas del Admin implementadas:** `/admin`, `/admin/login`, `/admin/clients`, `/admin/clients/new`, `/admin/clients/[id]`, `/admin/clients/[id]/edit`, `/admin/collectors`, `/admin/credits/new`, `/admin/credits/[id]`, `/admin/credits/[id]/edit`, `/admin/routes-collectors`, `/admin/routes-collectors/new`, `/admin/routes-collectors/[id]`, `/admin/routes-collectors/[id]/edit`, `/admin/routes-collectors/[id]/clients/[clienteId]` (+ `?tab=historial`), `/admin/routes-collectors/[id]/clients/[clienteId]/credits/[creditoId]`, `/admin/receipts/[pagoId]`. Falta `credits/page.tsx` (placeholder) — `redirect("/admin/credits/new")`.
+
+**Flujo de cobro del Admin (el admin tiene acceso total, también cobra).** `/admin/routes-collectors` separa **"Mis rutas"** (`cobradorId === null` — las cobra el admin) de **"Rutas de cobradores"**, con un solo `GET /routes` y el filtro en el cliente: no hay columna nueva en la BD. Desde el detalle de la ruta, un cliente **ya no abre su ficha** (`/admin/clients/[id]`) sino sus créditos (`AdminClientCreditsScreen`, dos pestañas Activos/Historial), y de ahí al crédito (`AdminCreditCollectScreen`: pagos, cuotas vencidas/mora y registrar cobro). La ficha completa queda en las acciones del header. Las dos pantallas son **espejos** de las del Cobrador (mismos componentes de `entities/`, mismo `scope: "staff"` del recibo) en la superficie del Admin — si tocas una, revisá la otra.
+
+**`RegistrarCobroSheet` recibe `receiptBasePath`.** Default `/collector/receipts`; el Admin pasa `/admin/receipts`. Tenía la ruta hardcodeada, así que cobrar desde el panel del admin lo expulsaba al shell del cobrador y el `RouteGuard` de esa superficie lo rebotaba al login del cobrador. Por la misma razón `/admin/receipts/[pagoId]` existe aparte aunque renderice el MISMO `ReceiptScreen`.
 
 **Rutas del Cobrador implementadas:** `/collector`, `/collector/login`, `/collector/clients`, `/collector/clients/new`, `/collector/profile` (placeholder + Logout), `/collector/routes/[id]`, `/collector/routes/payments/[id]` (acepta `?tab=historial`), `/collector/routes/payments/[id]/credits/[creditoId]` (detalle de crédito + historial de sus cuotas), `/collector/receipts/[pagoId]`.
 
@@ -277,6 +283,10 @@ Las `page.tsx` son server components. Toda la lógica vive en features/widgets c
 - **Mocks no se borran.** `mockXxxService` queda implementado para poder volver atrás en un click si el back se rompe.
 - **`apiFetch` no maneja 401/403** automáticamente. Política: si la sesión expira, `useValidateSession` lo detecta y limpia; las queries activas fallan con `ApiError` y la UI decide qué hacer (mostrar toast, redirigir, etc.).
 - **Decimales:** todo monto en pantalla va con `formatCurrency` (`Intl es-CO`, COP, 0 fracciones, `tabular-nums`). El cálculo de progreso del crédito está en `entities/credit/lib/credit-progress.ts`.
+- **El día del desembolso no se cobra.** La cuota N vence N períodos después de `fechaInicio` (diario: al día siguiente). La proyección del front está en `fechaVencimientoCuota` y es espejo del backend.
+- **Una fecha `"YYYY-MM-DD"` se parsea con `parseFechaInicio`, nunca con `new Date(s)`.** `new Date("2026-07-29")` es medianoche UTC y `formatDate` fija `timeZone: "America/Bogota"` (UTC-5), así que renderiza el **28**. `parseFechaInicio` la ancla al mediodía UTC. Es el bug que hacía que la vista previa de "Crear crédito" mostrara todas las cuotas corridas un día atrás.
+- **Un `ZodError` se ve igual que un 404.** El patrón `isError || !entity → "no existe"` que usan todas las pantallas no distingue "el backend devolvió 404" de "la respuesta no cumple el schema". Si una pantalla dice que algo no existe y el `curl` al endpoint responde 200, sospechá del shape antes que de los ids — y revisá a qué API apunta `NEXT_PUBLIC_API_URL` en `apps/web/.env` (hoy puede apuntar a Render, no a `localhost:3001`).
+- **Frecuencia de pago: nunca escribas "diaria" en duro.** `cuotaDiaria` es un nombre histórico del contrato — hoy es la cuota del período que fije `credito.frecuencia` (`DIARIO`/`SEMANAL`/`MENSUAL`). Todo el vocabulario (`CUOTA_LABEL`, `CUOTA_SUFIJO`, `CUOTAS_PLURAL`, `FRECUENCIA_LABEL`, `FRECUENCIA_OPTIONS`) y la aritmética de vencimientos (`fechaVencimientoCuota`) viven en `entities/credit/lib/frecuencia.ts`; `FRECUENCIA_OPTIONS` se deriva del enum de `@repo/types`, así que agregar una frecuencia rompe el typecheck hasta traducirla. El `calcularCredito(monto, interes, cuotas)` del front es solo la vista previa: el backend recalcula y es la autoridad. La proyección de vencimientos del front (`fechaVencimientoCuota`, `upcomingInstallments`) es **espejo** de `core/domain/payment-schedule.util.ts` — se cambian juntas.
 - **Estado de una cuota (`CuotaEstado`):** pagadas `ON_TIME` / `LATE`; sin pagar escala con el tiempo — `PENDING` (vence hoy, todavía se cobra: neutro) → `OVERDUE` ("Vencida", ámbar, desde el día siguiente) → `DEFAULTED` ("En mora", rojo, a los `DIAS_PARA_MORA` = 7 días). Lo calcula el backend (`buildPaymentHistory`, con unit tests); el front solo mapea a badge en `entities/payment/lib/cuota-estado.ts`.
 - **Vencimiento ≠ pago.** `PaymentHistoryItem` trae `fechaVencimiento` (siempre) y `fechaPago` (null si no se ha pagado) como campos distintos, más `diasAtraso`. La tabla los muestra en dos columnas: antes había una sola `fecha` que significaba una cosa en las filas pagadas y otra en las no pagadas.
 - **Fechas:** todas por `shared/lib/format-date.ts` (`formatDate`, `formatDateShort`, `formatTime`, `formatDateTime`, `formatDateTimeShort`, `formatRelativeDateTime`). **Los pagos se muestran con hora** — un cliente puede abonar dos veces el mismo día.

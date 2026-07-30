@@ -11,4 +11,7 @@ export { RouteDetailScreen } from "./ui/RouteDetailScreen";
 export { ClientPaymentsScreen } from "./ui/ClientPaymentsScreen";
 export type { ClientPaymentsTab } from "./ui/ClientPaymentsScreen";
 export { CollectorCreditDetailScreen } from "./ui/CollectorCreditDetailScreen";
+export { AdminClientCreditsScreen } from "./ui/AdminClientCreditsScreen";
+export type { AdminClientCreditsTab } from "./ui/AdminClientCreditsScreen";
+export { AdminCreditCollectScreen } from "./ui/AdminCreditCollectScreen";
 export { RegistrarCobroSheet } from "./ui/RegistrarCobroSheet";

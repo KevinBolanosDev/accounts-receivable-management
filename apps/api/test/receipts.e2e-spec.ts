@@ -64,6 +64,7 @@ describe("ReceiptsController (e2e)", () => {
         adminId,
         monto: new Prisma.Decimal(100000),
         interes: new Prisma.Decimal(0),
+        cuotas: 10,
         dias: 10,
         montoTotal: new Prisma.Decimal(100000),
         cuotaDiaria: new Prisma.Decimal(10000),

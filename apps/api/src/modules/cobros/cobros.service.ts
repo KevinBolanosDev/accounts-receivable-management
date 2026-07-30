@@ -12,6 +12,10 @@ import type { CobroResponse, CreateCobroRequest, CreditoListItem, Pago } from "@
 import { PrismaService } from "../../core/prisma/prisma.service";
 import type { AuthenticatedUser } from "../../core/auth/auth-request";
 import { requireAdminId } from "../../core/auth/tenant.util";
+import {
+  mapCreditoListItem,
+  type CreditoRowForMapping,
+} from "../../core/domain/credito-cliente.util";
 import { buildReciboCodigo } from "../../core/domain/receipt-code.util";
 import { ReceiptTokenService } from "../../core/receipts/receipt-token.service";
 
@@ -184,46 +188,12 @@ function toPago(p: {
   };
 }
 
-function toCredito(c: {
-  id: string;
-  codigo: string;
-  clienteId: string;
-  monto: Prisma.Decimal;
-  interes: Prisma.Decimal;
-  dias: number;
-  montoTotal: Prisma.Decimal;
-  cuotaDiaria: Prisma.Decimal;
-  saldoPendiente: Prisma.Decimal;
-  estado: "ACTIVO" | "PAGADO" | "MORA" | "ANULADO";
-  fechaInicio: Date;
-  producto: { nombre: string };
-}): CreditoListItem {
-  const montoTotal = decimalToNumber(c.montoTotal);
-  const saldoPendiente = decimalToNumber(c.saldoPendiente);
-  const totalPagado = Number((montoTotal - saldoPendiente).toFixed(2));
-  const porcentajePagado =
-    montoTotal > 0 ? Number(((totalPagado / montoTotal) * 100).toFixed(2)) : 0;
-  const cuotaDiaria = decimalToNumber(c.cuotaDiaria);
-  const cuotasTotal = c.dias;
-  const cuotasPagadas =
-    cuotaDiaria > 0 ? Math.min(c.dias, Math.round(totalPagado / cuotaDiaria)) : 0;
-
-  return {
-    id: c.id,
-    codigo: c.codigo,
-    clienteId: c.clienteId,
-    producto: c.producto.nombre,
-    monto: decimalToNumber(c.monto),
-    interes: decimalToNumber(c.interes),
-    dias: c.dias,
-    montoTotal,
-    cuotaDiaria,
-    saldoPendiente,
-    totalPagado,
-    porcentajePagado,
-    estado: c.estado,
-    fechaInicio: c.fechaInicio.toISOString(),
-    cuotasPagadas,
-    cuotasTotal,
-  };
+// El mapeo vive en `core/domain/credito-cliente.util.ts` (lo comparten cinco
+// módulos). Acá había una copia byte a byte del mismo cálculo, que es
+// exactamente el tipo de duplicación que se rompe en silencio: con la llegada de
+// `frecuencia`/`cuotas`, la copia habría seguido devolviendo `cuotasTotal =
+// dias` y el sheet de cobro habría mostrado "cuota 3/28" en un crédito de 4
+// cuotas semanales.
+function toCredito(c: CreditoRowForMapping): CreditoListItem {
+  return mapCreditoListItem(c);
 }

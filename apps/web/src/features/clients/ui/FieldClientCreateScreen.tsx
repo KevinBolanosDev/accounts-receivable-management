@@ -5,10 +5,19 @@ import { useRouter } from "next/navigation";
 import { Controller, useForm, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { ArrowLeftIcon, ChevronsUpDownIcon, CopyIcon } from "lucide-react";
-import { createClienteRequestSchema, type CreateClienteRequest } from "@repo/types";
+import {
+  createClienteRequestSchema,
+  type CreateClienteRequest,
+  type FrecuenciaPago,
+} from "@repo/types";
 import { toast } from "sonner";
 
-import { calcularCredito } from "@/entities/credit";
+import {
+  CUOTAS_PLURAL,
+  CUOTA_LABEL,
+  FRECUENCIA_OPTIONS,
+  calcularCredito,
+} from "@/entities/credit";
 import { useCreateCredito } from "@/features/creditos/api/use-creditos";
 import { ProductoField } from "@/features/creditos/ui/CreditoFields";
 import { useRutas } from "@/features/routes-collectors/api/use-rutas";
@@ -37,7 +46,8 @@ interface CreditoOpcional {
   producto: string;
   monto?: number | undefined;
   interes?: number | undefined;
-  dias?: number | undefined;
+  frecuencia?: FrecuenciaPago | undefined;
+  cuotas?: number | undefined;
 }
 
 interface AccesoOpcional {
@@ -75,7 +85,7 @@ export function FieldClientCreateScreen() {
     // `raw: true` — sin esto, zodResolver STRIPEA del resultado cualquier
     // campo que no esté en createClienteRequestSchema (comportamiento por
     // defecto de z.object().parse()), así que abrirCredito/producto/monto/
-    // interes/dias nunca llegarían a onSubmit aunque el usuario los llene.
+    // interes/cuotas nunca llegarían a onSubmit aunque el usuario los llene.
     resolver: zodResolver(createClienteRequestSchema, undefined, { raw: true }) as never,
     defaultValues: {
       nombre: "",
@@ -93,7 +103,8 @@ export function FieldClientCreateScreen() {
       producto: "",
       monto: undefined,
       interes: undefined,
-      dias: undefined,
+      frecuencia: "DIARIO",
+  cuotas: undefined,
       crearAcceso: false,
     },
   });
@@ -122,8 +133,8 @@ export function FieldClientCreateScreen() {
       if (typeof v.interes !== "number" || v.interes < 0) {
         fieldErrors.push({ name: "interes", message: "El interés no puede ser negativo." });
       }
-      if (typeof v.dias !== "number" || v.dias <= 0) {
-        fieldErrors.push({ name: "dias", message: "Los días deben ser mayor a 0." });
+      if (typeof v.cuotas !== "number" || v.cuotas <= 0) {
+        fieldErrors.push({ name: "cuotas", message: "Las cuotas deben ser mayor a 0." });
       }
       if (fieldErrors.length > 0) {
         for (const err of fieldErrors) {
@@ -151,7 +162,7 @@ export function FieldClientCreateScreen() {
         v.producto?.trim() &&
         typeof v.monto === "number" &&
         typeof v.interes === "number" &&
-        typeof v.dias === "number"
+        typeof v.cuotas === "number"
       ) {
         try {
           await createCredito.mutateAsync({
@@ -159,7 +170,8 @@ export function FieldClientCreateScreen() {
             producto: v.producto.trim(),
             monto: v.monto,
             interes: v.interes,
-            dias: v.dias,
+            frecuencia: v.frecuencia ?? "DIARIO",
+            cuotas: v.cuotas,
           });
           toast.success("Cliente y crédito creados");
         } catch {
@@ -404,28 +416,54 @@ export function FieldClientCreateScreen() {
                   ) : null}
                 </div>
                 <div className="flex flex-col gap-1.5">
-                  <Label htmlFor="f-credito-dias">Días</Label>
+                  <Label htmlFor="f-credito-cuotas">N° de cuotas</Label>
                   <Input
-                    id="f-credito-dias"
+                    id="f-credito-cuotas"
                     type="number"
                     min={1}
                     inputMode="numeric"
                     className="h-12 bg-muted"
                     placeholder="30"
-                    {...register("dias", { valueAsNumber: true })}
+                    {...register("cuotas", { valueAsNumber: true })}
                   />
-                  {errors.dias ? (
+                  {errors.cuotas ? (
                     <p className="text-body-sm text-destructive" role="alert">
-                      {errors.dias.message}
+                      {errors.cuotas.message}
                     </p>
                   ) : null}
                 </div>
               </div>
 
+              <div className="flex flex-col gap-1.5">
+                <Label htmlFor="f-credito-frecuencia">Frecuencia de pago</Label>
+                <Controller
+                  control={control}
+                  name="frecuencia"
+                  render={({ field }) => (
+                    <Select
+                      value={field.value ?? "DIARIO"}
+                      onValueChange={(v) => field.onChange(v as FrecuenciaPago)}
+                    >
+                      <SelectTrigger id="f-credito-frecuencia" className="h-12 w-full bg-muted">
+                        <SelectValue placeholder="Diaria" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {FRECUENCIA_OPTIONS.map((option) => (
+                          <SelectItem key={option.value} value={option.value}>
+                            {option.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  )}
+                />
+              </div>
+
               <CuotasEstimadasInline
                 monto={Number(values.monto ?? 0)}
                 interes={Number(values.interes ?? 0)}
-                dias={Number(values.dias ?? 0)}
+                cuotas={Number(values.cuotas ?? 0)}
+                frecuencia={values.frecuencia ?? "DIARIO"}
               />
             </div>
           ) : null}
@@ -504,21 +542,23 @@ export function FieldClientCreateScreen() {
 function CuotasEstimadasInline({
   monto,
   interes,
-  dias,
+  cuotas,
+  frecuencia,
 }: {
   monto: number;
   interes: number;
-  dias: number;
+  cuotas: number;
+  frecuencia: FrecuenciaPago;
 }) {
-  const calc = calcularCredito(monto, interes, dias);
+  const calc = calcularCredito(monto, interes, cuotas);
   return (
     <div
       className="flex items-center justify-between rounded-md bg-muted/40 px-3 py-2 text-caption text-muted-foreground"
       aria-live="polite"
     >
       <span>
-        Cuota diaria estimada
-        {calc.cuotas > 0 ? ` · ${calc.cuotas} cuotas` : ""}
+        {CUOTA_LABEL[frecuencia]} estimada
+        {calc.cuotas > 0 ? ` · ${calc.cuotas} ${CUOTAS_PLURAL[frecuencia]}` : ""}
       </span>
       <span className="font-semibold text-foreground tabular-nums">
         {calc.cuotaDiaria > 0 ? formatCurrency(calc.cuotaDiaria) : "—"}

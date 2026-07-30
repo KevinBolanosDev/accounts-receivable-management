@@ -4,6 +4,7 @@ import { LoginForm } from "@/features/auth";
 import { useReveal } from "@/shared/lib/motion";
 
 import { BrandLogo } from "./BrandLogo";
+import { SurfaceSwitchLink } from "./SurfaceSwitchLink";
 
 // Prototipo #14c — hero de marca a pantalla ancha + tarjeta tipo bottom sheet
 // superpuesta. Responsive: en mobile ocupa toda la pantalla (edge-to-edge); en
@@ -64,8 +65,12 @@ export function CollectorLoginScreen() {
             </div>
 
             {/* Solo COBRADOR: una cuenta de admin acá se rechaza con un
-                mensaje, no se le abre sesión. */}
+                mensaje, no se le abre sesión. De ahí el enlace al otro login. */}
             <LoginForm allowedRoles={["COBRADOR"]} redirectTo="/collector" />
+
+            <div className="flex flex-col gap-2 border-t border-border pt-4">
+              <SurfaceSwitchLink href="/admin/login" label="Ingresar como administrador" />
+            </div>
           </div>
         </div>
       </div>

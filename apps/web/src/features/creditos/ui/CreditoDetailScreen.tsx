@@ -6,7 +6,7 @@ import { PencilIcon, Trash2Icon, UserIcon } from "lucide-react";
 import { toast } from "sonner";
 import type { CreditoDetail, CreditoListItem } from "@repo/types";
 
-import { upcomingInstallments } from "@/entities/credit";
+import { CUOTA_LABEL, upcomingInstallments } from "@/entities/credit";
 import { formatCurrency } from "@/shared/lib/format-currency";
 import { formatDate } from "@/shared/lib/format-date";
 import { cn } from "@/shared/lib/utils";
@@ -180,7 +180,10 @@ function CreditoStats({ credito }: { credito: CreditoDetail }) {
         valueClassName="text-success"
       />
       <StatTile label="Saldo" value={formatCurrency(credito.saldoPendiente)} />
-      <StatTile label="Cuota diaria" value={formatCurrency(credito.cuotaDiaria)} />
+      <StatTile
+        label={CUOTA_LABEL[credito.frecuencia]}
+        value={formatCurrency(credito.cuotaDiaria)}
+      />
     </div>
   );
 }

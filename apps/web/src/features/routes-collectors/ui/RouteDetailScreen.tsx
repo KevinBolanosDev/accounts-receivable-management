@@ -184,7 +184,9 @@ export function RouteDetailScreen({ rutaId }: { rutaId: string }) {
           </TabsList>
 
           <TabsContent value="clientes" className="flex min-w-0 flex-col gap-3">
-            <span className="text-caption text-muted-foreground">Ordenado por estado</span>
+            <span className="text-caption text-muted-foreground">
+              Ordenado por estado · abre los créditos del cliente para registrar un cobro
+            </span>
 
             {/* Lista en móvil */}
             <div className="flex flex-col overflow-hidden rounded-lg border border-border bg-card md:hidden">
@@ -199,10 +201,10 @@ export function RouteDetailScreen({ rutaId }: { rutaId: string }) {
                     className="relative flex items-center gap-3 border-b border-border px-4 py-3 last:border-b-0"
                   >
                     <Link
-                      href={`/admin/clients/${cliente.id}`}
+                      href={`/admin/routes-collectors/${ruta.id}/clients/${cliente.id}`}
                       className="absolute inset-0 z-0 focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none"
                     >
-                      <span className="sr-only">Ver detalle de {cliente.nombre}</span>
+                      <span className="sr-only">Ver créditos de {cliente.nombre}</span>
                     </Link>
 
                     <span className="z-10 flex size-9 shrink-0 items-center justify-center rounded-full bg-secondary text-xs font-semibold">
@@ -244,7 +246,9 @@ export function RouteDetailScreen({ rutaId }: { rutaId: string }) {
                 <TableRow
                   key={cliente.id}
                   className="cursor-pointer"
-                  onClick={() => router.push(`/admin/clients/${cliente.id}`)}
+                  onClick={() =>
+                    router.push(`/admin/routes-collectors/${ruta.id}/clients/${cliente.id}`)
+                  }
                 >
                   <TableCell>
                     <div className="flex items-center gap-3">

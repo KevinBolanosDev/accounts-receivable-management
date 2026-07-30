@@ -156,7 +156,7 @@ describe("Cliente compartido entre dos admins (e2e)", () => {
         producto: `${PREFIX}producto-${Date.now()}`,
         monto: 100000,
         interes: 0,
-        dias: 10,
+        cuotas: 10,
       })
       .expect(201);
     const creditoId = creditoSchema.parse(created.body).id;
@@ -190,7 +190,7 @@ describe("Cliente compartido entre dos admins (e2e)", () => {
         producto: `${PREFIX}producto-b-${Date.now()}`,
         monto: 50000,
         interes: 0,
-        dias: 5,
+        cuotas: 5,
       })
       .expect(201);
     const credito = creditoSchema.parse(res.body);

@@ -47,9 +47,15 @@ async function createCliente(overrides: Record<string, unknown> = {}) {
   });
 }
 
-// Crédito con historial mixto a propósito: cuota 1 pagada el día esperado
-// (ON_TIME), cuota 2 pagada 1 día tarde (LATE), y cuota 3 todavía sin pagar
-// (MISSED) — ejercita los 3 estados de `buildPaymentHistory` con datos reales.
+// Crédito con historial mixto a propósito: cuota 1 pagada el día que vencía
+// (ON_TIME), cuota 2 pagada 2 días tarde (LATE) y cuotas 3-5 vencidas sin pagar
+// — ejercita los estados de `buildPaymentHistory` con datos reales.
+//
+// El desembolso se fecha 5 días atrás porque **el día del desembolso no se
+// cobra**: la cuota N vence N períodos después de `fechaInicio` (en diario, la
+// cuota 1 al día siguiente). Con el desembolso 2 días atrás, como estaba antes,
+// hoy solo habría 2 cuotas vencidas y las dos pagadas — ni filas sin pagar ni
+// ninguna LATE que verificar.
 async function createCreditoConHistorialMixto(clienteId: string, cobradorId: string) {
   const adminId = await seedAdminId(prisma);
   const producto = await prisma.producto.upsert({
@@ -58,7 +64,7 @@ async function createCreditoConHistorialMixto(clienteId: string, cobradorId: str
     create: { nombre: PRODUCTO_NOMBRE, precioBase: new Prisma.Decimal(300000), adminId },
   });
 
-  const fechaInicio = new Date(Date.now() - 2 * DIA_MS);
+  const fechaInicio = new Date(Date.now() - 5 * DIA_MS);
   const credito = await prisma.credito.create({
     data: {
       codigo: `CR-E2E-${Date.now()}-${counter}`,
@@ -67,6 +73,7 @@ async function createCreditoConHistorialMixto(clienteId: string, cobradorId: str
       adminId,
       monto: new Prisma.Decimal(300000),
       interes: new Prisma.Decimal(0),
+      cuotas: 30,
       dias: 30,
       montoTotal: new Prisma.Decimal(300000),
       cuotaDiaria: new Prisma.Decimal(10000),
@@ -81,7 +88,8 @@ async function createCreditoConHistorialMixto(clienteId: string, cobradorId: str
       creditoId: credito.id,
       monto: new Prisma.Decimal(10000),
       cobradorId,
-      fecha: fechaInicio,
+      // Día 1 = el día que vence la cuota 1 → ON_TIME.
+      fecha: new Date(Date.now() - 4 * DIA_MS),
     },
   });
   await prisma.pago.create({
@@ -89,7 +97,8 @@ async function createCreditoConHistorialMixto(clienteId: string, cobradorId: str
       creditoId: credito.id,
       monto: new Prisma.Decimal(10000),
       cobradorId,
-      fecha: new Date(Date.now()), // día 2, esperado día 1 → LATE
+      // Día 4, cuando la cuota 2 vencía el día 2 → LATE con 2 días de atraso.
+      fecha: new Date(Date.now() - 1 * DIA_MS),
     },
   });
 
@@ -176,7 +185,8 @@ describe("ClientPortalController (e2e)", () => {
 
     const detail = clientCreditDetailSchema.parse(res.body);
     const numeros = detail.pagos.map((p) => p.numeroCuota).sort((a, b) => a - b);
-    expect(numeros).toEqual([1, 2, 3]);
+    // 5 períodos vencidos desde el desembolso: 2 con pago real y 3 sintéticas.
+    expect(numeros).toEqual([1, 2, 3, 4, 5]);
     expect(detail.pagos.some((p) => p.estado === "ON_TIME")).toBe(true);
     expect(detail.pagos.some((p) => p.estado === "LATE")).toBe(true);
   });

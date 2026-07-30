@@ -14,3 +14,13 @@ export {
 export type { CreditoCalculo } from "./lib/credit-progress";
 export { upcomingInstallments } from "./lib/upcoming-installments";
 export type { UpcomingInstallment, UpcomingInstallments } from "./lib/upcoming-installments";
+export {
+  FRECUENCIA_LABEL,
+  FRECUENCIA_OPTIONS,
+  CUOTA_LABEL,
+  CUOTA_SUFIJO,
+  CUOTAS_PLURAL,
+  PERIODO_LABEL,
+  fechaVencimientoCuota,
+  parseFechaInicio,
+} from "./lib/frecuencia";

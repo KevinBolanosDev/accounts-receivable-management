@@ -382,7 +382,6 @@ export class ClientsService {
       creditosActivos,
       creditosHistorial,
       hoy: new Date(),
-      cuotaSugerida: creditosActivos[0]?.cuotaDiaria ?? 0,
     });
 
     return {
@@ -477,7 +476,12 @@ export class ClientsService {
       // así ambas superficies comparten componentes de historial.
       historialPagos: client.creditos.flatMap((credito) =>
         buildPaymentHistory(
-          { id: credito.id, fechaInicio: credito.fechaInicio, dias: credito.dias },
+          {
+            id: credito.id,
+            fechaInicio: credito.fechaInicio,
+            cuotas: credito.cuotas,
+            frecuencia: credito.frecuencia,
+          },
           credito.pagos.map((pago) => ({
             id: pago.id,
             creditoId: credito.id,

@@ -116,6 +116,7 @@ function toCreditoListItem(
     producto: c.producto,
     monto: MONTO_TOTAL,
     interes: 0,
+    frecuencia: "DIARIO",
     dias: CUOTAS_TOTAL,
     montoTotal: MONTO_TOTAL,
     cuotaDiaria: CUOTA_DIARIA,

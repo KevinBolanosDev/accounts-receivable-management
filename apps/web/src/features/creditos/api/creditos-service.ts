@@ -2,6 +2,7 @@ import { useSessionStore } from "@/entities/session";
 import { calcularCredito } from "@/entities/credit";
 import { apiFetch } from "@/shared/api/client";
 import {
+  DIAS_POR_FRECUENCIA,
   creditoDetailSchema,
   creditoListItemSchema,
   type CreateCreditoRequest,
@@ -35,6 +36,7 @@ const MOCK_CREDITOS: CreditoListItem[] = [
     producto: "Nevera",
     monto: 1_000_000,
     interes: 20,
+    frecuencia: "DIARIO",
     dias: 60,
     montoTotal: 1_200_000,
     cuotaDiaria: 20_000,
@@ -53,6 +55,7 @@ const MOCK_CREDITOS: CreditoListItem[] = [
     producto: "Lavadora",
     monto: 1_200_000,
     interes: 25,
+    frecuencia: "DIARIO",
     dias: 60,
     montoTotal: 1_500_000,
     cuotaDiaria: 25_000,
@@ -71,7 +74,10 @@ const MOCK_CREDITOS: CreditoListItem[] = [
     producto: "Televisor",
     monto: 500_000,
     interes: 20,
-    dias: 40,
+    // Semanal a propósito: el mock también tiene que cubrir el caso en el que
+    // la cuota no es diaria (sufijos "/semana", cronograma de 7 en 7).
+    frecuencia: "SEMANAL",
+    dias: 280,
     montoTotal: 600_000,
     cuotaDiaria: 15_000,
     saldoPendiente: 360_000,
@@ -89,6 +95,7 @@ const MOCK_CREDITOS: CreditoListItem[] = [
     producto: "Nevera",
     monto: 800_000,
     interes: 25,
+    frecuencia: "DIARIO",
     dias: 50,
     montoTotal: 1_000_000,
     cuotaDiaria: 20_000,
@@ -158,7 +165,8 @@ export const mockCreditosService: CreditosService = {
     await delay();
     const newId = `cr-${Math.floor(Math.random() * 9000) + 3000}`;
     const codigo = `CR-${newId.split("-")[1]}`;
-    const calc = calcularCredito(body.monto, body.interes, body.dias);
+    const calc = calcularCredito(body.monto, body.interes, body.cuotas);
+    const dias = body.cuotas * DIAS_POR_FRECUENCIA[body.frecuencia];
     return creditoListItemSchema.parse({
       id: newId,
       codigo,
@@ -166,7 +174,9 @@ export const mockCreditosService: CreditosService = {
       producto: body.producto,
       monto: body.monto,
       interes: body.interes,
-      dias: body.dias,
+      frecuencia: body.frecuencia,
+      cuotas: body.cuotas,
+      dias,
       montoTotal: calc.montoTotal,
       cuotaDiaria: calc.cuotaDiaria,
       saldoPendiente: calc.montoTotal,
@@ -175,7 +185,7 @@ export const mockCreditosService: CreditosService = {
       estado: "ACTIVO",
       fechaInicio: body.fechaInicio ?? new Date().toISOString(),
       cuotasPagadas: 0,
-      cuotasTotal: body.dias,
+      cuotasTotal: body.cuotas,
     });
   },
   async updateCredito(id, body) {
@@ -183,18 +193,20 @@ export const mockCreditosService: CreditosService = {
     const current = MOCK_CREDITOS.find((c) => c.id === id) ?? MOCK_CREDITOS[0]!;
     const monto = body.monto ?? current.monto;
     const interes = body.interes ?? current.interes;
-    const dias = body.dias ?? current.dias;
-    const calc = calcularCredito(monto, interes, dias);
+    const cuotas = body.cuotas ?? current.cuotasTotal;
+    const frecuencia = body.frecuencia ?? current.frecuencia;
+    const calc = calcularCredito(monto, interes, cuotas);
     return creditoListItemSchema.parse({
       ...current,
       producto: body.producto ?? current.producto,
       monto,
       interes,
-      dias,
+      frecuencia,
+      dias: cuotas * DIAS_POR_FRECUENCIA[frecuencia],
       montoTotal: calc.montoTotal,
       cuotaDiaria: calc.cuotaDiaria,
       saldoPendiente: calc.montoTotal,
-      cuotasTotal: dias,
+      cuotasTotal: cuotas,
     });
   },
   async anularCredito(id) {

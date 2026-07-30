@@ -7,6 +7,8 @@ import { formatCurrency } from "@/shared/lib/format-currency";
 import { cn } from "@/shared/lib/utils";
 import { ProgressRing } from "@/shared/ui/progress-ring";
 
+import { CUOTA_SUFIJO } from "../lib/frecuencia";
+
 export interface CreditSummaryCardProps extends Omit<React.ComponentProps<"div">, "onSelect"> {
   credito: Pick<
     CreditoListItem,
@@ -17,6 +19,7 @@ export interface CreditSummaryCardProps extends Omit<React.ComponentProps<"div">
     | "saldoPendiente"
     | "totalPagado"
     | "cuotaDiaria"
+    | "frecuencia"
     | "cuotasPagadas"
     | "cuotasTotal"
     | "porcentajePagado"
@@ -87,7 +90,8 @@ export function CreditSummaryCard({
             {badge}
           </div>
           <span className="truncate text-caption text-muted-foreground">
-            {credito.codigo} · {formatCurrency(credito.cuotaDiaria)}/día
+            {credito.codigo} · {formatCurrency(credito.cuotaDiaria)}
+            {CUOTA_SUFIJO[credito.frecuencia]}
           </span>
           <span className="truncate text-caption text-muted-foreground">
             {meta ?? `${credito.cuotasPagadas}/${credito.cuotasTotal} cuotas`}

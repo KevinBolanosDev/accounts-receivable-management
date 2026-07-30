@@ -12,7 +12,7 @@ const inter = Inter({
 
 export const metadata: Metadata = {
   title: "CobroDiario",
-  description: "Sistema de cobro de créditos con cuotas diarias.",
+  description: "Sistema de cobro de créditos con cuotas diarias, semanales o mensuales.",
 };
 
 export default function RootLayout({

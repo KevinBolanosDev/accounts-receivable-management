@@ -3,8 +3,14 @@
 import * as React from "react";
 import { Controller, useFormContext } from "react-hook-form";
 import { CheckIcon, ChevronDownIcon } from "lucide-react";
+import type { FrecuenciaPago } from "@repo/types";
 
-import { calcularCredito } from "@/entities/credit";
+import {
+  CUOTAS_PLURAL,
+  CUOTA_LABEL,
+  FRECUENCIA_OPTIONS,
+  calcularCredito,
+} from "@/entities/credit";
 import { getInitials } from "@/shared/lib/initials";
 import { cn } from "@/shared/lib/utils";
 import { formatCurrency } from "@/shared/lib/format-currency";
@@ -19,6 +25,7 @@ import {
 import { Input } from "@/shared/ui/input";
 import { Label } from "@/shared/ui/label";
 import { Popover, PopoverContent, PopoverTrigger } from "@/shared/ui/popover";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/shared/ui/select";
 
 import { useClientes } from "@/features/clients/api/use-clientes";
 import { useProductos } from "@/features/productos/api/use-productos";
@@ -34,7 +41,8 @@ interface CreditoFieldsForm {
   producto?: string;
   monto?: number;
   interes?: number;
-  dias?: number;
+  frecuencia?: FrecuenciaPago;
+  cuotas?: number;
 }
 
 interface CreditoFieldsProps {
@@ -43,7 +51,8 @@ interface CreditoFieldsProps {
     producto?: string;
     monto?: string;
     interes?: string;
-    dias?: string;
+    frecuencia?: string;
+    cuotas?: string;
   };
   className?: string;
 }
@@ -120,14 +129,47 @@ function ProductoField({ value, onChange, onPickPrecio, error }: ProductoFieldPr
   );
 }
 
+interface FrecuenciaFieldProps {
+  value: FrecuenciaPago;
+  onChange: (frecuencia: FrecuenciaPago) => void;
+  error?: string;
+}
+
+// Cada cuánto vence una cuota. Es un `<Select>` y no un grupo de radios porque
+// convive con los demás campos del formulario en la misma grilla, y porque las
+// opciones son mutuamente excluyentes y estables (tres).
+//
+// Componente propio (y exportado) porque lo montan las TRES pantallas que crean
+// créditos: "Crear crédito" del Admin, el alta de cliente con crédito opcional y
+// el alta en campo del Cobrador.
+function FrecuenciaField({ value, onChange, error }: FrecuenciaFieldProps) {
+  return (
+    <Field id="credito-frecuencia" label="Frecuencia de pago" error={error}>
+      <Select value={value} onValueChange={(v) => onChange(v as FrecuenciaPago)}>
+        <SelectTrigger id="credito-frecuencia" className="w-full">
+          <SelectValue placeholder="Diaria" />
+        </SelectTrigger>
+        <SelectContent>
+          {FRECUENCIA_OPTIONS.map((option) => (
+            <SelectItem key={option.value} value={option.value}>
+              {option.label}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+    </Field>
+  );
+}
+
 function CreditoFields({ errors, className }: CreditoFieldsProps) {
   const form = useFormContext<CreditoFieldsForm>();
   const { control, register, setValue, getValues } = form;
 
   const monto = Number(form.watch("monto") ?? 0);
   const interes = Number(form.watch("interes") ?? 0);
-  const dias = Number(form.watch("dias") ?? 0);
-  const calc = calcularCredito(monto, interes, dias);
+  const cuotas = Number(form.watch("cuotas") ?? 0);
+  const frecuencia = form.watch("frecuencia") ?? "DIARIO";
+  const calc = calcularCredito(monto, interes, cuotas);
 
   return (
     <div className={cn("flex flex-col gap-4", className)}>
@@ -170,22 +212,34 @@ function CreditoFields({ errors, className }: CreditoFieldsProps) {
             {...register("interes", { valueAsNumber: true })}
           />
         </Field>
-        <Field id="credito-dias" label="Días" error={errors?.dias}>
+        <Field id="credito-cuotas" label="N° de cuotas" error={errors?.cuotas}>
           <Input
-            id="credito-dias"
+            id="credito-cuotas"
             type="number"
             min={1}
             inputMode="numeric"
             placeholder="30"
-            {...register("dias", { valueAsNumber: true })}
+            {...register("cuotas", { valueAsNumber: true })}
           />
         </Field>
       </div>
 
+      <Controller
+        control={control}
+        name="frecuencia"
+        render={({ field }) => (
+          <FrecuenciaField
+            value={field.value ?? "DIARIO"}
+            onChange={field.onChange}
+            error={errors?.frecuencia}
+          />
+        )}
+      />
+
       <div className="flex items-center justify-between rounded-md bg-muted/40 px-3 py-2 text-caption text-muted-foreground">
         <span>
-          Cuota diaria estimada
-          {calc.cuotas > 0 ? ` · ${calc.cuotas} cuotas` : ""}
+          {CUOTA_LABEL[frecuencia]} estimada
+          {calc.cuotas > 0 ? ` · ${calc.cuotas} ${CUOTAS_PLURAL[frecuencia]}` : ""}
         </span>
         <span className="font-semibold text-foreground tabular-nums">
           {calc.cuotaDiaria > 0 ? formatCurrency(calc.cuotaDiaria) : "—"}
@@ -283,5 +337,11 @@ function ClientePicker({ value, onChange, error, disabled }: ClientePickerProps)
   );
 }
 
-export { CreditoFields, ClientePicker, ProductoField };
-export type { CreditoFieldsProps, CreditoFieldsForm, ClientePickerProps, ProductoFieldProps };
+export { CreditoFields, ClientePicker, ProductoField, FrecuenciaField };
+export type {
+  CreditoFieldsProps,
+  CreditoFieldsForm,
+  ClientePickerProps,
+  ProductoFieldProps,
+  FrecuenciaFieldProps,
+};

@@ -5,19 +5,23 @@ import {
   NotFoundException,
 } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
-import type {
-  CreateCreditoRequest,
-  Credito,
-  CreditoDetail,
-  CreditoListItem,
-  CreditosQuery,
-  EstadoCredito,
-  UpdateCreditoRequest,
+import {
+  DIAS_POR_FRECUENCIA,
+  type CreateCreditoRequest,
+  type Credito,
+  type CreditoDetail,
+  type CreditoListItem,
+  type CreditosQuery,
+  type EstadoCredito,
+  type FrecuenciaPago,
+  type UpdateCreditoRequest,
 } from "@repo/types";
 
 import { PrismaService } from "../../core/prisma/prisma.service";
 import type { AuthenticatedUser } from "../../core/auth/auth-request";
 import { requireAdminId } from "../../core/auth/tenant.util";
+import { mapCreditoListItem } from "../../core/domain/credito-cliente.util";
+import { parseFechaInicio } from "../../core/domain/payment-schedule.util";
 
 import {
   CreditosRepository,
@@ -83,11 +87,12 @@ export class CreditosService {
     // precioBase); si es nuevo, se crea con precioBase = monto de esta venta.
     const producto = await this.upsertProducto(body.producto, body.monto, adminId);
 
-    // 4. Derivar montos: montoTotal = monto + monto*interes/100; cuota = /dias.
-    const { monto, interes, montoTotal, cuotaDiaria } = derivarMontos(
+    // 4. Derivar montos: montoTotal = monto + monto*interes/100; cuota = /cuotas.
+    const { monto, interes, montoTotal, cuotaDiaria, dias } = derivarMontos(
       body.monto,
       body.interes,
-      body.dias,
+      body.cuotas,
+      body.frecuencia,
     );
 
     // 5. Generar código desde la secuencia (race-safe).
@@ -102,12 +107,14 @@ export class CreditosService {
           adminId,
           monto,
           interes,
-          dias: body.dias,
+          frecuencia: body.frecuencia,
+          cuotas: body.cuotas,
+          dias,
           montoTotal,
           cuotaDiaria,
           saldoPendiente: montoTotal,
           estado: "ACTIVO",
-          fechaInicio: body.fechaInicio ? new Date(body.fechaInicio) : new Date(),
+          fechaInicio: body.fechaInicio ? parseFechaInicio(body.fechaInicio) : new Date(),
         },
         include: { producto: { select: { id: true, nombre: true } } },
       });
@@ -143,15 +150,21 @@ export class CreditosService {
       productoId = producto.id;
     }
 
-    // Recalcular montos si cambió monto/interes/dias. Como el crédito no tiene
-    // pagos (validado arriba), es seguro reasignar saldoPendiente = montoTotal.
+    // Recalcular montos si cambió monto/interes/cuotas/frecuencia. Como el
+    // crédito no tiene pagos (validado arriba), es seguro reasignar
+    // saldoPendiente = montoTotal. La frecuencia entra en el recálculo porque
+    // redefine `dias` (el plazo nominal), aunque no toque el valor de la cuota.
     const recalcular =
-      body.monto !== undefined || body.interes !== undefined || body.dias !== undefined;
+      body.monto !== undefined ||
+      body.interes !== undefined ||
+      body.cuotas !== undefined ||
+      body.frecuencia !== undefined;
     const derivados = recalcular
       ? derivarMontos(
           body.monto ?? decimalToNumber(existing.monto),
           body.interes ?? decimalToNumber(existing.interes),
-          body.dias ?? existing.dias,
+          body.cuotas ?? existing.cuotas,
+          body.frecuencia ?? existing.frecuencia,
         )
       : undefined;
 
@@ -161,7 +174,9 @@ export class CreditosService {
         producto: productoId ? { connect: { id: productoId } } : undefined,
         monto: body.monto !== undefined ? new Prisma.Decimal(body.monto) : undefined,
         interes: body.interes !== undefined ? new Prisma.Decimal(body.interes) : undefined,
-        dias: body.dias !== undefined ? body.dias : undefined,
+        frecuencia: body.frecuencia,
+        cuotas: body.cuotas,
+        dias: derivados?.dias,
         montoTotal: derivados?.montoTotal,
         cuotaDiaria: derivados?.cuotaDiaria,
         saldoPendiente: derivados?.montoTotal,
@@ -253,24 +268,38 @@ export class CreditosService {
 }
 
 // === Cálculo de montos (dinero en Decimal, nunca Float) =====================
-// montoTotal = monto + monto*interes/100 ; cuotaDiaria = montoTotal/dias.
-// Ej: 200000 capital, 40% → interés 80000 → total 280000 → /30 = 9333.33.
+// montoTotal = monto + monto*interes/100 ; cuota = montoTotal/cuotas.
+// Ej: 200000 capital, 40% → interés 80000 → total 280000 → /30 cuotas = 9333.33.
+//
+// La frecuencia NO entra en el cálculo del dinero: 4 cuotas semanales de un
+// total de 1.200.000 son 300.000 cada una, igual que 4 cuotas diarias. Lo único
+// que cambia con la frecuencia es CUÁNDO vence cada cuota (`dias`, el plazo
+// nominal) y el cronograma (`payment-schedule.util.ts`).
 function derivarMontos(
   montoNum: number,
   interesNum: number,
-  dias: number,
+  cuotas: number,
+  frecuencia: FrecuenciaPago,
 ): {
   monto: Prisma.Decimal;
   interes: Prisma.Decimal;
   montoTotal: Prisma.Decimal;
   cuotaDiaria: Prisma.Decimal;
+  dias: number;
 } {
   const monto = new Prisma.Decimal(montoNum);
   const interes = new Prisma.Decimal(interesNum);
   const interesTotal = monto.mul(interes).div(100);
   const montoTotal = monto.add(interesTotal).toDecimalPlaces(2);
-  const cuotaDiaria = dias > 0 ? montoTotal.div(dias).toDecimalPlaces(2) : new Prisma.Decimal(0);
-  return { monto, interes, montoTotal, cuotaDiaria };
+  const cuotaDiaria =
+    cuotas > 0 ? montoTotal.div(cuotas).toDecimalPlaces(2) : new Prisma.Decimal(0);
+  return {
+    monto,
+    interes,
+    montoTotal,
+    cuotaDiaria,
+    dias: cuotas * DIAS_POR_FRECUENCIA[frecuencia],
+  };
 }
 
 // === toDto: Decimal → number, Date → ISO string ============================
@@ -279,37 +308,13 @@ function decimalToNumber(d: Prisma.Decimal): number {
   return Number(d.toString());
 }
 
+// El mapeo Credito → CreditoListItem vive en `core/domain` porque lo comparten
+// `creditos`, `clientes`, `rutas`, `cobros` y `client-portal`. Antes había tres
+// copias idénticas del mismo cálculo (una acá, una en `cobros`, una en
+// `core/domain`), y agregar `frecuencia`/`cuotas` obligaba a acertarle a las
+// tres para que `cuotasTotal` no siguiera contando días.
 function toListItem(row: CreditoWithProducto): CreditoListItem {
-  const monto = decimalToNumber(row.monto);
-  const interes = decimalToNumber(row.interes);
-  const montoTotal = decimalToNumber(row.montoTotal);
-  const saldoPendiente = decimalToNumber(row.saldoPendiente);
-  const totalPagado = Number((montoTotal - saldoPendiente).toFixed(2));
-  const porcentajePagado =
-    montoTotal > 0 ? Number(((totalPagado / montoTotal) * 100).toFixed(2)) : 0;
-  const cuotaDiaria = decimalToNumber(row.cuotaDiaria);
-  const cuotasTotal = row.dias;
-  const cuotasPagadas =
-    cuotaDiaria > 0 ? Math.min(row.dias, Math.round(totalPagado / cuotaDiaria)) : 0;
-
-  return {
-    id: row.id,
-    codigo: row.codigo,
-    clienteId: row.clienteId,
-    producto: row.producto.nombre,
-    monto,
-    interes,
-    dias: row.dias,
-    montoTotal,
-    cuotaDiaria,
-    saldoPendiente,
-    totalPagado,
-    porcentajePagado,
-    estado: row.estado,
-    fechaInicio: row.fechaInicio.toISOString(),
-    cuotasPagadas,
-    cuotasTotal,
-  };
+  return mapCreditoListItem(row);
 }
 
 function toDetail(row: CreditoWithDetail): CreditoDetail {

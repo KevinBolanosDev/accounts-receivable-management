@@ -30,7 +30,7 @@ Dos convenciones (también en `specs/PLAN_DESARROLLO.md` §5):
 | **5** Cierre diario + reportes PDF | — | ⬜ |
 | **6** Hardening + tests | Unit tests + filtros globales + auditoria + CI | ⬜ |
 
-**Tests hoy:** 97 casos e2e en 13 suites de `apps/api/test/` (`app`, `auth`, `clientes`, `clientes-foto`, `rutas`, `usuarios`, `auth-cliente`, `client-portal`, `receipts`, `clientes-access`, `client-sharing`, `multi-tenancy`, `cobros`) + 16 unit tests (`core/domain/payment-schedule.util.spec.ts` + `core/contracts/repo-types-integrity.spec.ts`). Cero tests en front.
+**Tests hoy:** 103 casos e2e en 14 suites de `apps/api/test/` (`app`, `auth`, `clientes`, `clientes-foto`, `rutas`, `usuarios`, `auth-cliente`, `client-portal`, `receipts`, `clientes-access`, `client-sharing`, `multi-tenancy`, `cobros`, `creditos`) + 37 unit tests (`core/domain/payment-schedule.util.spec.ts` 32 + `core/contracts/repo-types-integrity.spec.ts` 5). Cero tests en front.
 
 **Bajas: qué se borra de verdad.** `Cliente` (relación `ClientAdmin.activo=false`) y `Usuario`/cobrador (`activo=false` + sus rutas quedan sin cobrador) son **soft-delete** — `Pago.cobradorId` y las FKs de dinero son `onDelete: Restrict` y la auditoría manda. `Ruta` es el **único borrado físico**, y solo si no le quedan clientes activos (409 en caso contrario). El login filtra por `activo`, que es lo que hace que la baja del cobrador signifique algo; sin eso el switch activo/inactivo era decorativo. Limitación conocida: `JwtAuthGuard` es stateless, así que un token ya emitido sigue válido hasta `JWT_EXPIRES_IN` (1d) — verificar `activo` por request es Fase 6.
 
@@ -65,7 +65,7 @@ Dos convenciones (también en `specs/PLAN_DESARROLLO.md` §5):
 | POST | `/credits` | Jwt + Roles | ADMIN/COBRADOR, scoping |
 | PATCH | `/credits/:id` | Jwt + Roles | ADMIN/COBRADOR, scoping |
 | DELETE | `/credits/:id` | Jwt + Roles | ADMIN (anular, soft) |
-| POST | `/collections` | Jwt + Roles | ADMIN/COBRADOR, scoping, tx atómica |
+| POST | `/collections` | Jwt + Roles | ADMIN/COBRADOR, scoping, tx atómica — el ADMIN cobra en cualquier ruta de su tenant (el chequeo "la ruta es mía" solo aplica a COBRADOR) y el `Pago` queda a su nombre |
 | POST | `/clients/:id/access` | Jwt + Roles + scoping | ADMIN/COBRADOR de la ruta — genera/resetea password temporal |
 | DELETE | `/clients/:id/access` | Jwt + Roles + scoping | ADMIN/COBRADOR de la ruta — revoca acceso |
 | POST | `/client-auth/login` | `@Public()` + Throttle(5/min) | público (rol se emite en el JWT) |
@@ -79,6 +79,12 @@ Dos convenciones (también en `specs/PLAN_DESARROLLO.md` §5):
 | GET | `/client-portal/payments/:pagoId/receipt` | ídem | recibo propio (`text/html`), 404 si es ajeno |
 
 **Mock vs real:** todos los features, incluido `client-portal` (Fase 4, swap activado tras auditoría post-Fase 4), están conectados a `httpXxxService`. Los `mockXxxService` siguen implementados (no se borraron) — el swap se hace cambiando una constante en cada `*-service.ts`. `cobros` no tiene mock útil: `mockCobrosService.registrarCobro` solo lanza errores para validar el camino de rollback.
+
+**Frecuencia de pago (diaria/semanal/mensual).** `Credito.frecuencia` + `Credito.cuotas`. El dinero se calcula igual en las tres: `montoTotal = capital + capital*interes/100`, `cuota = montoTotal / cuotas` — 4 cuotas semanales de 1.200.000 son 300.000 cada una, igual que 4 diarias. Lo único que cambia es **cuándo vence** cada cuota, y eso lo sabe una sola función: `fechaVencimientoCuota(fechaInicio, numeroCuota, frecuencia)` en `core/domain/payment-schedule.util.ts` (mensual = mismo día del mes siguiente, cayendo al último día si no existe — 31 ene → 28 feb, nunca +30 fijos). El umbral de mora (`DIAS_PARA_MORA = 7`) es el mismo para las tres.
+
+**El día del desembolso NO se cobra.** La cuota N vence N períodos después de `fechaInicio`: en diario, la cuota 1 vence al día siguiente; en semanal, a los 7 días; en mensual, el mismo día del mes siguiente. Antes la cuota 1 vencía el MISMO `fechaInicio`, así que un crédito nacía con una cuota pendiente el día de otorgarlo. Vive en `fechaVencimientoCuota` (`periodos = numeroCuota`), con espejo en el front (`entities/credit/lib/frecuencia.ts`) — los dos se cambian juntos.
+
+**`fechaInicio` se ancla al MEDIODÍA UTC** (`parseFechaInicio`, `core/domain/payment-schedule.util.ts`). Un `<input type="date">` manda `"2026-07-29"` y `new Date(...)` lo lee como medianoche UTC; como toda la UI formatea con `timeZone: "America/Bogota"` (UTC-5), eso se renderizaba como el **28** de julio y arrastraba todo el cronograma un día atrás. El mediodía cae en el mismo día de calendario en cualquier zona entre UTC-11 y UTC+11. Los créditos creados ANTES de este fix siguen guardados a medianoche UTC y se ven un día antes; se corrigen con `UPDATE "Credito" SET "fechaInicio" = "fechaInicio" + interval '12 hours' WHERE date_part('hour', "fechaInicio" AT TIME ZONE 'UTC') = 0;` (no cambia el día UTC, así que el cronograma no se mueve). **`Credito.cuotas` es la columna que manda**; `dias` quedó como plazo nominal (`cuotas * 1|7|30`), columna histórica de cuando todo era diario y `dias` ERA el número de cuotas — no se usa para calcular vencimientos. `cuotaDiaria` conserva el nombre por compatibilidad del contrato pero significa "valor de una cuota": la UI la titula con `CUOTA_LABEL` (`apps/web/src/entities/credit/lib/frecuencia.ts`), nunca "diaria" fijo.
 
 **Roles y permisos:** política completa en `specs/PLAN_DESARROLLO.md` §1.1 — ningún rol ve la información completa de los otros dos. Todos los controllers de staff (`clients`, `credits`, `collections`, `routes`, `products`) declaran `@Roles("ADMIN", "COBRADOR")` a nivel de clase para excluir explícitamente a `CLIENTE`, con overrides puntuales por handler donde un endpoint es ADMIN-only. `CLIENTE` solo tiene acceso (de solo lectura) a `/client-portal/*`.
 
@@ -98,7 +104,7 @@ pnpm --filter web build
 pnpm --filter @repo/types build   # necesario antes de api/web en cold start
 
 # Backend
-pnpm --filter api test           # jest unit tests (8 casos en core/domain/payment-schedule.util.spec.ts)
+pnpm --filter api test           # jest unit tests (32 casos en core/domain/payment-schedule.util.spec.ts + 5 en core/contracts/repo-types-integrity.spec.ts)
 pnpm --filter api test:e2e       # jest --config ./test/jest-e2e.json --runInBand (serial: ver gotcha abajo)
 pnpm --filter api test:e2e -- -t "auth"
 pnpm --filter api db:generate    # prisma generate (corre en postinstall también)
@@ -142,6 +148,8 @@ Back: **Feature-Based modules** (NestJS module → controller → service → re
 
 **Gotcha crítico: nada de imports circulares entre archivos de `packages/types/src`.** Al compilar a CJS, si dos módulos se importan mutuamente, el que pierde la carrera lee un binding todavía `undefined` y lo **captura** dentro de su `z.object({...})`. El schema queda roto para siempre y solo falla al parsear, con `TypeError: Cannot read properties of undefined (reading '_parse')` — `tsc` y el build pasan limpios. Pasó de verdad: `cobro.ts ↔ credito.ts` dejó `cobroResponseSchema.shape.credito` en `undefined` y `POST /collections` devolvía 500 **con el pago ya guardado**. Por eso `pagoSchema` vive en `payment.ts` (hoja, sin imports) y el grafo es lineal: `payment → payment-history → credito → cobro → client/client-portal/route`. `apps/api/src/core/contracts/repo-types-integrity.spec.ts` recorre todos los schemas exportados y falla si aparece un nodo `undefined`.
 
+**Lector tolerante en las respuestas.** El front valida TODA respuesta con estos mismos schemas, así que un campo nuevo y **requerido** rompe la app entera contra un backend que todavía no lo manda — front desplegado antes que el back, o `apps/web/.env` apuntando a la API de Render mientras se desarrolla contra `main`. Pasó de verdad con `frecuencia`: `clienteDetailSchema.parse` lanzaba `ZodError` por cada crédito y las pantallas lo mostraban como **"este cliente no existe"** (el patrón `isError || !cliente` no distingue un 404 de un error de shape). Por eso los campos nuevos de respuesta nacen con `.default(...)`/`.optional()` — ver `frecuencia`, `reciboPublicUrl`, `totalCobradoHoy` — y `repo-types-integrity.spec.ts` tiene un test que fija la tolerancia. En los **requests** la regla es la opuesta: ahí un campo faltante debe fallar.
+
 Zod como única fuente de verdad. Convención:
 - `<entidad>Schema` (camelCase) + tipo inferido PascalCase mismo nombre (`rutaSchema` → `Ruta`).
 - Sufijos por rol: `Schema` (shape), `ListItemSchema` (fila), `DetailSchema` (detalle), `RequestSchema` (body), `QuerySchema` (query), `ResponseSchema`.
@@ -166,7 +174,7 @@ core/
 ├── storage/                   StorageService (Supabase client + upload a bucket público)
 ├── contracts/                 repo-types-integrity.spec.ts — guardia anti-import-circular de @repo/types (ver el gotcha arriba)
 ├── pipes/                     ZodValidationPipe, ImageFileValidationPipe (5MB, JPEG/PNG/WebP)
-└── domain/                    helpers cross-feature, cero I/O: rollupEstadoCliente, mapCreditoListItem, buildReciboCodigo (Fase 4), buildPaymentHistory/computeProximaFechaCuota (Fase 4, con unit tests) — único punto donde dos features comparten lógica sin acoplarse
+└── domain/                    helpers cross-feature, cero I/O: rollupEstadoCliente, mapCreditoListItem, buildReciboCodigo (Fase 4), buildPaymentHistory/computeProximaFechaCuota/fechaVencimientoCuota/cuotasVencidasAlDia (con unit tests) — único punto donde dos features comparten lógica sin acoplarse
 modules/
 ├── auth/                      login, /me, /admin-only (referencia mínima)
 ├── health/                    GET /health (referencia mínima, query en vivo)
@@ -195,9 +203,9 @@ modules/
 - `PrismaClient` requiere driver adapter (`@prisma/adapter-pg` + `PrismaPg({ connectionString })`). El schema NO tiene `url` en `datasource` (Prisma 7 lo rechaza con `P1012`).
 - Generator pinned a `provider = "prisma-client-js"` (clásico). El nuevo `"prisma-client"` emite `import.meta.url` (ESM-only) que rompe en runtime CJS.
 - **`prisma.config.ts` DEBE estar en `apps/api` raíz**, no en `src/`. Si no, el CLI falla con "datasource.url is required" engañoso.
-- Modelos actuales: `Usuario`, `Ruta`, `Cliente`, `Producto`, `Credito`, `Pago` + enums `Rol` (`ADMIN | COBRADOR | CLIENTE` — `CLIENTE` agregado en Fase 4), `EstadoCredito`. FKs de dinero (`Cliente.rutaId`, `Credito.cliente/producto`, `Pago.credito/cobrador`) son **`onDelete: Restrict`** (auditable). Solo `Ruta.cobradorId` es `SetNull` (cobrador borrado no debe borrar rutas).
+- Modelos actuales: `Usuario`, `Ruta`, `Cliente`, `ClientAdmin`, `Producto`, `Credito`, `Pago` + enums `Rol` (`ADMIN | COBRADOR | CLIENTE` — `CLIENTE` agregado en Fase 4), `EstadoCredito`, `FrecuenciaPago` (`DIARIO | SEMANAL | MENSUAL`). FKs de dinero (`Cliente.rutaId`, `Credito.cliente/producto`, `Pago.credito/cobrador`) son **`onDelete: Restrict`** (auditable). Solo `Ruta.cobradorId` es `SetNull` (cobrador borrado no debe borrar rutas).
 - **`Cliente` (Fase 4):** `tokenAcceso` eliminado (ya no se usa); agregó `passwordHash String?`, `mustChangePassword Boolean`, `passwordExpiresAt DateTime?`, `failedLoginAttempts Int`, `lockedUntil DateTime?`, `lastLoginAt DateTime?` — acceso al portal por credenciales, no por token.
-- Secuencia Postgres `credito_codigo_seq` (start 2000) para códigos `CR-XXXX` race-safe.
+- Secuencia Postgres `credito_codigo_seq` (start 2000) para códigos `CR-XXXX` race-safe. **Gotcha:** `nextval` solo garantiza unicidad entre los códigos que emite ELLA. El seed inserta códigos a mano (`CR-2041`, `CR-2050`, `CR-2060`, `CR-2070`) en el mismo espacio numérico, así que la secuencia fue subiendo desde 2000 y al llegar a esos valores generó códigos ya existentes → `POST /credits` devolvía **409 "Conflicto generando código de crédito"** sin causa visible. Se detectó cuando `creditos.e2e-spec.ts` empujó la secuencia por esa zona. `prisma/seed.ts` ahora termina con `alinearSecuenciaDeCodigos()` (un `setval` que solo avanza, idempotente): todo código hardcodeado nuevo tiene que quedar por debajo de la secuencia.
 
 ### Next.js structure (`apps/web/src`)
 

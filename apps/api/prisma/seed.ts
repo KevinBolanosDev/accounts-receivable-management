@@ -7,6 +7,7 @@ import bcrypt from "bcrypt";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { Prisma } from "@prisma/client";
 import { PrismaClient } from "@prisma/client";
+import { DIAS_POR_FRECUENCIA, type FrecuenciaPago } from "@repo/types";
 
 const prisma = new PrismaClient({
   adapter: new PrismaPg({ connectionString: process.env.DATABASE_URL }),
@@ -257,13 +258,15 @@ interface CreditoSeed {
   producto: string; // texto libre (nombre) — se registra por upsert
   monto: string; // capital (sin interés)
   interes: string; // % de interés
-  dias: number; // plazo = número de cuotas diarias
+  frecuencia: FrecuenciaPago; // cada cuánto vence una cuota
+  cuotas: number; // número de cuotas del plan
   pagos: { monto: string; cobradorDocumento: string }[];
 }
 
-// Créditos demo. El seed guarda `monto`/`interes`/`dias` y DERIVA
-// `montoTotal = monto + monto*interes/100`, `cuotaDiaria = montoTotal/dias` y
-// `saldoPendiente = montoTotal - Σ pagos` (event-driven, igual que el service).
+// Créditos demo. El seed guarda `monto`/`interes`/`frecuencia`/`cuotas` y DERIVA
+// `montoTotal = monto + monto*interes/100`, `cuotaDiaria = montoTotal/cuotas`,
+// `dias` (plazo nominal) y `saldoPendiente = montoTotal - Σ pagos`
+// (event-driven, igual que el service).
 // El cobrador demo (1000000002) tiene varios clientes de su ruta (María +
 // Carlos) con créditos ACTIVOS → es el set que usará "Mi ruta de hoy". También
 // sembramos un PAGADO para que aparezca en la pestaña Historial del detalle.
@@ -275,7 +278,8 @@ const CREDITOS: CreditoSeed[] = [
     producto: "Nevera",
     monto: "1000000.00",
     interes: "20.00",
-    dias: 60,
+    frecuencia: "DIARIO",
+    cuotas: 60,
     pagos: [
       { monto: "20000.00", cobradorDocumento: "1000000002" },
       { monto: "20000.00", cobradorDocumento: "1000000002" },
@@ -288,7 +292,8 @@ const CREDITOS: CreditoSeed[] = [
     producto: "Lavadora",
     monto: "1200000.00",
     interes: "25.00",
-    dias: 60,
+    frecuencia: "DIARIO",
+    cuotas: 60,
     pagos: [{ monto: "25000.00", cobradorDocumento: "1000000002" }],
   },
   {
@@ -298,7 +303,8 @@ const CREDITOS: CreditoSeed[] = [
     producto: "Televisor",
     monto: "800000.00",
     interes: "25.00",
-    dias: 5,
+    frecuencia: "DIARIO",
+    cuotas: 5,
     pagos: [
       { monto: "200000.00", cobradorDocumento: "1000000003" },
       { monto: "200000.00", cobradorDocumento: "1000000003" },
@@ -308,13 +314,16 @@ const CREDITOS: CreditoSeed[] = [
     ],
   },
   {
-    // Recién creado, sin pagos (→ ACTIVO, saldo = montoTotal). 500.000 + 20% = 600.000 ; /40 = 15.000/día.
+    // SEMANAL, recién creado y sin pagos (→ ACTIVO, saldo = montoTotal).
+    // 500.000 + 20% = 600.000 ; /8 cuotas = 75.000 por semana (plazo nominal 56
+    // días). Es el crédito que deja probar la frecuencia semanal end-to-end.
     codigo: "CR-2070",
     clienteDocumento: "3004445555",
     producto: "Estufa",
     monto: "500000.00",
     interes: "20.00",
-    dias: 40,
+    frecuencia: "SEMANAL",
+    cuotas: 8,
     pagos: [],
   },
 ];
@@ -336,7 +345,9 @@ async function seedCreditos(adminId: string): Promise<void> {
     // Derivar montos como el service: total = monto + monto*interes/100.
     const interes = new Prisma.Decimal(c.interes);
     const montoTotal = monto.add(monto.mul(interes).div(100)).toDecimalPlaces(2);
-    const cuotaDiaria = c.dias > 0 ? montoTotal.div(c.dias).toDecimalPlaces(2) : new Prisma.Decimal(0);
+    const cuotaDiaria =
+      c.cuotas > 0 ? montoTotal.div(c.cuotas).toDecimalPlaces(2) : new Prisma.Decimal(0);
+    const dias = c.cuotas * DIAS_POR_FRECUENCIA[c.frecuencia];
     const totalPagado = c.pagos.reduce(
       (acc, p) => acc.add(new Prisma.Decimal(p.monto)),
       new Prisma.Decimal(0),
@@ -352,7 +363,9 @@ async function seedCreditos(adminId: string): Promise<void> {
         adminId,
         monto,
         interes,
-        dias: c.dias,
+        frecuencia: c.frecuencia,
+        cuotas: c.cuotas,
+        dias,
         montoTotal,
         cuotaDiaria,
         saldoPendiente,
@@ -366,7 +379,9 @@ async function seedCreditos(adminId: string): Promise<void> {
         adminId,
         monto,
         interes,
-        dias: c.dias,
+        frecuencia: c.frecuencia,
+        cuotas: c.cuotas,
+        dias,
         montoTotal,
         cuotaDiaria,
         saldoPendiente,
@@ -398,6 +413,35 @@ async function seedCreditos(adminId: string): Promise<void> {
   }
 }
 
+// Alinea `credito_codigo_seq` por encima del código más alto que exista.
+//
+// Bug real que esto arregla: el seed inserta códigos A MANO (`CR-2041`,
+// `CR-2050`, `CR-2060`, `CR-2070`) mientras que la app los genera con
+// `nextval('credito_codigo_seq')`, que arranca en 2000. La secuencia no sabe
+// nada de los códigos hardcodeados, así que fue subiendo 2000, 2001, 2002… y al
+// llegar a 2041 generó un código que YA existía: `POST /credits` respondió 409
+// ("Conflicto generando código de crédito") sin razón visible para el usuario, y
+// otra vez en 2050, 2060 y 2070. Se detectó cuando la suite e2e de créditos
+// empujó la secuencia por esa zona.
+//
+// `setval` es idempotente acá: solo avanza (nunca retrocede la secuencia por
+// debajo de donde ya está), así que correr el seed dos veces no reutiliza
+// códigos ya emitidos.
+async function alinearSecuenciaDeCodigos(): Promise<void> {
+  const rows = await prisma.$queryRaw<{ nuevo_valor: bigint }[]>`
+    SELECT setval(
+      'credito_codigo_seq',
+      GREATEST(
+        (SELECT last_value FROM "credito_codigo_seq"),
+        (SELECT COALESCE(MAX(SUBSTRING(codigo FROM 4)::int), 0)
+           FROM "Credito"
+          WHERE codigo ~ '^CR-[0-9]+$')
+      )
+    ) AS nuevo_valor
+  `;
+  console.log(`Secuencia credito_codigo_seq alineada en ${Number(rows[0]!.nuevo_valor)}`);
+}
+
 async function main(): Promise<void> {
   // `seedUsuarios` devuelve el id del admin dueño; todo lo demás se siembra
   // dentro de ese tenant.
@@ -406,6 +450,9 @@ async function main(): Promise<void> {
   await seedClientes(adminId);
   await seedProductos(adminId);
   await seedCreditos(adminId);
+  // Después de los créditos: los códigos hardcodeados de arriba tienen que
+  // quedar por debajo de la secuencia, o la app emitirá uno repetido.
+  await alinearSecuenciaDeCodigos();
 }
 
 main()

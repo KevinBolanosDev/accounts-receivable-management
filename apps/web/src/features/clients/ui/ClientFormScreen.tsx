@@ -9,12 +9,13 @@ import {
   createClienteRequestSchema,
   type ClienteDetail,
   type CreateClienteRequest,
+  type FrecuenciaPago,
   type RutaListItem,
 } from "@repo/types";
 import { toast } from "sonner";
 import { ChevronsUpDownIcon } from "lucide-react";
 
-import { calcularCredito } from "@/entities/credit";
+import { CUOTAS_PLURAL, CUOTA_LABEL, calcularCredito } from "@/entities/credit";
 import { ApiError } from "@/shared/api/client";
 import { formatCurrency } from "@/shared/lib/format-currency";
 import { Button } from "@/shared/ui/button";
@@ -32,7 +33,7 @@ import { AdminPageHeader } from "@/widgets/admin-shell/AdminPageHeader";
 
 import { useRutas } from "@/features/routes-collectors/api/use-rutas";
 import { useCreateCredito } from "@/features/creditos/api/use-creditos";
-import { ProductoField } from "@/features/creditos/ui/CreditoFields";
+import { FrecuenciaField, ProductoField } from "@/features/creditos/ui/CreditoFields";
 
 import { useCliente, useCreateCliente, useUpdateCliente } from "../api/use-clientes";
 import { ClientFormPreview } from "./ClientFormPreview";
@@ -72,7 +73,8 @@ interface CreditoOpcional {
   producto: string;
   monto?: number | undefined;
   interes?: number | undefined;
-  dias?: number | undefined;
+  frecuencia?: FrecuenciaPago | undefined;
+  cuotas?: number | undefined;
 }
 
 type FormValues = CreateClienteRequest & CreditoOpcional;
@@ -95,7 +97,8 @@ const DEFAULTS: FormValues = {
   producto: "",
   monto: undefined,
   interes: undefined,
-  dias: undefined,
+  frecuencia: "DIARIO",
+  cuotas: undefined,
 };
 
 // Contenedor: espera a que estén TODAS las queries que alimentan los valores
@@ -175,7 +178,7 @@ function ClientFormBody({
     // `raw: true` — sin esto, zodResolver STRIPEA del resultado cualquier
     // campo que no esté en createClienteRequestSchema (comportamiento por
     // defecto de z.object().parse()), así que abrirCredito/producto/monto/
-    // interes/dias nunca llegarían a onSubmit aunque el usuario los llene
+    // interes/cuotas nunca llegarían a onSubmit aunque el usuario los llene
     // (bug preexistente: el crédito opcional nunca se creaba).
     resolver: zodResolver(createClienteRequestSchema, undefined, { raw: true }) as never,
     mode: "onBlur",
@@ -237,8 +240,8 @@ function ClientFormBody({
       if (typeof v.interes !== "number" || v.interes < 0) {
         fieldErrors.push({ name: "interes", message: "El interés no puede ser negativo." });
       }
-      if (typeof v.dias !== "number" || v.dias <= 0) {
-        fieldErrors.push({ name: "dias", message: "Los días deben ser mayor a 0." });
+      if (typeof v.cuotas !== "number" || v.cuotas <= 0) {
+        fieldErrors.push({ name: "cuotas", message: "Las cuotas deben ser mayor a 0." });
       }
       if (fieldErrors.length > 0) {
         for (const err of fieldErrors) {
@@ -286,7 +289,7 @@ function ClientFormBody({
         v.producto?.trim() &&
         typeof v.monto === "number" &&
         typeof v.interes === "number" &&
-        typeof v.dias === "number"
+        typeof v.cuotas === "number"
       ) {
         try {
           await createCredito.mutateAsync({
@@ -294,7 +297,8 @@ function ClientFormBody({
             producto: v.producto.trim(),
             monto: v.monto,
             interes: v.interes,
-            dias: v.dias,
+            frecuencia: v.frecuencia ?? "DIARIO",
+            cuotas: v.cuotas,
           });
           toast.success("Cliente y crédito creados");
         } catch {
@@ -500,22 +504,35 @@ function ClientFormBody({
                         {...register("interes", { valueAsNumber: true })}
                       />
                     </Field>
-                    <Field id="credito-dias" label="Días" error={errors.dias?.message}>
+                    <Field id="credito-cuotas" label="N° de cuotas" error={errors.cuotas?.message}>
                       <Input
-                        id="credito-dias"
+                        id="credito-cuotas"
                         type="number"
                         min={1}
                         inputMode="numeric"
                         placeholder="30"
-                        {...register("dias", { valueAsNumber: true })}
+                        {...register("cuotas", { valueAsNumber: true })}
                       />
                     </Field>
                   </div>
 
+                  <Controller
+                    control={control}
+                    name="frecuencia"
+                    render={({ field }) => (
+                      <FrecuenciaField
+                        value={field.value ?? "DIARIO"}
+                        onChange={field.onChange}
+                        error={errors.frecuencia?.message}
+                      />
+                    )}
+                  />
+
                   <CuotasEstimadasInline
                     monto={Number(values.monto ?? 0)}
                     interes={Number(values.interes ?? 0)}
-                    dias={Number(values.dias ?? 0)}
+                    cuotas={Number(values.cuotas ?? 0)}
+                    frecuencia={values.frecuencia ?? "DIARIO"}
                   />
                 </div>
               ) : null}
@@ -556,21 +573,23 @@ function ClientFormBody({
 function CuotasEstimadasInline({
   monto,
   interes,
-  dias,
+  cuotas,
+  frecuencia,
 }: {
   monto: number;
   interes: number;
-  dias: number;
+  cuotas: number;
+  frecuencia: FrecuenciaPago;
 }) {
-  const calc = calcularCredito(monto, interes, dias);
+  const calc = calcularCredito(monto, interes, cuotas);
   return (
     <div
       className="flex items-center justify-between rounded-md bg-muted/40 px-3 py-2 text-caption text-muted-foreground"
       aria-live="polite"
     >
       <span>
-        Cuota diaria estimada
-        {calc.cuotas > 0 ? ` · ${calc.cuotas} cuotas` : ""}
+        {CUOTA_LABEL[frecuencia]} estimada
+        {calc.cuotas > 0 ? ` · ${calc.cuotas} ${CUOTAS_PLURAL[frecuencia]}` : ""}
       </span>
       <span className="font-semibold text-foreground tabular-nums">
         {calc.cuotaDiaria > 0 ? formatCurrency(calc.cuotaDiaria) : "—"}

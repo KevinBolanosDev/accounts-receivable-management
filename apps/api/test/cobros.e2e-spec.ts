@@ -67,6 +67,7 @@ describe("CobrosController (e2e)", () => {
           adminId,
           monto: new Prisma.Decimal(100000),
           interes: new Prisma.Decimal(0),
+          cuotas: 10,
           dias: 10,
           montoTotal: new Prisma.Decimal(100000),
           cuotaDiaria: new Prisma.Decimal(10000),
@@ -132,6 +133,26 @@ describe("CobrosController (e2e)", () => {
     expect(body.recibo.codigo).toMatch(/^R-/);
     // El enlace compartible por WhatsApp.
     expect(body.recibo.publicUrl).toContain("/r/");
+  });
+
+  // El ADMIN cobra en rutas que tienen cobrador asignado: es lo que habilita la
+  // pantalla "Rutas de cobradores → cliente → crédito → registrar cobro" del
+  // panel admin. El `Pago` queda a nombre del admin (`cobradorId = su id`), que
+  // es lo correcto para la auditoría: cobró él, no el cobrador de la ruta.
+  it("el ADMIN puede registrar un cobro en la ruta de un cobrador", async () => {
+    const admin = await login(app, ADMIN);
+
+    const res = await request(app.getHttpServer())
+      .post("/collections")
+      .set("Authorization", `Bearer ${admin.token}`)
+      .send({ creditoId, monto: 1000 })
+      .expect(201);
+
+    const body = cobroResponseSchema.parse(res.body);
+    const adminUser = await prisma.usuario.findUniqueOrThrow({
+      where: { documento: ADMIN.documento },
+    });
+    expect(body.pago.cobradorId).toBe(adminUser.id);
   });
 
   it("el enlace publicUrl del cobro abre el recibo sin autenticación", async () => {

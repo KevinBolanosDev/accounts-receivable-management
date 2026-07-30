@@ -5,6 +5,7 @@ import { useReveal } from "@/shared/lib/motion";
 import { Card } from "@/shared/ui/card";
 
 import { BrandLogo } from "./BrandLogo";
+import { SurfaceSwitchLink } from "./SurfaceSwitchLink";
 
 // Prototipo #1b — split de dos paneles (marca + anillo de firma a la izquierda,
 // formulario a la derecha). Responsive: en < lg el panel de marca se oculta y
@@ -84,8 +85,12 @@ export function AdminLoginScreen() {
               </div>
 
               {/* Solo ADMIN: una cuenta de cobrador acá se rechaza con un
-                  mensaje, no se le abre sesión. */}
+                  mensaje, no se le abre sesión. De ahí el enlace al otro login. */}
               <LoginForm allowedRoles={["ADMIN"]} redirectTo="/admin" />
+
+              <div className="flex flex-col gap-2 border-t border-border pt-4">
+                <SurfaceSwitchLink href="/collector/login" label="Ingresar como cobrador" />
+              </div>
             </div>
           </Card>
         </div>

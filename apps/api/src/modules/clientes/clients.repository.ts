@@ -32,6 +32,8 @@ function buildClientListInclude(adminId: string) {
         clienteId: true,
         monto: true,
         interes: true,
+        frecuencia: true,
+        cuotas: true,
         dias: true,
         montoTotal: true,
         cuotaDiaria: true,

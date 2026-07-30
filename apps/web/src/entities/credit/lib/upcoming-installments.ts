@@ -2,21 +2,22 @@ import type { CreditoListItem } from "@repo/types";
 
 import { isToday } from "@/shared/lib/format-date";
 
+import { fechaVencimientoCuota } from "./frecuencia";
+
 // Proyección de las cuotas que TODAVÍA no se han pagado, para el bloque
 // "Próximas cuotas" del detalle de crédito (#10a).
 //
 // El backend no expone el cronograma en `GET /credits/:id` (solo `pagos`), así
 // que se proyecta acá. La regla es la misma que aplica
-// `core/domain/payment-schedule.util.ts`: **una cuota por día calendario desde
-// `fechaInicio`**, sin descansos, así que la cuota N vence en
-// `fechaInicio + (N - 1) días`. Esto es una PROYECCIÓN de lectura: no calcula
-// dinero nuevo (usa `cuotaDiaria` tal cual viaja en el contrato) y no decide
-// estados de mora — de eso sigue siendo autoridad el backend.
+// `core/domain/payment-schedule.util.ts`: **una cuota por período** (`frecuencia`)
+// desde `fechaInicio`, sin descansos, así que la cuota N vence
+// `N - 1` períodos después del inicio. Esto es una PROYECCIÓN de lectura: no
+// calcula dinero nuevo (usa `cuotaDiaria` tal cual viaja en el contrato) y no
+// decide estados de mora — de eso sigue siendo autoridad el backend.
 //
-// Si algún día el negocio salta fines de semana o feriados, este helper y el
-// del backend hay que cambiarlos juntos.
-
-const DIA_MS = 24 * 60 * 60 * 1000;
+// El paso del calendario vive en `./frecuencia.ts` (una sola implementación
+// para todo el front). Si algún día el negocio salta fines de semana o
+// feriados, ese helper y el del backend hay que cambiarlos juntos.
 
 export interface UpcomingInstallment {
   numero: number;
@@ -37,12 +38,11 @@ export interface UpcomingInstallments {
 
 type CreditoParaCronograma = Pick<
   CreditoListItem,
-  "fechaInicio" | "cuotaDiaria" | "cuotasPagadas" | "cuotasTotal"
+  "fechaInicio" | "cuotaDiaria" | "cuotasPagadas" | "cuotasTotal" | "frecuencia"
 >;
 
-function vencimientoDeCuota(fechaInicio: string, numero: number): string {
-  const inicio = new Date(fechaInicio);
-  return new Date(inicio.getTime() + (numero - 1) * DIA_MS).toISOString();
+function vencimientoDeCuota(credito: CreditoParaCronograma, numero: number): string {
+  return fechaVencimientoCuota(credito.fechaInicio, numero, credito.frecuencia).toISOString();
 }
 
 export function upcomingInstallments(
@@ -59,7 +59,7 @@ export function upcomingInstallments(
   const items: UpcomingInstallment[] = [];
 
   for (let numero = primera; numero < primera + limit && numero <= credito.cuotasTotal; numero++) {
-    const fechaVencimiento = vencimientoDeCuota(credito.fechaInicio, numero);
+    const fechaVencimiento = vencimientoDeCuota(credito, numero);
     items.push({
       numero,
       fechaVencimiento,
@@ -76,7 +76,7 @@ export function upcomingInstallments(
       ? null
       : {
           numero: credito.cuotasTotal,
-          fechaVencimiento: vencimientoDeCuota(credito.fechaInicio, credito.cuotasTotal),
+          fechaVencimiento: vencimientoDeCuota(credito, credito.cuotasTotal),
         };
 
   return { items, restantes, ultima };

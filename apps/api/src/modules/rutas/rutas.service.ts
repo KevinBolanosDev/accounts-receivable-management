@@ -321,7 +321,6 @@ function summarizeRuta(ruta: RutaWithClientesHoy): {
       creditosActivos,
       creditosHistorial,
       hoy,
-      cuotaSugerida: creditosActivos[0]?.cuotaDiaria ?? 0,
     });
 
     saldoTotal += saldoActivos;

@@ -24,6 +24,16 @@ enum EstadoCredito {
   ANULADO
 }
 
+// Cada cuánto vence una cuota del crédito. El dinero se calcula igual en las
+// tres (`montoTotal / cuotas`); lo que cambia es el paso del calendario con el
+// que se proyecta el cronograma (`core/domain/payment-schedule.util.ts`).
+// `DIARIO` es el default: todos los créditos previos a esta columna son diarios.
+enum FrecuenciaPago {
+  DIARIO
+  SEMANAL
+  MENSUAL
+}
+
 model Usuario {
   id           String   @id @default(uuid())
   nombre       String
@@ -174,8 +184,9 @@ model Producto {
 
 // Fase 3 — Crédito. `codigo` legible y único (CR-XXXX), generado en el service
 // desde una secuencia de Postgres (`credito_codigo_seq`; race-safe).
-// El alta envía `monto` (capital) + `interes` (%) + `dias`; el service DERIVA y
-// materializa `montoTotal = monto + monto*interes/100` y `cuotaDiaria = montoTotal/dias`.
+// El alta envía `monto` (capital) + `interes` (%) + `frecuencia` + `cuotas`; el
+// service DERIVA y materializa `montoTotal = monto + monto*interes/100`,
+// `cuotaDiaria = montoTotal/cuotas` y `dias` (plazo nominal).
 // `producto` es texto libre: el service registra el nombre en el catálogo
 // (upsert) y enlaza por `productoId` (inventario). `saldoPendiente` se
 // materializa al crear (= montoTotal) y se recalcula dentro de la transacción del
@@ -196,11 +207,18 @@ model Credito {
   // `ClientAdmin(clienteId, adminId)` al crear (el service lo valida).
   adminId        String
   admin          Usuario       @relation("AdminCreditos", fields: [adminId], references: [id], onDelete: Restrict)
-  monto          Decimal       @db.Decimal(12, 2) // capital (sin interés)
-  interes        Decimal       @db.Decimal(5, 2) // % de interés sobre el capital
-  dias           Int // plazo en días = número de cuotas diarias
-  montoTotal     Decimal       @db.Decimal(12, 2) // derivado = monto + monto*interes/100
-  cuotaDiaria    Decimal       @db.Decimal(12, 2) // derivado = montoTotal/dias
+  monto          Decimal        @db.Decimal(12, 2) // capital (sin interés)
+  interes        Decimal        @db.Decimal(5, 2) // % de interés sobre el capital
+  frecuencia     FrecuenciaPago @default(DIARIO)
+  cuotas         Int // número de cuotas del plan — la columna que manda para el cronograma
+  // Plazo NOMINAL en días = cuotas * (1|7|30). Columna histórica: cuando todo
+  // el cobro era diario, `dias` ERA el número de cuotas (de ahí el backfill
+  // `cuotas = dias` de la migración). Se conserva como orden de magnitud del
+  // plazo; el cronograma real sale de `frecuencia` + `cuotas`, porque un
+  // período MENSUAL dura 28-31 días, no 30 exactos.
+  dias           Int
+  montoTotal     Decimal        @db.Decimal(12, 2) // derivado = monto + monto*interes/100
+  cuotaDiaria    Decimal        @db.Decimal(12, 2) // derivado = montoTotal/cuotas
   saldoPendiente Decimal       @db.Decimal(12, 2)
   estado         EstadoCredito @default(ACTIVO)
   fechaInicio    DateTime      @default(now())

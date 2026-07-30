@@ -10,11 +10,18 @@ import {
   type ClienteListItem,
   type CobradorListItem,
   type CreateCreditoRequest,
+  type FrecuenciaPago,
   type RutaListItem,
 } from "@repo/types";
 import { toast } from "sonner";
 
-import { calcularCredito, type CreditoCalculo } from "@/entities/credit";
+import {
+  CUOTAS_PLURAL,
+  calcularCredito,
+  fechaVencimientoCuota,
+  parseFechaInicio,
+  type CreditoCalculo,
+} from "@/entities/credit";
 import { cn } from "@/shared/lib/utils";
 import { formatCurrency } from "@/shared/lib/format-currency";
 import { formatDate, formatDateShort } from "@/shared/lib/format-date";
@@ -24,7 +31,11 @@ import { Label } from "@/shared/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/shared/ui/select";
 import { AdminPageHeader } from "@/widgets/admin-shell/AdminPageHeader";
 
-import { ClientePicker, ProductoField } from "@/features/creditos/ui/CreditoFields";
+import {
+  ClientePicker,
+  FrecuenciaField,
+  ProductoField,
+} from "@/features/creditos/ui/CreditoFields";
 import { useClientes, useUpdateCliente } from "@/features/clients/api/use-clientes";
 import { useCobradores } from "@/features/collectors/api/use-cobradores";
 import { useRutas } from "@/features/routes-collectors/api/use-rutas";
@@ -33,13 +44,14 @@ import { useCreateCredito, useCredito, useUpdateCredito } from "../api/use-credi
 
 // DESIGN_SYSTEM.md §3.3 — pantalla Crear/Editar crédito (Admin, #9c / #10a
 // "Editar"). Panel izquierdo "Datos del crédito" (cliente + producto texto
-// libre + monto/interés/días) y panel derecho "Cálculo estimado" en vivo (nº
-// de cuotas, cuota diaria, total, duración, primeras cuotas). La cuota se
-// DERIVA: cuota = (monto + interés)/días. El producto es texto libre con
-// autocompletado; el backend lo registra (upsert). En modo edición
+// libre + monto/interés/frecuencia/nº de cuotas) y panel derecho "Cálculo
+// estimado" en vivo (nº de cuotas, valor de la cuota, total, duración, primeras
+// cuotas). La cuota se DERIVA: cuota = (monto + interés)/cuotas — la frecuencia
+// no cambia el monto de la cuota, solo cada cuánto vence. El producto es texto
+// libre con autocompletado; el backend lo registra (upsert). En modo edición
 // (`creditoId`), cliente y fecha de inicio no se pueden cambiar — solo
-// producto/monto/interés/días (`updateCreditoRequestSchema`), y el backend
-// además bloquea la edición si el crédito ya tiene pagos (409).
+// producto/monto/interés/frecuencia/cuotas (`updateCreditoRequestSchema`), y el
+// backend además bloquea la edición si el crédito ya tiene pagos (409).
 
 const hoyISO = () => new Date().toISOString().slice(0, 10);
 
@@ -67,7 +79,8 @@ export function CreateCreditoScreen({ clienteIdInicial, creditoId }: CreateCredi
       producto: "",
       monto: undefined,
       interes: undefined,
-      dias: undefined,
+      frecuencia: "DIARIO",
+      cuotas: undefined,
       fechaInicio: hoyISO(),
     },
   });
@@ -107,7 +120,8 @@ export function CreateCreditoScreen({ clienteIdInicial, creditoId }: CreateCredi
         producto: credito.producto,
         monto: credito.monto,
         interes: credito.interes,
-        dias: credito.dias,
+        frecuencia: credito.frecuencia,
+        cuotas: credito.cuotasTotal,
         fechaInicio: credito.fechaInicio.slice(0, 10),
       });
     }
@@ -115,10 +129,11 @@ export function CreateCreditoScreen({ clienteIdInicial, creditoId }: CreateCredi
 
   const watched = useWatch({ control });
 
+  const frecuencia = watched.frecuencia ?? "DIARIO";
   const calc = calcularCredito(
     Number(watched.monto ?? 0),
     Number(watched.interes ?? 0),
-    Number(watched.dias ?? 0),
+    Number(watched.cuotas ?? 0),
   );
 
   async function onSubmit(values: CreateCreditoRequest) {
@@ -128,7 +143,8 @@ export function CreateCreditoScreen({ clienteIdInicial, creditoId }: CreateCredi
           producto: values.producto,
           monto: values.monto,
           interes: values.interes,
-          dias: values.dias,
+          frecuencia: values.frecuencia,
+          cuotas: values.cuotas,
         });
         toast.success("Crédito actualizado");
         router.push(`/admin/credits/${creditoId}`);
@@ -163,7 +179,7 @@ export function CreateCreditoScreen({ clienteIdInicial, creditoId }: CreateCredi
         subtitle={
           isEdit
             ? "El cliente y la fecha de inicio no se pueden cambiar."
-            : "Asigna un crédito a un cliente. La cuota diaria se calcula automáticamente."
+            : "Asigna un crédito a un cliente. El valor de la cuota se calcula automáticamente."
         }
       />
 
@@ -240,18 +256,25 @@ export function CreateCreditoScreen({ clienteIdInicial, creditoId }: CreateCredi
                   {...register("interes", { valueAsNumber: true })}
                 />
               </Field>
-              <Field
-                id="dias"
-                label="Días (número de cuotas)"
-                error={formState.errors.dias?.message}
-              >
+              <Controller
+                control={control}
+                name="frecuencia"
+                render={({ field }) => (
+                  <FrecuenciaField
+                    value={field.value ?? "DIARIO"}
+                    onChange={field.onChange}
+                    error={formState.errors.frecuencia?.message}
+                  />
+                )}
+              />
+              <Field id="cuotas" label="N° de cuotas" error={formState.errors.cuotas?.message}>
                 <Input
-                  id="dias"
+                  id="cuotas"
                   type="number"
                   min={1}
                   inputMode="numeric"
                   placeholder="30"
-                  {...register("dias", { valueAsNumber: true })}
+                  {...register("cuotas", { valueAsNumber: true })}
                 />
               </Field>
               <Field
@@ -278,6 +301,7 @@ export function CreateCreditoScreen({ clienteIdInicial, creditoId }: CreateCredi
         <CalculoPanel
           interes={Number(watched.interes ?? 0)}
           calc={calc}
+          frecuencia={frecuencia}
           fechaInicio={watched.fechaInicio ?? hoyISO()}
         />
       </div>
@@ -379,19 +403,31 @@ function AsignacionRutaBlock({
 function CalculoPanel({
   interes,
   calc,
+  frecuencia,
   fechaInicio,
 }: {
   interes: number;
   calc: CreditoCalculo;
+  frecuencia: FrecuenciaPago;
   fechaInicio: string;
 }) {
   const base = parseFecha(fechaInicio);
   const tieneDatos = calc.cuotaDiaria > 0;
-  const semanas = calc.cuotas > 0 ? Math.ceil(calc.cuotas / 7) : 0;
-  const ultimaCuota = calc.cuotas > 0 ? addDays(base, calc.cuotas) : null;
+  // Vencimientos por `fechaVencimientoCuota` (el espejo del cronograma del
+  // backend), no por `addDays` a mano: además de respetar la frecuencia, corrige
+  // el desfase de una cuota que tenía esta vista previa — la cuota 1 vence el
+  // MISMO día de inicio, no al día siguiente, así que "Primera" y "Última"
+  // mostraban un día más de lo que después registraba el backend.
+  const vencimiento = (numero: number) => fechaVencimientoCuota(base, numero, frecuencia);
+  const ultimaCuota = calc.cuotas > 0 ? vencimiento(calc.cuotas) : null;
+  // Días entre el desembolso y el vencimiento de la última cuota.
+  const duracionEnDias =
+    calc.cuotas > 0 && ultimaCuota
+      ? Math.round((ultimaCuota.getTime() - base.getTime()) / (24 * 60 * 60 * 1000))
+      : 0;
   const primeras =
     calc.cuotas > 0
-      ? Array.from({ length: Math.min(3, calc.cuotas) }, (_, i) => addDays(base, i + 1))
+      ? Array.from({ length: Math.min(3, calc.cuotas) }, (_, i) => vencimiento(i + 1))
       : [];
 
   const primeraCuota = primeras[0] ?? null;
@@ -412,8 +448,8 @@ function CalculoPanel({
           </span>
           <span className="text-body-sm text-muted-foreground">
             {tieneDatos
-              ? `cuotas diarias de ${formatCurrency(calc.cuotaDiaria)}`
-              : "Completa monto, interés y días"}
+              ? `${CUOTAS_PLURAL[frecuencia]} de ${formatCurrency(calc.cuotaDiaria)}`
+              : "Completa monto, interés y n° de cuotas"}
           </span>
         </div>
 
@@ -430,9 +466,12 @@ function CalculoPanel({
         </div>
 
         <div className="grid grid-cols-3 gap-3 border-t border-primary/20 pt-4">
+          {/* Duración REAL del plan (del primer al último vencimiento), no una
+              estimación en semanas: en un crédito mensual "~ 26 sem" no le dice
+              nada a nadie, y en uno semanal la cuenta en días es exacta. */}
           <Figure
             label="Duración"
-            value={semanas > 0 ? `~ ${semanas} sem` : "—"}
+            value={duracionEnDias > 0 ? `${duracionEnDias} días` : "—"}
           />
           <Figure label="Última cuota" value={ultimaCuota ? formatDate(ultimaCuota) : "—"} />
           <Figure label="Primera" value={primeraCuota ? formatDate(primeraCuota) : "—"} />
@@ -504,14 +543,12 @@ function Row({ label, value, strong }: { label: string; value: string; strong?: 
 }
 
 // --- fechas (vista previa) ---------------------------------------------------
+// `parseFechaInicio` (espejo del backend) ancla el `"YYYY-MM-DD"` del input al
+// mediodía UTC: con `new Date(s)` a secas era medianoche UTC y `formatDate`
+// (timeZone America/Bogota) mostraba el día anterior en toda la vista previa.
 function parseFecha(s: string): Date {
-  const d = new Date(s);
+  const d = parseFechaInicio(s);
   return Number.isNaN(d.getTime()) ? new Date() : d;
 }
 
-function addDays(base: Date, days: number): Date {
-  const d = new Date(base);
-  d.setDate(d.getDate() + days);
-  return d;
-}
 

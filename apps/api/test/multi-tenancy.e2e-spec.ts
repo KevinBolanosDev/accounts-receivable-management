@@ -108,6 +108,7 @@ describe("Multi-tenancy: aislamiento entre admins (e2e)", () => {
         adminId: otherAdmin.id,
         monto: new Prisma.Decimal(100000),
         interes: new Prisma.Decimal(0),
+        cuotas: 10,
         dias: 10,
         montoTotal: new Prisma.Decimal(100000),
         cuotaDiaria: new Prisma.Decimal(10000),

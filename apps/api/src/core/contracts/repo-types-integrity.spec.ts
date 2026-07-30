@@ -103,6 +103,38 @@ describe("@repo/types — integridad del grafo de schemas", () => {
     expect(() => conCampoRoto.parse({ ok: "x", roto: "y" })).toThrow(TypeError);
   });
 
+  // Lector tolerante: el front valida TODA respuesta con estos schemas, así que
+  // un campo nuevo y requerido rompe la app entera contra un backend que todavía
+  // no lo manda (front desplegado antes que el back, o `.env` apuntando a otra
+  // API). Pasó de verdad con `frecuencia`: `clienteDetailSchema.parse` lanzaba
+  // ZodError por cada crédito y las pantallas lo mostraban como "este cliente no
+  // existe". Este test fija el contrato: un crédito sin `frecuencia` parsea y
+  // queda como DIARIO, que es lo que era antes de que la columna existiera.
+  it("creditoListItemSchema tolera una respuesta sin `frecuencia` (backend anterior)", () => {
+    const sinFrecuencia = {
+      id: "credito-1",
+      codigo: "CR-2003",
+      clienteId: "cliente-1",
+      producto: "Nevera",
+      monto: 500000,
+      interes: 12,
+      dias: 30,
+      montoTotal: 560000,
+      cuotaDiaria: 18667,
+      saldoPendiente: 522667,
+      totalPagado: 37333,
+      porcentajePagado: 6.67,
+      estado: "ACTIVO",
+      fechaInicio: new Date().toISOString(),
+      cuotasPagadas: 2,
+      cuotasTotal: 30,
+    };
+
+    const result = repoTypes.creditoListItemSchema.safeParse(sinFrecuencia);
+    expect(result.success).toBe(true);
+    expect(result.data?.frecuencia).toBe("DIARIO");
+  });
+
   it("cobroResponseSchema parsea una respuesta válida de POST /collections", () => {
     // Caso de regresión exacto del bug: este `.parse()` es el que reventaba en
     // `cobros.controller.ts` con el pago ya commiteado.
@@ -123,6 +155,7 @@ describe("@repo/types — integridad del grafo de schemas", () => {
         producto: "Nevera",
         monto: 500000,
         interes: 12,
+        frecuencia: "DIARIO",
         dias: 30,
         montoTotal: 560000,
         cuotaDiaria: 18667,
