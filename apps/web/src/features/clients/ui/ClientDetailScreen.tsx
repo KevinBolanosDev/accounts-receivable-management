@@ -18,7 +18,6 @@ import { CreditCard } from "@/entities/credit";
 import { ClientContactPanel, ESTADO_CLIENTE_LABEL } from "@/entities/client";
 import { ApiError } from "@/shared/api/client";
 import { formatCurrency } from "@/shared/lib/format-currency";
-import { cn } from "@/shared/lib/utils";
 import { Badge } from "@/shared/ui/badge";
 import { Button } from "@/shared/ui/button";
 import {
@@ -31,6 +30,7 @@ import {
 } from "@/shared/ui/dialog";
 import { ConfirmDialog } from "@/shared/ui/confirm-dialog";
 import { Input } from "@/shared/ui/input";
+import { MetricTile, MetricTileGroup } from "@/shared/ui/metric-tile";
 import { ProgressRing } from "@/shared/ui/progress-ring";
 import { Skeleton } from "@/shared/ui/skeleton";
 import {
@@ -55,31 +55,6 @@ import { ClientDocumentPhotos } from "./ClientDocumentPhotos";
 // rollup; botón "Agregar crédito" lleva a la pantalla Crear (#9c) con el
 // `clienteId` preseleccionado. Cuerpo: Tabs Activo / Historial con CreditCard
 // en cada (el cliente puede tener VARIOS activos a la vez).
-
-function StatCard({
-  label,
-  value,
-  sub,
-  subClassName,
-}: {
-  label: string;
-  value: string;
-  sub?: string;
-  subClassName?: string;
-}) {
-  return (
-    <div className="flex min-w-0 flex-col gap-1 rounded-lg border border-border bg-card p-4 sm:p-5">
-      <span className="text-caption text-muted-foreground uppercase">{label}</span>
-      {/* Un saldo de 8 dígitos a 28px no cabe en un teléfono de 360px. */}
-      <span className="truncate text-h2 font-semibold tabular-nums sm:text-h1">{value}</span>
-      {sub ? (
-        <span className={cn("truncate text-body-sm text-muted-foreground", subClassName)}>
-          {sub}
-        </span>
-      ) : null}
-    </div>
-  );
-}
 
 export function ClientDetailScreen({ clienteId }: { clienteId: string }) {
   const router = useRouter();
@@ -219,9 +194,12 @@ export function ClientDetailScreen({ clienteId }: { clienteId: string }) {
           </div>
         </div>
 
-        {/* Tira de métricas (saldo agregado) */}
-        <div className="grid gap-4 sm:grid-cols-3">
-          <StatCard
+        {/* Tira de métricas (saldo agregado). Antes eran 3 cards separadas, cada
+            una con su propio borde/padding/`text-h1` — el mismo dato que acá
+            cabe en una tira de una línea en el resto del Admin
+            (`AdminClientCreditsScreen`, `AdminCreditCollectScreen`). */}
+        <MetricTileGroup columns={3} divided>
+          <MetricTile
             label="Saldo pendiente"
             value={formatCurrency(saldoAgregado)}
             sub={
@@ -230,19 +208,17 @@ export function ClientDetailScreen({ clienteId }: { clienteId: string }) {
                 : "Sin créditos activos"
             }
           />
-          <StatCard
+          <MetricTile
             label="Créditos activos"
             value={String(cliente.creditosActivos.length)}
-            sub={
-              cliente.creditosActivos.length > 1 ? "varios productos" : "un producto"
-            }
+            sub={cliente.creditosActivos.length > 1 ? "varios productos" : "un producto"}
           />
-          <StatCard
+          <MetricTile
             label="Créditos en historial"
             value={String(cliente.creditosHistorial.length)}
             sub="pagados / anulados"
           />
-        </div>
+        </MetricTileGroup>
 
         {/* Los datos de contacto solo se veían en la app del cobrador; el
             Admin únicamente tenía el documento embutido en el encabezado. */}

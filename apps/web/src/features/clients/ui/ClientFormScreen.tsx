@@ -300,9 +300,10 @@ function ClientFormBody({
             cuotas: v.cuotas,
           });
           toast.success("Cliente y crédito creados");
-        } catch {
+        } catch (error) {
+          const motivo = error instanceof ApiError ? error.message : "error desconocido";
           toast.error(
-            `Cliente creado (${clienteCreado.id}); el crédito no se guardó — puedes crearlo desde su detalle.`,
+            `Cliente creado (${clienteCreado.id}); el crédito no se guardó (${motivo}) — puedes crearlo desde su detalle.`,
           );
         }
       } else {

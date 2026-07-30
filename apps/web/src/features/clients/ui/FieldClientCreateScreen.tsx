@@ -17,6 +17,7 @@ import { useCreateCredito } from "@/features/creditos/api/use-creditos";
 import { CreditoCalculoPanel } from "@/features/creditos/ui/CreditoCalculoPanel";
 import { ProductoField } from "@/features/creditos/ui/CreditoFields";
 import { useRutas } from "@/features/routes-collectors/api/use-rutas";
+import { ApiError } from "@/shared/api/client";
 import { Button } from "@/shared/ui/button";
 import {
   Dialog,
@@ -169,9 +170,10 @@ export function FieldClientCreateScreen() {
             cuotas: v.cuotas,
           });
           toast.success("Cliente y crédito creados");
-        } catch {
+        } catch (error) {
+          const motivo = error instanceof ApiError ? error.message : "error desconocido";
           toast.error(
-            `Cliente creado (${clienteCreado.id}); el crédito no se guardó — puedes crearlo desde su detalle.`,
+            `Cliente creado (${clienteCreado.id}); el crédito no se guardó (${motivo}) — puedes crearlo desde su detalle.`,
           );
         }
       } else {
@@ -185,16 +187,17 @@ export function FieldClientCreateScreen() {
           // (el staff necesita copiarla antes de perder la pantalla).
           setTempPassword(access.temporaryPassword);
           return;
-        } catch {
+        } catch (error) {
+          const motivo = error instanceof ApiError ? error.message : "error desconocido";
           toast.error(
-            "Cliente creado, pero no se pudo generar el acceso al portal. Puedes generarlo luego desde su detalle.",
+            `Cliente creado, pero no se pudo generar el acceso al portal (${motivo}). Puedes generarlo luego desde su detalle.`,
           );
         }
       }
 
       router.push("/collector/clients");
-    } catch {
-      toast.error("No se pudo guardar el cliente");
+    } catch (error) {
+      toast.error(error instanceof ApiError ? error.message : "No se pudo guardar el cliente");
     }
   }
 

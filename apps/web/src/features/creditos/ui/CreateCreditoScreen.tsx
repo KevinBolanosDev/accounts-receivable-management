@@ -14,6 +14,7 @@ import {
 } from "@repo/types";
 import { toast } from "sonner";
 
+import { ApiError } from "@/shared/api/client";
 import { Button } from "@/shared/ui/button";
 import { Input } from "@/shared/ui/input";
 import { Label } from "@/shared/ui/label";
@@ -149,8 +150,13 @@ export function CreateCreditoScreen({ clienteIdInicial, creditoId }: CreateCredi
 
       toast.success("Crédito creado");
       router.push(`/admin/credits/${nuevo.id}`);
-    } catch {
-      toast.error(isEdit ? "No se pudo actualizar el crédito" : "No se pudo crear el crédito");
+    } catch (error) {
+      // El backend puede rechazar por validación (400, ej. "cuotas" faltante
+      // si el front apunta a una API con un contrato viejo), scoping (403) o
+      // conflicto de código (409) — un fallback genérico esconde cuál de los
+      // tres pasó y hace estos casos indiagnosticables desde la UI.
+      const fallback = isEdit ? "No se pudo actualizar el crédito" : "No se pudo crear el crédito";
+      toast.error(error instanceof ApiError ? error.message : fallback);
     }
   }
 
