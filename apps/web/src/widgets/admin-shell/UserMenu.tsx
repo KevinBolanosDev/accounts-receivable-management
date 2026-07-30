@@ -31,13 +31,18 @@ interface UserMenuProps {
    * `row`: ficha completa (iniciales + nombre + rol) al pie del sidebar.
    */
   variant: "avatar" | "row";
+  /**
+   * El disco va sobre el degradado del header: `bg-primary` se pierde contra
+   * él, así que se cambia por un velo translúcido blanco.
+   */
+  onGradient?: boolean;
   className?: string;
 }
 
 // Menú de usuario del portal Admin: identidad + "Cerrar sesión". Vive en un
 // solo componente y se pinta en dos sitios (topbar y pie del sidebar) para que
 // el contenido del menú no se bifurque.
-export function UserMenu({ variant, className }: UserMenuProps) {
+export function UserMenu({ variant, onGradient, className }: UserMenuProps) {
   const router = useRouter();
   const usuario = useSessionStore((state) => state.usuario);
   const clearSession = useSessionStore((state) => state.clearSession);
@@ -51,7 +56,14 @@ export function UserMenu({ variant, className }: UserMenuProps) {
   }
 
   const initials = (
-    <span className="flex size-9 shrink-0 items-center justify-center rounded-full bg-primary text-sm font-semibold text-primary-foreground">
+    <span
+      className={cn(
+        "flex size-9 shrink-0 items-center justify-center rounded-full text-sm font-semibold",
+        onGradient
+          ? "bg-white/20 text-white ring-1 ring-white/30"
+          : "bg-primary text-primary-foreground",
+      )}
+    >
       {getInitials(nombre)}
     </span>
   );

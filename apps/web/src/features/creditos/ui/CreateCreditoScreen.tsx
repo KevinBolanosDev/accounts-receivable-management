@@ -17,6 +17,7 @@ import { toast } from "sonner";
 import { calcularCredito, type CreditoCalculo } from "@/entities/credit";
 import { cn } from "@/shared/lib/utils";
 import { formatCurrency } from "@/shared/lib/format-currency";
+import { formatDate, formatDateShort } from "@/shared/lib/format-date";
 import { Button } from "@/shared/ui/button";
 import { Input } from "@/shared/ui/input";
 import { Label } from "@/shared/ui/label";
@@ -393,56 +394,76 @@ function CalculoPanel({
       ? Array.from({ length: Math.min(3, calc.cuotas) }, (_, i) => addDays(base, i + 1))
       : [];
 
+  const primeraCuota = primeras[0] ?? null;
+
   return (
-    <div className="flex flex-col gap-6 self-start rounded-lg border border-border bg-card p-6 lg:sticky lg:top-6">
-      <p className="text-caption font-semibold uppercase tracking-wide text-primary">
-        Cálculo estimado
-      </p>
+    <div className="flex flex-col gap-4 self-start lg:sticky lg:top-6">
+      {/* Card decorativa (#9c): tinte índigo + borde del mismo color. Es el
+          único bloque de la pantalla que no es un campo, así que se separa por
+          color en vez de por otro borde gris más. */}
+      <div className="flex flex-col gap-4 rounded-lg border border-primary/40 bg-primary/5 p-5">
+        <p className="text-caption font-semibold uppercase tracking-wide text-primary">
+          Cálculo estimado
+        </p>
 
-      <div className="flex flex-col gap-1">
-        <span className="text-caption text-muted-foreground">Número de cuotas</span>
-        <span className="text-display font-bold leading-none tabular-nums">
-          {tieneDatos ? calc.cuotas : "—"}
-        </span>
-        <span className="text-body-sm text-muted-foreground">
-          {tieneDatos
-            ? `cuotas diarias de ${formatCurrency(calc.cuotaDiaria)}`
-            : "Completa monto, interés y días"}
-        </span>
-      </div>
+        <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
+          <span className="text-display font-bold leading-none tabular-nums">
+            {tieneDatos ? calc.cuotas : "—"}
+          </span>
+          <span className="text-body-sm text-muted-foreground">
+            {tieneDatos
+              ? `cuotas diarias de ${formatCurrency(calc.cuotaDiaria)}`
+              : "Completa monto, interés y días"}
+          </span>
+        </div>
 
-      <div className="flex flex-col gap-3 border-t border-border pt-5">
-        <Row
-          label={`Interés (${interes > 0 ? interes : 0}%)`}
-          value={calc.interesTotal > 0 ? formatCurrency(calc.interesTotal) : "—"}
-        />
-        <Row
-          label="Monto total"
-          value={calc.montoTotal > 0 ? formatCurrency(calc.montoTotal) : "—"}
-          strong
-        />
-        <Row
-          label="Duración"
-          value={semanas > 0 ? `~ ${semanas} semana${semanas === 1 ? "" : "s"}` : "—"}
-        />
-        <Row label="Última cuota" value={ultimaCuota ? fmtFecha(ultimaCuota) : "—"} />
+        <div className="flex flex-col gap-2.5 border-t border-primary/20 pt-4">
+          <Row
+            label={`Interés (${interes > 0 ? interes : 0}%)`}
+            value={calc.interesTotal > 0 ? formatCurrency(calc.interesTotal) : "—"}
+          />
+          <Row
+            label="Monto total"
+            value={calc.montoTotal > 0 ? formatCurrency(calc.montoTotal) : "—"}
+            strong
+          />
+        </div>
+
+        <div className="grid grid-cols-3 gap-3 border-t border-primary/20 pt-4">
+          <Figure
+            label="Duración"
+            value={semanas > 0 ? `~ ${semanas} sem` : "—"}
+          />
+          <Figure label="Última cuota" value={ultimaCuota ? formatDate(ultimaCuota) : "—"} />
+          <Figure label="Primera" value={primeraCuota ? formatDate(primeraCuota) : "—"} />
+        </div>
       </div>
 
       {primeras.length > 0 ? (
-        <div className="flex flex-col gap-2.5 border-t border-border pt-5">
+        <div className="flex flex-col gap-2.5 rounded-lg border border-border bg-card p-5">
           <span className="text-caption uppercase tracking-wide text-muted-foreground">
             Primeras cuotas
           </span>
           {primeras.map((d, i) => (
             <div key={i} className="flex items-center justify-between text-sm">
               <span className="text-muted-foreground">
-                Cuota {i + 1} · {fmtFechaCorta(d)}
+                Cuota {i + 1} · {formatDateShort(d)}
               </span>
               <span className="font-medium tabular-nums">{formatCurrency(calc.cuotaDiaria)}</span>
             </div>
           ))}
         </div>
       ) : null}
+    </div>
+  );
+}
+
+/** Columna del pie de la card: etiqueta pequeña + valor compacto. */
+function Figure({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="flex min-w-0 flex-col gap-0.5">
+      <span className="truncate text-caption text-muted-foreground">{label}</span>
+      <span className="truncate text-sm font-semibold tabular-nums">{value}</span>
     </div>
   );
 }
@@ -494,10 +515,3 @@ function addDays(base: Date, days: number): Date {
   return d;
 }
 
-function fmtFecha(d: Date): string {
-  return d.toLocaleDateString("es-CO", { day: "numeric", month: "short", year: "numeric" });
-}
-
-function fmtFechaCorta(d: Date): string {
-  return d.toLocaleDateString("es-CO", { day: "numeric", month: "short" });
-}

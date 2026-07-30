@@ -11,6 +11,9 @@ import {
   DropdownMenuTrigger,
 } from "@/shared/ui/dropdown-menu";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/shared/ui/tooltip";
+import { cn } from "@/shared/lib/utils";
+
+import { HEADER_ACTION_CLASS } from "./AdminPageHeader";
 
 export interface PageAction {
   id: string;
@@ -49,7 +52,12 @@ export function PageActions({ actions }: { actions: PageAction[] }) {
       <div className="md:hidden">
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <Button variant="ghost" size="icon" aria-label="Más acciones">
+            <Button
+              variant="ghost"
+              size="icon"
+              aria-label="Más acciones"
+              className={HEADER_ACTION_CLASS}
+            >
               <MoreHorizontalIcon />
             </Button>
           </DropdownMenuTrigger>
@@ -89,7 +97,12 @@ function DesktopAction({ action }: { action: PageAction }) {
   const button = (
     <Button
       variant="secondary"
-      className={action.variant === "destructive" ? "text-destructive" : undefined}
+      className={cn(
+        HEADER_ACTION_CLASS,
+        // Sobre el degradado el rojo del token no contrasta; el destructivo se
+        // distingue con un velo más cálido, no con `text-destructive`.
+        action.variant === "destructive" && "bg-destructive/80 hover:bg-destructive",
+      )}
       disabled={action.disabled}
       onClick={action.onSelect}
       asChild={!!action.href && !action.disabled}

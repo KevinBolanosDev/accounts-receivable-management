@@ -12,3 +12,5 @@ export {
   contarCreditos,
 } from "./lib/credit-progress";
 export type { CreditoCalculo } from "./lib/credit-progress";
+export { upcomingInstallments } from "./lib/upcoming-installments";
+export type { UpcomingInstallment, UpcomingInstallments } from "./lib/upcoming-installments";

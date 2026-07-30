@@ -46,7 +46,7 @@ export function AdminBottomNav() {
       aria-label="Navegación principal"
     >
       {ADMIN_MOBILE_TABS.map((item) => {
-        const active = isNavItemActive(pathname, item.href);
+        const active = isNavItemActive(pathname, item);
         const Icon = item.icon;
 
         return (

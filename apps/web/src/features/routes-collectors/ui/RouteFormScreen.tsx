@@ -365,8 +365,9 @@ export function RouteFormScreen({ rutaId }: { rutaId?: string }) {
 
       <form onSubmit={handleSubmit(onSubmit)} className="flex flex-col gap-6 p-4 sm:p-6">
         <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_360px]">
-          {/* Formulario */}
-          <div className="flex flex-col gap-6 rounded-lg border border-border bg-card p-6">
+          {/* Formulario — sin card: en móvil el borde y sus 24px de padding
+              solo comen ancho contra los bordes de la pantalla. */}
+          <div className="flex min-w-0 flex-col gap-6">
             <div className="flex flex-col gap-3">
               <SectionLabel>Datos de la ruta</SectionLabel>
               <div className="flex flex-col gap-1.5">
@@ -392,8 +393,10 @@ export function RouteFormScreen({ rutaId }: { rutaId?: string }) {
             />
           </div>
 
-          {/* Vista previa en vivo */}
-          <div className="flex flex-col gap-3">
+          {/* Vista previa en vivo. Solo desde `lg`: en móvil repite, dos
+              pantallas más abajo, lo que el usuario acaba de escribir, y aleja
+              el botón de guardar sin aportar nada. */}
+          <div className="hidden flex-col gap-3 lg:flex">
             <SectionLabel>Vista previa</SectionLabel>
             <div className="flex flex-col gap-4 rounded-lg border border-border bg-card p-5">
               <div className="flex items-start justify-between gap-2">

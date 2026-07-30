@@ -44,7 +44,7 @@ export function AdminSidebar() {
 
       <nav className="flex flex-1 flex-col gap-1 overflow-y-auto p-3" aria-label="Navegación principal">
         {ADMIN_NAV.map((item) => {
-          const active = isNavItemActive(pathname, item.href);
+          const active = isNavItemActive(pathname, item);
           const Icon = item.icon;
 
           const base =

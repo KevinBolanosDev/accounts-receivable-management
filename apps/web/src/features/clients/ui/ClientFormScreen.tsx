@@ -331,8 +331,11 @@ function ClientFormBody({
         onSubmit={handleSubmit(onSubmit as never)}
         className="grid gap-6 p-4 sm:p-6 lg:grid-cols-[minmax(0,1fr)_360px]"
       >
-        <div className="flex flex-col gap-4">
-          <div className="flex flex-col gap-4 rounded-lg border border-border bg-card p-6">
+        <div className="flex min-w-0 flex-col gap-6">
+          {/* Sin card alrededor del formulario: los campos ya se leen como un
+              bloque por su propio ritmo, y en móvil la card solo añadía un
+              borde y 24px de padding contra los bordes de la pantalla. */}
+          <div className="flex flex-col gap-4">
             <p className="text-caption text-muted-foreground uppercase">Datos personales</p>
 
             <Field id="nombre" label="Nombre completo" error={errors.nombre?.message}>
@@ -538,7 +541,13 @@ function ClientFormBody({
           </div>
         </div>
 
-        <ClientFormPreview values={values} rutaNombre={rutaNombre} cliente={cliente} />
+        {/* La vista previa repite lo que el usuario acaba de escribir dos
+            pantallas más arriba: en móvil es scroll muerto entre el último
+            campo y el botón de guardar. Solo desde `lg`, donde ocupa una
+            columna propia y sí aporta contexto. */}
+        <div className="hidden lg:block">
+          <ClientFormPreview values={values} rutaNombre={rutaNombre} cliente={cliente} />
+        </div>
       </form>
     </>
   );

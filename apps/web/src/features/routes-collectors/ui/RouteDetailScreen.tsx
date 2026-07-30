@@ -9,23 +9,37 @@ import { toast } from "sonner";
 import { ESTADO_CLIENTE_LABEL, ESTADO_CLIENTE_TEXT, getInitials } from "@/entities/client";
 import { ApiError } from "@/shared/api/client";
 import { formatCompactCurrency, formatCurrency } from "@/shared/lib/format-currency";
+import { formatDate } from "@/shared/lib/format-date";
 import { cn } from "@/shared/lib/utils";
 import { Badge } from "@/shared/ui/badge";
 import { Button } from "@/shared/ui/button";
 import { ConfirmDialog } from "@/shared/ui/confirm-dialog";
 import { Skeleton } from "@/shared/ui/skeleton";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/shared/ui/table";
+import { TabsContent, TabsList, TabsRoot, TabsTrigger } from "@/shared/ui/tabs";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/shared/ui/tooltip";
 import { AdminPageHeader } from "@/widgets/admin-shell/AdminPageHeader";
 import { PageActions } from "@/widgets/admin-shell/PageActions";
 
 import { useDeleteRuta, useRuta, useUnassignClienteFromRuta } from "../api/use-rutas";
 
-function KpiRow({ label, value, valueClassName }: { label: string; value: string; valueClassName?: string }) {
+function RouteStat({
+  label,
+  value,
+  valueClassName,
+}: {
+  label: string;
+  value: string;
+  valueClassName?: string;
+}) {
   return (
-    <div className="flex items-center justify-between">
-      <span className="text-sm text-muted-foreground">{label}</span>
-      <span className={cn("text-sm font-semibold tabular-nums", valueClassName)}>{value}</span>
+    <div className="flex min-w-0 flex-col gap-1 rounded-lg border border-border bg-card p-4">
+      <span className="truncate text-caption uppercase tracking-wide text-muted-foreground">
+        {label}
+      </span>
+      <span className={cn("truncate text-h3 font-semibold tabular-nums", valueClassName)}>
+        {value}
+      </span>
     </div>
   );
 }
@@ -129,59 +143,92 @@ export function RouteDetailScreen({ rutaId }: { rutaId: string }) {
         }
       />
 
-      <div className="grid gap-6 p-4 sm:p-6 lg:grid-cols-[340px_minmax(0,1fr)]">
-        {/* `min-w-0` en ambas columnas: por debajo de `lg` no hay `grid-cols`
-            explícito, así que las dos comparten un único track implícito. Sin
-            esto, el ancho mínimo de contenido de la tabla de la derecha (5
-            columnas) arrastraba también a esta columna — los KPI mostraban la
-            etiqueta pero el valor quedaba empujado fuera de la pantalla. */}
-        {/* Columna izquierda */}
-        <div className="flex min-w-0 flex-col gap-4">
-          {/* Tarjeta de cobrador */}
-          <div className="flex flex-col items-center gap-3 rounded-lg border border-border bg-card p-6 text-center">
-            <span className="flex size-20 items-center justify-center rounded-full bg-secondary text-xl font-semibold">
-              {ruta.cobrador ? getInitials(ruta.cobrador.nombre) : "—"}
-            </span>
-            <div className="flex flex-col gap-1">
-              <span className="text-h3 font-semibold">{ruta.nombre}</span>
-              <span className="text-body-sm text-muted-foreground">
-                Cobrador {ruta.cobrador?.nombre ?? "Sin asignar"}
-              </span>
+      <div className="flex min-w-0 flex-col gap-6 p-4 sm:p-6">
+        {/* Identidad de la ruta. El bloque azul del prototipo #m8 se movió al
+            AdminPageHeader, que ya es el degradado de toda la superficie. */}
+        <div className="flex items-center gap-4">
+          <span className="flex size-14 shrink-0 items-center justify-center rounded-full bg-secondary text-lg font-semibold">
+            {ruta.cobrador ? getInitials(ruta.cobrador.nombre) : "—"}
+          </span>
+          <div className="flex min-w-0 flex-col gap-1">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="truncate text-h2 font-semibold">{ruta.nombre}</span>
+              <Badge status={abierta ? "ruta-abierta" : "ruta-cerrada"}>
+                {abierta ? `Abierta · ${ruta.avanceDelDia}%` : "Cerrada"}
+              </Badge>
             </div>
-            <Badge status={abierta ? "ruta-abierta" : "ruta-cerrada"}>
-              {abierta ? `Abierta · ${ruta.avanceDelDia}% del día` : "Cerrada"}
-            </Badge>
-          </div>
-
-          {/* KPIs */}
-          <div className="flex flex-col gap-3 rounded-lg border border-border bg-card p-5">
-            <KpiRow label="Clientes" value={String(ruta.clientesCount)} />
-            <KpiRow label="Cobrado hoy" value={formatCurrency(ruta.cobradoHoy)} />
-            <KpiRow label="En mora" value={String(ruta.enMora)} valueClassName="text-destructive" />
-            <KpiRow label="Saldo total" value={formatCompactCurrency(ruta.saldoTotal)} />
-          </div>
-
-          {/* Histórico de cierres */}
-          <div className="flex flex-col gap-1 rounded-lg border border-border bg-card p-5">
-            <p className="mb-2 text-caption text-muted-foreground uppercase">Histórico de cierres</p>
-            {ruta.cierres.map((cierre) => (
-              <div
-                key={cierre.fecha}
-                className="flex items-center justify-between border-b border-border/60 py-2 last:border-0"
-              >
-                <span className="text-sm text-muted-foreground">{cierre.fecha}</span>
-                <span className="text-sm font-medium tabular-nums">{formatCurrency(cierre.total)}</span>
-              </div>
-            ))}
+            <span className="truncate text-body-sm text-muted-foreground">
+              Cobrador {ruta.cobrador?.nombre ?? "Sin asignar"}
+            </span>
           </div>
         </div>
 
-        {/* Columna derecha: clientes de la ruta */}
-        <div className="flex min-w-0 flex-col gap-3 rounded-lg border border-border bg-card p-5">
-          <div className="flex items-center justify-between">
-            <p className="text-caption text-muted-foreground uppercase">Clientes de la ruta</p>
+        {/* KPIs en tira: 2×2 en móvil, 4 en fila desde sm. Antes era una
+            columna lateral de filas etiqueta/valor que en móvil quedaba encima
+            de la lista de clientes, que es a lo que se entra. */}
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+          <RouteStat label="Cobrado hoy" value={formatCurrency(ruta.cobradoHoy)} />
+          <RouteStat label="Saldo total" value={formatCompactCurrency(ruta.saldoTotal)} />
+          <RouteStat label="Clientes" value={String(ruta.clientesCount)} />
+          <RouteStat
+            label="En mora"
+            value={String(ruta.enMora)}
+            valueClassName={ruta.enMora > 0 ? "text-destructive" : undefined}
+          />
+        </div>
+
+        <TabsRoot defaultValue="clientes">
+          <TabsList>
+            <TabsTrigger value="clientes">Clientes ({ruta.clientesCount})</TabsTrigger>
+            <TabsTrigger value="cierres">Cierres ({ruta.cierres.length})</TabsTrigger>
+          </TabsList>
+
+          <TabsContent value="clientes" className="flex min-w-0 flex-col gap-3">
             <span className="text-caption text-muted-foreground">Ordenado por estado</span>
-          </div>
+
+            {/* Lista en móvil */}
+            <div className="flex flex-col overflow-hidden rounded-lg border border-border bg-card md:hidden">
+              {ruta.clientes.length === 0 ? (
+                <p className="p-8 text-center text-body-sm text-muted-foreground">
+                  Esta ruta no tiene clientes asignados.
+                </p>
+              ) : (
+                ruta.clientes.map((cliente) => (
+                  <div
+                    key={cliente.id}
+                    className="relative flex items-center gap-3 border-b border-border px-4 py-3 last:border-b-0"
+                  >
+                    <Link
+                      href={`/admin/clients/${cliente.id}`}
+                      className="absolute inset-0 z-0 focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none"
+                    >
+                      <span className="sr-only">Ver detalle de {cliente.nombre}</span>
+                    </Link>
+
+                    <span className="z-10 flex size-9 shrink-0 items-center justify-center rounded-full bg-secondary text-xs font-semibold">
+                      {getInitials(cliente.nombre)}
+                    </span>
+                    <div className="z-10 flex min-w-0 flex-1 flex-col">
+                      <span className="truncate text-sm font-medium">{cliente.nombre}</span>
+                      <span className="truncate text-caption text-muted-foreground tabular-nums">
+                        {cliente.saldoPendiente != null
+                          ? formatCurrency(cliente.saldoPendiente)
+                          : "—"}
+                        {cliente.porcentajePagado != null ? ` · ${cliente.porcentajePagado}%` : ""}
+                      </span>
+                    </div>
+                    {cliente.estado ? (
+                      <Badge status={cliente.estado} className="z-10">
+                        {ESTADO_CLIENTE_LABEL[cliente.estado]}
+                      </Badge>
+                    ) : null}
+                  </div>
+                ))
+              )}
+            </div>
+
+            {/* Tabla desde md (incluye la acción de quitar de la ruta) */}
+            <div className="hidden min-w-0 rounded-lg border border-border bg-card p-5 md:block">
           <Table>
             <TableHeader>
               <TableRow>
@@ -243,7 +290,33 @@ export function RouteDetailScreen({ rutaId }: { rutaId: string }) {
               ))}
             </TableBody>
           </Table>
-        </div>
+            </div>
+          </TabsContent>
+
+          <TabsContent value="cierres">
+            {ruta.cierres.length === 0 ? (
+              <p className="rounded-lg border border-dashed border-border bg-card p-8 text-center text-body-sm text-muted-foreground">
+                Todavía no hay cierres registrados para esta ruta.
+              </p>
+            ) : (
+              <div className="flex flex-col overflow-hidden rounded-lg border border-border bg-card">
+                {ruta.cierres.map((cierre) => (
+                  <div
+                    key={cierre.fecha}
+                    className="flex items-center justify-between gap-3 border-b border-border px-4 py-3 last:border-b-0"
+                  >
+                    <span className="truncate text-sm text-muted-foreground">
+                      {formatDate(cierre.fecha)}
+                    </span>
+                    <span className="shrink-0 text-sm font-semibold tabular-nums">
+                      {formatCurrency(cierre.total)}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </TabsContent>
+        </TabsRoot>
       </div>
 
       {/* Único borrado FÍSICO del sistema (clientes y cobradores son soft-delete),

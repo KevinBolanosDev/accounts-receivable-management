@@ -17,7 +17,6 @@ import { toast } from "sonner";
 import { CreditCard } from "@/entities/credit";
 import { ClientContactPanel, ESTADO_CLIENTE_LABEL } from "@/entities/client";
 import { ApiError } from "@/shared/api/client";
-import { getInitials } from "@/shared/lib/initials";
 import { formatCurrency } from "@/shared/lib/format-currency";
 import { cn } from "@/shared/lib/utils";
 import { Badge } from "@/shared/ui/badge";
@@ -194,9 +193,10 @@ export function ClientDetailScreen({ clienteId }: { clienteId: string }) {
         {/* Identidad + saldo agregado + badge de rollup */}
         <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
           <div className="flex min-w-0 items-center gap-3 sm:gap-4">
-            <span className="flex size-14 shrink-0 items-center justify-center rounded-full bg-secondary text-lg font-semibold">
-              {getInitials(cliente.nombre)}
-            </span>
+            {/* El anillo sustituye al avatar de iniciales: el avance del
+                cliente es el dato que se busca al abrir esta pantalla, y las
+                iniciales ya no informan de nada estando el nombre al lado. */}
+            <ProgressRing value={porcentajeAgregado} size="md" />
             <div className="flex min-w-0 flex-col gap-1">
               <div className="flex flex-wrap items-center gap-2">
                 <span className="truncate text-h2 font-semibold">{cliente.nombre}</span>
@@ -220,7 +220,7 @@ export function ClientDetailScreen({ clienteId }: { clienteId: string }) {
         </div>
 
         {/* Tira de métricas (saldo agregado) */}
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <div className="grid gap-4 sm:grid-cols-3">
           <StatCard
             label="Saldo pendiente"
             value={formatCurrency(saldoAgregado)}
@@ -242,15 +242,6 @@ export function ClientDetailScreen({ clienteId }: { clienteId: string }) {
             value={String(cliente.creditosHistorial.length)}
             sub="pagados / anulados"
           />
-          <div className="flex items-center gap-4 rounded-lg border border-border bg-card p-4 sm:p-5">
-            <ProgressRing value={porcentajeAgregado} size="md" />
-            <div className="flex min-w-0 flex-col">
-              <span className="text-caption text-muted-foreground uppercase">Avance</span>
-              <span className="truncate text-body-sm text-muted-foreground">
-                Pagado del total agregado
-              </span>
-            </div>
-          </div>
         </div>
 
         {/* Los datos de contacto solo se veían en la app del cobrador; el

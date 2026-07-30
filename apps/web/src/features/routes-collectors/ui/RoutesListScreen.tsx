@@ -10,12 +10,13 @@ import { cn } from "@/shared/lib/utils";
 import { Badge } from "@/shared/ui/badge";
 import { Button } from "@/shared/ui/button";
 import { MetricCard } from "@/shared/ui/metric-card";
+import { MetricTile, MetricTileGroup } from "@/shared/ui/metric-tile";
 import { ProgressBar } from "@/shared/ui/progress-bar";
 import { Skeleton } from "@/shared/ui/skeleton";
 import { Switch } from "@/shared/ui/switch";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/shared/ui/table";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/shared/ui/tooltip";
-import { AdminPageHeader } from "@/widgets/admin-shell/AdminPageHeader";
+import { AdminPageHeader, HEADER_ACTION_CLASS } from "@/widgets/admin-shell/AdminPageHeader";
 
 import { useRutas, useRutasSummary, useUpdateRuta } from "../api/use-rutas";
 
@@ -23,6 +24,49 @@ function avanceColor(value: number): string {
   if (value >= 100) return "text-success";
   if (value < 50) return "text-warning";
   return "text-accent";
+}
+
+// Tarjeta de ruta en móvil (#m6): nombre + estado del día, cobrador y
+// clientes, barra de avance degradada, y al pie lo cobrado hoy con el % del
+// día. El Switch "ruta activa" NO baja a la tarjeta: es una acción destructiva
+// de bajo contraste visual, y en una lista táctil se dispara sin querer. Se
+// queda en la tabla de escritorio y en el detalle de la ruta.
+function RutaCard({ ruta }: { ruta: RutaListItem }) {
+  const sinAbrir = ruta.totalCobradoHoy === 0 && ruta.estadoDia === "cerrada";
+
+  return (
+    <Link
+      href={`/admin/routes-collectors/${ruta.id}`}
+      className="flex flex-col gap-3 rounded-lg border border-border bg-card p-4 transition-colors hover:bg-muted focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none"
+    >
+      <div className="flex items-start justify-between gap-3">
+        <div className="flex min-w-0 flex-col">
+          <span className="truncate text-sm font-semibold">{ruta.nombre}</span>
+          <span className="truncate text-caption text-muted-foreground">
+            {ruta.cobrador?.nombre ?? "Sin asignar"} · {ruta.clientesCount}{" "}
+            {ruta.clientesCount === 1 ? "cliente" : "clientes"}
+          </span>
+        </div>
+        <Badge status={ruta.estadoDia === "abierta" ? "ruta-abierta" : "ruta-cerrada"}>
+          {ruta.estadoDia === "abierta" ? "Abierta" : "Cerrada"}
+        </Badge>
+      </div>
+
+      <ProgressBar value={ruta.avanceDelDia} tone="gradient" />
+
+      <div className="flex items-baseline justify-between gap-3 text-caption">
+        <span className="truncate text-muted-foreground">
+          Cobrado hoy{" "}
+          <span className="font-semibold text-foreground tabular-nums">
+            {sinAbrir ? "Sin abrir" : formatCurrency(ruta.totalCobradoHoy)}
+          </span>
+        </span>
+        <span className={cn("shrink-0 font-medium tabular-nums", avanceColor(ruta.avanceDelDia))}>
+          {ruta.avanceDelDia}% del día
+        </span>
+      </div>
+    </Link>
+  );
 }
 
 function RutaRow({ ruta }: { ruta: RutaListItem }) {
@@ -85,10 +129,15 @@ export function RoutesListScreen() {
   return (
     <>
       <AdminPageHeader
-        eyebrow="Rutas"
         title="Rutas"
+        subtitle={
+          summary
+            ? `${summary.rutasTotal} ${summary.rutasTotal === 1 ? "ruta" : "rutas"} · ${summary.clientesEnRuta} clientes`
+            : undefined
+        }
         actions={
-          <Button asChild>
+          // En móvil el alta vive en el FAB, para no apretar el header.
+          <Button asChild className={cn("hidden lg:inline-flex", HEADER_ACTION_CLASS)}>
             <Link href="/admin/routes-collectors/new">
               <PlusIcon />
               Nueva ruta
@@ -97,8 +146,23 @@ export function RoutesListScreen() {
         }
       />
 
-      <div className="flex flex-col gap-6 p-4 sm:p-6">
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+      <div className="flex min-w-0 flex-col gap-6 p-4 sm:p-6">
+        {/* Resumen compacto en móvil: tres MetricCard apiladas se comen la
+            pantalla entera antes de llegar a la primera ruta. */}
+        <MetricTileGroup columns={3} divided className="sm:hidden">
+          <MetricTile
+            label="Abiertas"
+            value={summary?.rutasAbiertas ?? "—"}
+            sub={summary ? `de ${summary.rutasTotal}` : undefined}
+          />
+          <MetricTile
+            label="Cobrado hoy"
+            value={summary ? formatCurrency(summary.cobradoHoy) : "—"}
+          />
+          <MetricTile label="Clientes" value={summary?.clientesEnRuta ?? "—"} />
+        </MetricTileGroup>
+
+        <div className="hidden gap-4 sm:grid sm:grid-cols-2 lg:grid-cols-3">
           <MetricCard
             tone="success"
             icon={<MapPinIcon />}
@@ -120,7 +184,15 @@ export function RoutesListScreen() {
           />
         </div>
 
-        <div className="rounded-lg border border-border bg-card">
+        {/* Lista de tarjetas en móvil */}
+        <div className="flex flex-col gap-3 md:hidden">
+          {isLoading
+            ? Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="h-28 w-full" />)
+            : rutas?.map((ruta) => <RutaCard key={ruta.id} ruta={ruta} />)}
+        </div>
+
+        {/* Tabla desde md */}
+        <div className="hidden rounded-lg border border-border bg-card md:block">
           <Table>
             <TableHeader>
               <TableRow>
@@ -147,6 +219,19 @@ export function RoutesListScreen() {
           </Table>
         </div>
       </div>
+
+      {/* FAB de alta en móvil, por encima de la bottom tab bar (h-16). */}
+      <Button
+        asChild
+        size="lg"
+        className="fixed right-4 z-30 rounded-full shadow-lg lg:hidden"
+        style={{ bottom: "calc(5rem + env(safe-area-inset-bottom))" }}
+      >
+        <Link href="/admin/routes-collectors/new">
+          <PlusIcon />
+          Nueva ruta
+        </Link>
+      </Button>
     </>
   );
 }

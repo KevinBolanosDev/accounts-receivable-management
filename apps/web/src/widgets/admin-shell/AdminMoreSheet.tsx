@@ -54,7 +54,7 @@ export function AdminMoreSheet({ open, onOpenChange }: AdminMoreSheetProps) {
               );
             }
 
-            const active = isNavItemActive(pathname, item.href);
+            const active = isNavItemActive(pathname, item);
 
             return (
               <Link
