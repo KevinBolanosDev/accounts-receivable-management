@@ -103,7 +103,7 @@ export function CreditoCalculoPanel({
         </div>
       </div>
 
-      {primeras.length > 0 ? (
+      {/* {primeras.length > 0 ? (
         <div className="flex flex-col gap-2.5 rounded-lg border border-border bg-card p-5">
           <span className="text-caption uppercase tracking-wide text-muted-foreground">
             Primeras cuotas
@@ -117,7 +117,7 @@ export function CreditoCalculoPanel({
             </div>
           ))}
         </div>
-      ) : null}
+      ) : null} */}
     </div>
   );
 }

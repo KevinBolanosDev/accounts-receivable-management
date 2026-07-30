@@ -177,7 +177,7 @@ export function CreateCreditoScreen({ clienteIdInicial, creditoId }: CreateCredi
       <div className="grid gap-6 p-4 sm:p-6 lg:grid-cols-[minmax(0,1fr)_360px]">
         {/* Panel izquierdo — Datos del crédito */}
         <div className="flex flex-col gap-4">
-          <div className="flex flex-col gap-4 rounded-lg border border-border bg-card p-6">
+          <div className="flex flex-col gap-4 rounded-lg">
             <p className="text-caption text-muted-foreground uppercase">Datos del crédito</p>
 
             <Controller
@@ -277,17 +277,7 @@ export function CreateCreditoScreen({ clienteIdInicial, creditoId }: CreateCredi
               </Field>
             </div>
           </div>
-
-          <div className="flex justify-end gap-3">
-            <Button type="button" variant="secondary" onClick={() => router.back()}>
-              Cancelar
-            </Button>
-            <Button type="submit" loading={saving}>
-              {isEdit ? "Guardar cambios" : "Crear crédito"}
-            </Button>
-          </div>
         </div>
-
         {/* Panel derecho — Cálculo estimado */}
         <CreditoCalculoPanel
           monto={Number(watched.monto ?? 0)}
@@ -297,6 +287,14 @@ export function CreateCreditoScreen({ clienteIdInicial, creditoId }: CreateCredi
           fechaInicio={watched.fechaInicio ?? hoyISO()}
           className="self-start lg:sticky lg:top-6"
         />
+        <div className="flex justify-end gap-3">
+          <Button type="button" variant="secondary" onClick={() => router.back()}>
+            Cancelar
+          </Button>
+          <Button type="submit" loading={saving}>
+            {isEdit ? "Guardar cambios" : "Crear crédito"}
+          </Button>
+        </div>
       </div>
     </form>
   );
