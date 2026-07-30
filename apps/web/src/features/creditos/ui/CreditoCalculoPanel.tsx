@@ -8,7 +8,7 @@ import {
 } from "@/entities/credit";
 import { cn } from "@/shared/lib/utils";
 import { formatCurrency } from "@/shared/lib/format-currency";
-import { formatDate, formatDateShort } from "@/shared/lib/format-date";
+import { formatDate } from "@/shared/lib/format-date";
 
 // Card "Cálculo estimado" — nació en "Crear crédito" (#9c) y ahora la comparten
 // las tres pantallas que arman un crédito en vivo: Crear crédito, el alta de

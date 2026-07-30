@@ -79,7 +79,11 @@ export function AdminClientCreditsScreen({
   if (isLoading) {
     return (
       <>
-        <AdminPageHeader eyebrow="Rutas" title="Créditos del cliente" />
+        <AdminPageHeader
+          backHref={`/admin/routes-collectors/${rutaId}`}
+          eyebrow="Rutas"
+          title="Créditos del cliente"
+        />
         <div className="flex flex-col gap-3 p-4 sm:p-6">
           <Skeleton className="h-20 w-full" />
           <Skeleton className="h-32 w-full" />
@@ -94,7 +98,11 @@ export function AdminClientCreditsScreen({
   if (isError || !cliente) {
     return (
       <>
-        <AdminPageHeader eyebrow="Rutas" title="Créditos del cliente" />
+        <AdminPageHeader
+          backHref={`/admin/routes-collectors/${rutaId}`}
+          eyebrow="Rutas"
+          title="Créditos del cliente"
+        />
         <div className="flex flex-col items-center gap-4 p-4 sm:p-6">
           <div className="flex flex-col items-center gap-2 rounded-lg border border-dashed border-border bg-card p-8 text-center">
             <p className="text-sm font-medium">Este cliente no existe o fue eliminado</p>
@@ -116,6 +124,7 @@ export function AdminClientCreditsScreen({
   return (
     <>
       <AdminPageHeader
+        backHref={`/admin/routes-collectors/${rutaId}`}
         eyebrow={`Rutas / ${cliente.ruta?.nombre ?? "Sin ruta"} / ${cliente.nombre}`}
         title="Créditos del cliente"
         subtitle={

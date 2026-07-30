@@ -79,7 +79,7 @@ export function RouteDetailScreen({ rutaId }: { rutaId: string }) {
   if (isLoading) {
     return (
       <>
-        <AdminPageHeader eyebrow="Rutas" title="Detalle de ruta" />
+        <AdminPageHeader backHref="/admin/routes-collectors" eyebrow="Rutas" title="Detalle de ruta" />
         <div className="p-4 sm:p-6">
           <Skeleton className="h-64 w-full" />
         </div>
@@ -92,7 +92,7 @@ export function RouteDetailScreen({ rutaId }: { rutaId: string }) {
   if (isError || !ruta) {
     return (
       <>
-        <AdminPageHeader eyebrow="Rutas" title="Detalle de ruta" />
+        <AdminPageHeader backHref="/admin/routes-collectors" eyebrow="Rutas" title="Detalle de ruta" />
         <div className="flex flex-col items-center gap-4 p-4 sm:p-6">
           <div className="flex flex-col items-center gap-2 rounded-lg border border-dashed border-border bg-card p-8 text-center">
             <p className="text-sm font-medium">Esta ruta no existe o fue eliminada</p>
@@ -113,6 +113,7 @@ export function RouteDetailScreen({ rutaId }: { rutaId: string }) {
   return (
     <>
       <AdminPageHeader
+        backHref="/admin/routes-collectors"
         eyebrow={`Rutas / ${ruta.nombre}`}
         title="Detalle de ruta"
         actions={

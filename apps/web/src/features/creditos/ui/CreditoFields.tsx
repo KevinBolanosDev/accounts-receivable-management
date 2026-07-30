@@ -190,7 +190,7 @@ function CreditoFields({ errors, className }: CreditoFieldsProps) {
         )}
       />
 
-      <div className="grid gap-4 sm:grid-cols-3">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
         <Field id="credito-monto" label="Monto (COP)" error={errors?.monto}>
           <Input
             id="credito-monto"

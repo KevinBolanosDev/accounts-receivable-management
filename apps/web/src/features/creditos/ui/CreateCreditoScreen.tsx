@@ -14,6 +14,7 @@ import {
 } from "@repo/types";
 import { toast } from "sonner";
 
+import { useSessionStore } from "@/entities/session";
 import { ApiError } from "@/shared/api/client";
 import { Button } from "@/shared/ui/button";
 import { Input } from "@/shared/ui/input";
@@ -165,6 +166,13 @@ export function CreateCreditoScreen({ clienteIdInicial, creditoId }: CreateCredi
   return (
     <form onSubmit={form.handleSubmit(onSubmit)}>
       <AdminPageHeader
+        backHref={
+          isEdit
+            ? `/admin/credits/${creditoId}`
+            : clienteIdInicial
+              ? `/admin/clients/${clienteIdInicial}`
+              : "/admin/clients"
+        }
         eyebrow={isEdit ? `Créditos / ${credito?.codigo ?? "…"} · Editar` : "Créditos / Nuevo"}
         title={isEdit ? "Editar crédito" : "Crear crédito"}
         subtitle={
@@ -174,7 +182,7 @@ export function CreateCreditoScreen({ clienteIdInicial, creditoId }: CreateCredi
         }
       />
 
-      <div className="grid gap-6 p-4 sm:p-6 lg:grid-cols-[minmax(0,1fr)_360px]">
+      <div className="grid grid-cols-1 gap-6 p-4 sm:p-6 lg:grid-cols-[minmax(0,1fr)_360px]">
         {/* Panel izquierdo — Datos del crédito */}
         <div className="flex flex-col gap-4">
           <div className="flex flex-col gap-4 rounded-lg">
@@ -221,7 +229,7 @@ export function CreateCreditoScreen({ clienteIdInicial, creditoId }: CreateCredi
               )}
             />
 
-            <div className="grid gap-4 sm:grid-cols-2">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <Field
                 id="monto"
                 label="Monto del crédito (COP)"
@@ -300,6 +308,13 @@ export function CreateCreditoScreen({ clienteIdInicial, creditoId }: CreateCredi
   );
 }
 
+// Mismo criterio que el `CobradorPicker` de `RouteFormScreen`: una ruta con
+// `cobradorId === null` la cobra el propio admin, así que "Tú" tiene que ser
+// una opción explícita del filtro. Sin ella, las rutas propias solo aparecían
+// en "Cualquier cobrador" mezcladas con las ajenas y no había forma de pedir
+// "muéstrame solo las mías". Es un filtro de UI: no viaja al backend.
+const YO = "__yo__";
+
 // Bloque "Asignar/reasignar ruta" del cliente elegido, con un Select de
 // Cobrador que filtra el de Ruta. Se monta con `key={cliente.id}` desde el
 // padre: el estado inicial se calcula UNA VEZ al montar (lazy `useState`),
@@ -318,11 +333,14 @@ function AsignacionRutaBlock({
   cobradores: CobradorListItem[];
   onChange: (rutaId: string | null) => void;
 }) {
+  const yo = useSessionStore((s) => s.usuario);
   const rutaInicial = cliente.rutaId
     ? (rutas.find((r) => r.id === cliente.rutaId) ?? null)
     : null;
   const [cobradorFiltro, setCobradorFiltro] = useState<string | null>(
-    rutaInicial?.cobradorId ?? null,
+    // Si el cliente ya está en una ruta sin cobrador, el filtro nace en "Tú":
+    // `null` acá significa "no filtro", no "la cobra el admin".
+    rutaInicial ? (rutaInicial.cobradorId ?? YO) : null,
   );
   const [rutaId, setRutaId] = useState<string | null>(cliente.rutaId ?? null);
 
@@ -331,7 +349,11 @@ function AsignacionRutaBlock({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [rutaId]);
 
-  const rutasFiltradas = cobradorFiltro ? rutas.filter((r) => r.cobradorId === cobradorFiltro) : rutas;
+  const rutasFiltradas = !cobradorFiltro
+    ? rutas
+    : cobradorFiltro === YO
+      ? rutas.filter((r) => !r.cobradorId)
+      : rutas.filter((r) => r.cobradorId === cobradorFiltro);
 
   return (
     <div className="flex flex-col gap-3 rounded-md border border-dashed border-border p-3">
@@ -342,7 +364,7 @@ function AsignacionRutaBlock({
         Elegir un cobrador es solo para filtrar sus rutas.
       </p>
 
-      <div className="grid gap-3 sm:grid-cols-2">
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
         <div className="flex flex-col gap-1.5">
           <Label htmlFor="cobrador-opcional">Cobrador</Label>
           <Select
@@ -356,6 +378,7 @@ function AsignacionRutaBlock({
               <SelectValue placeholder="Cualquier cobrador" />
             </SelectTrigger>
             <SelectContent>
+              <SelectItem value={YO}>Tú{yo ? ` (${yo.nombre})` : ""}</SelectItem>
               {cobradores.map((c) => (
                 <SelectItem key={c.id} value={c.id}>
                   {c.nombre}
@@ -374,7 +397,9 @@ function AsignacionRutaBlock({
             <SelectContent>
               {rutasFiltradas.length === 0 ? (
                 <p className="px-2 py-1.5 text-body-sm text-muted-foreground">
-                  Ese cobrador no tiene rutas.
+                  {cobradorFiltro === YO
+                    ? "No tienes rutas propias."
+                    : "Ese cobrador no tiene rutas."}
                 </p>
               ) : (
                 rutasFiltradas.map((r) => (

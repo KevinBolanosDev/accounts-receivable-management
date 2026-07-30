@@ -121,7 +121,7 @@ export function ClientFormScreen({ clienteId }: { clienteId?: string }) {
   if (isEdit && (loadingCliente || loadingRutas)) {
     return (
       <>
-        <AdminPageHeader eyebrow="Clientes" title="Editar cliente" />
+        <AdminPageHeader backHref={`/admin/clients/${clienteId}`} eyebrow="Clientes" title="Editar cliente" />
         <div className="p-4 sm:p-6">
           <Skeleton className="h-96 w-full" />
         </div>
@@ -132,7 +132,7 @@ export function ClientFormScreen({ clienteId }: { clienteId?: string }) {
   if (isEdit && (isError || !cliente)) {
     return (
       <>
-        <AdminPageHeader eyebrow="Clientes" title="Editar cliente" />
+        <AdminPageHeader backHref={`/admin/clients/${clienteId}`} eyebrow="Clientes" title="Editar cliente" />
         <div className="flex flex-col items-center gap-4 p-4 sm:p-6">
           <div className="flex flex-col items-center gap-2 rounded-lg border border-dashed border-border bg-card p-8 text-center">
             <p className="text-sm font-medium">Este cliente no existe o fue eliminado</p>
@@ -323,6 +323,7 @@ function ClientFormBody({
   return (
     <>
       <AdminPageHeader
+        backHref={isEdit ? `/admin/clients/${clienteId}` : "/admin/clients"}
         eyebrow={
           isEdit
             ? `Clientes / ${cliente?.nombre ?? "Cliente"} · Editar`
@@ -333,7 +334,7 @@ function ClientFormBody({
 
       <form
         onSubmit={handleSubmit(onSubmit as never)}
-        className="grid gap-6 p-4 sm:p-6 lg:grid-cols-[minmax(0,1fr)_360px]"
+        className="grid grid-cols-1 gap-6 p-4 sm:p-6 lg:grid-cols-[minmax(0,1fr)_360px]"
       >
         <div className="flex min-w-0 flex-col gap-6">
           {/* Sin card alrededor del formulario: los campos ya se leen como un
@@ -346,7 +347,7 @@ function ClientFormBody({
               <Input id="nombre" placeholder="Ej. María Fernández" {...register("nombre")} />
             </Field>
 
-            <div className="grid gap-4 sm:grid-cols-2">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <Field id="telefono" label="Teléfono" error={errors.telefono?.message}>
                 <Input id="telefono" placeholder="300 123 4567" {...register("telefono")} />
               </Field>
@@ -392,7 +393,7 @@ function ClientFormBody({
                 cliente. El contrato y el backend ya lo soportaban, y el
                 cobrador ya lo ve en su pantalla de cobro, pero ningún
                 formulario permitía escribirlo — siempre llegaba vacío. */}
-            <div className="grid gap-4 sm:grid-cols-2">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <Field
                 id="contactoNombre"
                 label="Contacto de referencia (opcional)"
@@ -420,7 +421,7 @@ function ClientFormBody({
 
             <div className="flex flex-col gap-2">
               <Label>Foto del documento</Label>
-              <div className="grid gap-3 sm:grid-cols-2">
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                 <DocumentUploader
                   capture
                   placeholder="Frente"
@@ -484,7 +485,7 @@ function ClientFormBody({
                     )}
                   />
 
-                  <div className="grid gap-4 sm:grid-cols-3">
+                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
                     <Field id="credito-monto" label="Monto (COP)" error={errors.monto?.message}>
                       <Input
                         id="credito-monto"

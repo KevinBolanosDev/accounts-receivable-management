@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { LogOutIcon } from "lucide-react";
+import { ChevronDownIcon, LogOutIcon } from "lucide-react";
 import type { Rol } from "@repo/types";
 
 import { useSessionStore } from "@/entities/session";
@@ -32,8 +32,12 @@ interface UserMenuProps {
    */
   variant: "avatar" | "row";
   /**
-   * El disco va sobre el degradado del header: `bg-primary` se pierde contra
-   * él, así que se cambia por un velo translúcido blanco.
+   * El disco va sobre el degradado del header. `bg-primary` se pierde contra
+   * él, y el velo translúcido blanco que había antes tampoco separaba: las
+   * iniciales quedaban en blanco sobre índigo/cian claro (contraste bajo) y
+   * nada decía que fuera pulsable. Sobre el degradado el disco pasa a ser
+   * OSCURO — el único elemento oscuro del header, así que se lee solo — y
+   * viaja dentro de una píldora con chevron para declararse menú.
    */
   onGradient?: boolean;
   className?: string;
@@ -60,7 +64,7 @@ export function UserMenu({ variant, onGradient, className }: UserMenuProps) {
       className={cn(
         "flex size-9 shrink-0 items-center justify-center rounded-full text-sm font-semibold",
         onGradient
-          ? "bg-white/20 text-white ring-1 ring-white/30"
+          ? "bg-neutral-900 text-white ring-1 ring-white/40"
           : "bg-primary text-primary-foreground",
       )}
     >
@@ -77,6 +81,11 @@ export function UserMenu({ variant, onGradient, className }: UserMenuProps) {
           className={cn(
             "flex items-center rounded-full transition-colors focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none",
             variant === "row" && "w-full gap-3 rounded-md p-2 text-left hover:bg-muted",
+            // Píldora: el disco oscuro solo no dice "menú". Con el borde y el
+            // chevron, el objetivo táctil y la afordancia son explícitos.
+            variant === "avatar" &&
+              onGradient &&
+              "gap-0.5 border border-white/25 bg-white/10 py-1 pr-1.5 pl-1 hover:bg-white/25",
             className,
           )}
         >
@@ -86,6 +95,9 @@ export function UserMenu({ variant, onGradient, className }: UserMenuProps) {
               <span className="truncate text-sm font-semibold">{nombre}</span>
               <span className="truncate text-caption text-muted-foreground">{rol}</span>
             </span>
+          ) : null}
+          {variant === "avatar" && onGradient ? (
+            <ChevronDownIcon aria-hidden className="size-4 shrink-0 text-white" />
           ) : null}
         </button>
       </DropdownMenuTrigger>

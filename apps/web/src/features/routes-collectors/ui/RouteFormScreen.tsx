@@ -391,7 +391,7 @@ export function RouteFormScreen({ rutaId }: { rutaId?: string }) {
   if (isEdit && loadingRuta) {
     return (
       <>
-        <AdminPageHeader eyebrow="Rutas" title="Editar ruta" />
+        <AdminPageHeader backHref={`/admin/routes-collectors/${rutaId}`} eyebrow="Rutas" title="Editar ruta" />
         <div className="p-4 sm:p-6">
           <Skeleton className="h-96 w-full" />
         </div>
@@ -402,12 +402,13 @@ export function RouteFormScreen({ rutaId }: { rutaId?: string }) {
   return (
     <>
       <AdminPageHeader
+        backHref={isEdit ? `/admin/routes-collectors/${rutaId}` : "/admin/routes-collectors"}
         eyebrow={isEdit ? `Rutas / ${ruta?.nombre ?? "Ruta"} · Editar` : "Rutas / Nueva"}
         title={isEdit ? "Editar ruta" : "Nueva ruta"}
       />
 
       <form onSubmit={handleSubmit(onSubmit)} className="flex flex-col gap-6 p-4 sm:p-6">
-        <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_360px]">
+        <div className="grid grid-cols-1 gap-6 lg:grid-cols-[minmax(0,1fr)_360px]">
           {/* Formulario — sin card: en móvil el borde y sus 24px de padding
               solo comen ancho contra los bordes de la pantalla. */}
           <div className="flex min-w-0 flex-col gap-6">

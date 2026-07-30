@@ -1,5 +1,8 @@
 "use client";
 
+import Link from "next/link";
+import { ArrowLeftIcon } from "lucide-react";
+
 import { cn } from "@/shared/lib/utils";
 
 import { UserMenu } from "./UserMenu";
@@ -11,6 +14,17 @@ export const HEADER_ACTION_CLASS =
   "border border-white/25 bg-white/15 text-white hover:bg-white/25 focus-visible:ring-white/50";
 
 interface AdminPageHeaderProps {
+  /**
+   * Destino del botón "volver", a la izquierda del título. Solo lo pasan las
+   * vistas de detalle/formulario (las de primer nivel del nav no vuelven a
+   * ningún lado). Es un `href` y no `router.back()` a propósito: el padre de
+   * una vista es siempre el mismo, mientras que el historial depende de por
+   * dónde entró el usuario — y en móvil el breadcrumb del eyebrow, que es
+   * texto, era la única pista de que había un nivel arriba.
+   */
+  backHref?: string;
+  /** Etiqueta accesible del botón volver (default: "Volver"). */
+  backLabel?: string;
   /** Breadcrumb/eyebrow encima del título (ej. "Rutas / Ruta 3 · Centro"). */
   eyebrow?: React.ReactNode;
   title: string;
@@ -34,6 +48,8 @@ interface AdminPageHeaderProps {
 // blanco en oscuro pero casi negro en claro), así que el contenido se fija a
 // blanco explícito y el secundario a `text-white/70`.
 export function AdminPageHeader({
+  backHref,
+  backLabel = "Volver",
   eyebrow,
   title,
   subtitle,
@@ -56,8 +72,23 @@ export function AdminPageHeader({
         className="pointer-events-none absolute -top-12 -right-8 size-32 rounded-full border-14 border-white/10"
       />
 
-      {/* Sin hamburger: en móvil la navegación es la bottom tab bar del
-          AdminShell, y su pestaña "Más" abre el mismo Sheet. */}
+      {/* Volver al nivel de arriba. Sin hamburger: en móvil la navegación es la
+          bottom tab bar del AdminShell, y su pestaña "Más" abre el mismo Sheet,
+          así que esta flecha es la única forma de subir un nivel sin perder el
+          contexto (la tab bar te saca al listado). */}
+      {backHref ? (
+        <Link
+          href={backHref}
+          aria-label={backLabel}
+          className={cn(
+            "relative flex size-9 shrink-0 items-center justify-center rounded-full transition-colors focus-visible:ring-[3px] focus-visible:outline-none",
+            HEADER_ACTION_CLASS,
+          )}
+        >
+          <ArrowLeftIcon className="size-5" />
+        </Link>
+      ) : null}
+
       <div className="relative flex min-w-0 flex-col">
         {eyebrow ? <div className="truncate text-caption text-white/70">{eyebrow}</div> : null}
         <h1 className="truncate text-lg leading-tight font-semibold">{title}</h1>

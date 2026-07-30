@@ -37,7 +37,7 @@ export function CreditoDetailScreen({ creditoId }: { creditoId: string }) {
   if (isLoading || !credito) {
     return (
       <>
-        <AdminPageHeader eyebrow="Créditos" title="Detalle del crédito" />
+        <AdminPageHeader backHref="/admin/clients" eyebrow="Créditos" title="Detalle del crédito" />
         <div className="flex flex-col gap-6 p-4 sm:p-6">
           <Skeleton className="h-48 w-full" />
           <Skeleton className="h-72 w-full" />
@@ -61,6 +61,7 @@ export function CreditoDetailScreen({ creditoId }: { creditoId: string }) {
   return (
     <>
       <AdminPageHeader
+        backHref={`/admin/clients/${credito.clienteId}`}
         eyebrow={`Créditos / ${credito.codigo}`}
         title="Detalle del crédito"
         actions={

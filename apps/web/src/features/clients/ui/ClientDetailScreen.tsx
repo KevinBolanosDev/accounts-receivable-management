@@ -91,7 +91,7 @@ export function ClientDetailScreen({ clienteId }: { clienteId: string }) {
   if (isLoading) {
     return (
       <>
-        <AdminPageHeader eyebrow="Clientes" title="Detalle de cliente" />
+        <AdminPageHeader backHref="/admin/clients" eyebrow="Clientes" title="Detalle de cliente" />
         <div className="p-4 sm:p-6">
           <Skeleton className="h-64 w-full" />
         </div>
@@ -105,7 +105,7 @@ export function ClientDetailScreen({ clienteId }: { clienteId: string }) {
   if (isError || !cliente) {
     return (
       <>
-        <AdminPageHeader eyebrow="Clientes" title="Detalle de cliente" />
+        <AdminPageHeader backHref="/admin/clients" eyebrow="Clientes" title="Detalle de cliente" />
         <div className="flex flex-col items-center gap-4 p-4 sm:p-6">
           <EmptyState
             title="Este cliente no existe o fue eliminado"
@@ -135,6 +135,7 @@ export function ClientDetailScreen({ clienteId }: { clienteId: string }) {
   return (
     <>
       <AdminPageHeader
+        backHref="/admin/clients"
         eyebrow={`Clientes / ${cliente.nombre}`}
         title="Detalle de cliente"
         actions={
@@ -164,7 +165,7 @@ export function ClientDetailScreen({ clienteId }: { clienteId: string }) {
         }
       />
 
-      <div className="flex flex-col gap-6 p-4 sm:p-6">
+      <div className="flex min-w-0 flex-col gap-6 p-4 sm:p-6">
         {/* Identidad + saldo agregado + badge de rollup */}
         <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
           <div className="flex min-w-0 items-center gap-3 sm:gap-4">
@@ -249,7 +250,7 @@ export function ClientDetailScreen({ clienteId }: { clienteId: string }) {
                 description="Puedes crear uno desde el botón “Agregar crédito”."
               />
             ) : (
-              <div className="grid gap-4 md:grid-cols-2">
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                 {cliente.creditosActivos.map((credito) => (
                   <Link
                     key={credito.id}
@@ -270,7 +271,7 @@ export function ClientDetailScreen({ clienteId }: { clienteId: string }) {
                 description="Aquí aparecerán los créditos PAGADOS y ANULADOS."
               />
             ) : (
-              <div className="grid gap-4 md:grid-cols-2">
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                 {cliente.creditosHistorial.map((credito) => (
                   <Link
                     key={credito.id}

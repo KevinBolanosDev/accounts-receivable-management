@@ -533,7 +533,7 @@ export default function UiGalleryPage() {
       </Section>
 
       <Section title="Formularios" description="Input, Select, Textarea — radius sm, foco con ring">
-        <div className="grid gap-4 sm:grid-cols-2">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="gallery-nombre">Nombre</Label>
             <Input id="gallery-nombre" placeholder="María Fernández" />
@@ -635,7 +635,7 @@ export default function UiGalleryPage() {
         title="Movimiento"
         description="useReveal, useStagger, useCountUp — GSAP, con gate de prefers-reduced-motion"
       >
-        <div className="grid gap-6 sm:grid-cols-2">
+        <div className="grid grid-cols-1 gap-6 sm:grid-cols-2">
           <RevealDemo />
           <div className="flex flex-col gap-2">
             <span className="text-caption text-muted-foreground uppercase">

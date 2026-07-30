@@ -214,7 +214,7 @@ export function ClientsListScreen() {
       {/* `min-w-0` en el grid y en sus columnas: por defecto una pista de grid
           mide `min-content`, así que un hijo con scroll propio (los chips) la
           estiraría más allá del viewport en vez de scrollear dentro. */}
-      <div className="grid min-w-0 flex-1 gap-6 p-4 sm:p-6 lg:grid-cols-[minmax(0,480px)_minmax(0,1fr)]">
+      <div className="grid grid-cols-1 min-w-0 flex-1 gap-6 p-4 sm:p-6 lg:grid-cols-[minmax(0,480px)_minmax(0,1fr)]">
         {/* Maestro: buscador + lista */}
         <div className="flex min-w-0 flex-col gap-4">
           <div className="relative flex items-center">

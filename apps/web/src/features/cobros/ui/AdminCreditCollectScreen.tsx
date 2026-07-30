@@ -97,7 +97,7 @@ export function AdminCreditCollectScreen({
   if (isLoading) {
     return (
       <>
-        <AdminPageHeader eyebrow="Rutas" title="Crédito" />
+        <AdminPageHeader backHref={volverAlCliente} eyebrow="Rutas" title="Crédito" />
         <div className="flex flex-col gap-3 p-4 sm:p-6">
           <Skeleton className="h-20 w-full" />
           <Skeleton className="h-64 w-full" />
@@ -109,7 +109,7 @@ export function AdminCreditCollectScreen({
   if (isError || !cliente || !credito) {
     return (
       <>
-        <AdminPageHeader eyebrow="Rutas" title="Crédito" />
+        <AdminPageHeader backHref={volverAlCliente} eyebrow="Rutas" title="Crédito" />
         <div className="flex flex-col items-center gap-4 p-4 sm:p-6">
           <div className="flex flex-col items-center gap-2 rounded-lg border border-dashed border-border bg-card p-8 text-center">
             <p className="text-sm font-medium">No encontramos este crédito</p>
@@ -132,6 +132,7 @@ export function AdminCreditCollectScreen({
   return (
     <>
       <AdminPageHeader
+        backHref={volverAlCliente}
         eyebrow={`Rutas / ${cliente.ruta?.nombre ?? "Sin ruta"} / ${cliente.nombre}`}
         title={credito.producto}
         subtitle={`${credito.codigo} · ${credito.cuotasTotal} ${credito.cuotasTotal === 1 ? "cuota" : "cuotas"} · ${CUOTA_LABEL[credito.frecuencia].toLowerCase()} de ${formatCurrency(credito.cuotaDiaria)}`}
