@@ -12,16 +12,11 @@ import {
 } from "@repo/types";
 import { toast } from "sonner";
 
-import {
-  CUOTAS_PLURAL,
-  CUOTA_LABEL,
-  FRECUENCIA_OPTIONS,
-  calcularCredito,
-} from "@/entities/credit";
+import { FRECUENCIA_OPTIONS } from "@/entities/credit";
 import { useCreateCredito } from "@/features/creditos/api/use-creditos";
+import { CreditoCalculoPanel } from "@/features/creditos/ui/CreditoCalculoPanel";
 import { ProductoField } from "@/features/creditos/ui/CreditoFields";
 import { useRutas } from "@/features/routes-collectors/api/use-rutas";
-import { formatCurrency } from "@/shared/lib/format-currency";
 import { Button } from "@/shared/ui/button";
 import {
   Dialog,
@@ -459,7 +454,7 @@ export function FieldClientCreateScreen() {
                 />
               </div>
 
-              <CuotasEstimadasInline
+              <CreditoCalculoPanel
                 monto={Number(values.monto ?? 0)}
                 interes={Number(values.interes ?? 0)}
                 cuotas={Number(values.cuotas ?? 0)}
@@ -536,33 +531,5 @@ export function FieldClientCreateScreen() {
         </DialogContent>
       </Dialog>
     </form>
-  );
-}
-
-function CuotasEstimadasInline({
-  monto,
-  interes,
-  cuotas,
-  frecuencia,
-}: {
-  monto: number;
-  interes: number;
-  cuotas: number;
-  frecuencia: FrecuenciaPago;
-}) {
-  const calc = calcularCredito(monto, interes, cuotas);
-  return (
-    <div
-      className="flex items-center justify-between rounded-md bg-muted/40 px-3 py-2 text-caption text-muted-foreground"
-      aria-live="polite"
-    >
-      <span>
-        {CUOTA_LABEL[frecuencia]} estimada
-        {calc.cuotas > 0 ? ` · ${calc.cuotas} ${CUOTAS_PLURAL[frecuencia]}` : ""}
-      </span>
-      <span className="font-semibold text-foreground tabular-nums">
-        {calc.cuotaDiaria > 0 ? formatCurrency(calc.cuotaDiaria) : "—"}
-      </span>
-    </div>
   );
 }

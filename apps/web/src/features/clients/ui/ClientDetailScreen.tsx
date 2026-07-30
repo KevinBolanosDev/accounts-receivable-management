@@ -167,7 +167,7 @@ export function ClientDetailScreen({ clienteId }: { clienteId: string }) {
             actions={[
               {
                 id: "add-credit",
-                label: "Agregar crédito",
+                label: "Agregar crédito test",
                 icon: <PlusIcon />,
                 href: `/admin/credits/new?clienteId=${cliente.id}`,
               },

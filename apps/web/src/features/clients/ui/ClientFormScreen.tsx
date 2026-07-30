@@ -15,9 +15,7 @@ import {
 import { toast } from "sonner";
 import { ChevronsUpDownIcon } from "lucide-react";
 
-import { CUOTAS_PLURAL, CUOTA_LABEL, calcularCredito } from "@/entities/credit";
 import { ApiError } from "@/shared/api/client";
-import { formatCurrency } from "@/shared/lib/format-currency";
 import { Button } from "@/shared/ui/button";
 import { Input } from "@/shared/ui/input";
 import { Label } from "@/shared/ui/label";
@@ -34,6 +32,7 @@ import { AdminPageHeader } from "@/widgets/admin-shell/AdminPageHeader";
 import { useRutas } from "@/features/routes-collectors/api/use-rutas";
 import { useCreateCredito } from "@/features/creditos/api/use-creditos";
 import { FrecuenciaField, ProductoField } from "@/features/creditos/ui/CreditoFields";
+import { CreditoCalculoPanel } from "@/features/creditos/ui/CreditoCalculoPanel";
 
 import { useCliente, useCreateCliente, useUpdateCliente } from "../api/use-clientes";
 import { ClientFormPreview } from "./ClientFormPreview";
@@ -422,6 +421,7 @@ function ClientFormBody({
               <Label>Foto del documento</Label>
               <div className="grid gap-3 sm:grid-cols-2">
                 <DocumentUploader
+                  capture
                   placeholder="Frente"
                   value={values.fotoDocumentoFrentePath ?? null}
                   previewUrl={cliente?.fotoDocumentoFrenteUrl}
@@ -429,6 +429,7 @@ function ClientFormBody({
                   onUploadingChange={handleUploadingChange}
                 />
                 <DocumentUploader
+                  capture
                   placeholder="Reverso"
                   value={values.fotoDocumentoReversoPath ?? null}
                   previewUrl={cliente?.fotoDocumentoReversoUrl}
@@ -441,7 +442,7 @@ function ClientFormBody({
 
           {/* === Sub-fase 3.4 — bloque "Agregar crédito" opcional ============ */}
           {!isEdit ? (
-            <div className="flex flex-col gap-3 rounded-lg border border-border bg-card p-6">
+            <div className="flex flex-col border-t gap-3 pt-3">
               <div className="flex items-start justify-between gap-2">
                 <div className="flex flex-col">
                   <p className="text-caption text-muted-foreground uppercase">
@@ -528,7 +529,7 @@ function ClientFormBody({
                     )}
                   />
 
-                  <CuotasEstimadasInline
+                  <CreditoCalculoPanel
                     monto={Number(values.monto ?? 0)}
                     interes={Number(values.interes ?? 0)}
                     cuotas={Number(values.cuotas ?? 0)}
@@ -567,33 +568,5 @@ function ClientFormBody({
         </div>
       </form>
     </>
-  );
-}
-
-function CuotasEstimadasInline({
-  monto,
-  interes,
-  cuotas,
-  frecuencia,
-}: {
-  monto: number;
-  interes: number;
-  cuotas: number;
-  frecuencia: FrecuenciaPago;
-}) {
-  const calc = calcularCredito(monto, interes, cuotas);
-  return (
-    <div
-      className="flex items-center justify-between rounded-md bg-muted/40 px-3 py-2 text-caption text-muted-foreground"
-      aria-live="polite"
-    >
-      <span>
-        {CUOTA_LABEL[frecuencia]} estimada
-        {calc.cuotas > 0 ? ` · ${calc.cuotas} ${CUOTAS_PLURAL[frecuencia]}` : ""}
-      </span>
-      <span className="font-semibold text-foreground tabular-nums">
-        {calc.cuotaDiaria > 0 ? formatCurrency(calc.cuotaDiaria) : "—"}
-      </span>
-    </div>
   );
 }

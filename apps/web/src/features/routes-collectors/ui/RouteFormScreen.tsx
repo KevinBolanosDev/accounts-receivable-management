@@ -8,9 +8,10 @@ import { useQueryClient } from "@tanstack/react-query";
 import { createRutaRequestSchema } from "@repo/types";
 import { useCobradores } from "@/features/collectors/api/use-cobradores";
 import { useClientes } from "@/features/clients/api/use-clientes";
-import { CheckIcon, XIcon } from "lucide-react";
+import { CheckIcon, StarIcon, XIcon } from "lucide-react";
 import { toast } from "sonner";
 
+import { useSessionStore } from "@/entities/session";
 import { formatCurrency } from "@/shared/lib/format-currency";
 import { getInitials } from "@/shared/lib/initials";
 import { cn } from "@/shared/lib/utils";
@@ -49,16 +50,33 @@ function SectionLabel({ children }: { children: React.ReactNode }) {
   return <p className="text-caption text-muted-foreground uppercase">{children}</p>;
 }
 
+// `value === null` ya significaba "la cobra el admin" (el backend deja pasar
+// al ADMIN sin chequear `Ruta.cobradorId` — ver `cobros.service.ts`), pero acá
+// se veía como "Sin cobrador asignado", indistinguible de "todavía no elegí
+// nada". El picker ahora lo hace explícito: "Tú (tu nombre)" es una opción fija
+// arriba de la lista, y es también lo que se muestra por defecto.
+//
+// Elegir "Tú" no manda tu propio id — el backend rechaza con 400 cualquier
+// `cobradorId` que no sea un usuario con rol COBRADOR (`findCobradorById` lo
+// filtra a propósito). Simplemente vuelve a dejar `cobradorId` en `null`, que
+// es el mismo valor que ya te hace aparecer en "Mis rutas" y ya te deja
+// cobrar ahí — el picker es una capa de UI sobre un dato que no cambió.
+const YO = "__yo__";
+
 function CobradorPicker({
   value,
   onChange,
 }: {
   value: string | null;
-  onChange: (id: string) => void;
+  onChange: (id: string | null) => void;
 }) {
   const [open, setOpen] = useState(false);
   const { data: collectors = [] } = useCobradores();
+  const yo = useSessionStore((s) => s.usuario);
   const selected = collectors.find((c) => c.id === value) ?? null;
+  // Sin cobrador real elegido, el implícito sos vos — no hay un estado
+  // "vacío" separado de "Tú" (ver el comentario de arriba).
+  const esYo = !selected;
 
   return (
     <div className="flex items-center gap-3 rounded-lg border border-border bg-background p-3">
@@ -73,12 +91,22 @@ function CobradorPicker({
           </div>
         </>
       ) : (
-        <span className="flex-1 text-sm text-muted-foreground">Sin cobrador asignado</span>
+        <>
+          <span className="flex size-9 shrink-0 items-center justify-center rounded-full bg-primary/15 text-xs font-semibold text-primary">
+            {getInitials(yo?.nombre ?? "Tú")}
+          </span>
+          <div className="flex min-w-0 flex-1 flex-col">
+            <span className="truncate text-sm font-medium">Tú{yo ? ` (${yo.nombre})` : ""}</span>
+            <span className="truncate text-caption text-muted-foreground">
+              La cobras tú — aparece en &quot;Mis rutas&quot;
+            </span>
+          </div>
+        </>
       )}
       <Popover open={open} onOpenChange={setOpen}>
         <PopoverTrigger asChild>
           <Button type="button" variant="ghost" size="sm" className="text-primary">
-            {selected ? "Cambiar" : "Asignar"}
+            Cambiar
           </Button>
         </PopoverTrigger>
         <PopoverContent align="end" className="w-64 p-0">
@@ -87,19 +115,30 @@ function CobradorPicker({
             <CommandList>
               <CommandEmpty>Sin resultados.</CommandEmpty>
               <CommandGroup>
-                 {collectors.map((collector) => (
-                   <CommandItem
-                     key={collector.id}
-                     value={collector.nombre}
-                     onSelect={() => {
-                       onChange(collector.id);
-                       setOpen(false);
-                     }}
-                   >
-                     <CheckIcon className={value === collector.id ? "opacity-100" : "opacity-0"} />
-                     {collector.nombre}
-                   </CommandItem>
-                 ))}
+                <CommandItem
+                  value={YO}
+                  onSelect={() => {
+                    onChange(null);
+                    setOpen(false);
+                  }}
+                >
+                  <CheckIcon className={esYo ? "opacity-100" : "opacity-0"} />
+                  <StarIcon className="size-3.5 text-primary" />
+                  Tú{yo ? ` (${yo.nombre})` : ""}
+                </CommandItem>
+                {collectors.map((collector) => (
+                  <CommandItem
+                    key={collector.id}
+                    value={collector.nombre}
+                    onSelect={() => {
+                      onChange(collector.id);
+                      setOpen(false);
+                    }}
+                  >
+                    <CheckIcon className={value === collector.id ? "opacity-100" : "opacity-0"} />
+                    {collector.nombre}
+                  </CommandItem>
+                ))}
               </CommandGroup>
             </CommandList>
           </Command>
@@ -253,6 +292,10 @@ export function RouteFormScreen({ rutaId }: { rutaId?: string }) {
   const cobradorId = useWatch({ control, name: "cobradorId" }) ?? null;
   const { data: collectors = [] } = useCobradores();
   const cobrador = collectors.find((collector) => collector.id === cobradorId) ?? null;
+  // Espeja el fallback de `CobradorPicker`: sin cobrador real, la vista previa
+  // también debe leer "Tú", no "Sin cobrador" — sería inconsistente con lo que
+  // el picker ya muestra dos párrafos más arriba.
+  const yo = useSessionStore((s) => s.usuario);
 
   // Métricas de la vista previa: en edición, las de la ruta; en alta, ceros.
   const clientesCount = ruta?.clientesCount ?? 0;
@@ -413,10 +456,10 @@ export function RouteFormScreen({ rutaId }: { rutaId?: string }) {
 
               <div className="flex items-center gap-2">
                 <span className="flex size-7 shrink-0 items-center justify-center rounded-full bg-secondary text-[10px] font-semibold">
-                  {cobrador ? getInitials(cobrador.nombre) : "—"}
+                  {getInitials(cobrador?.nombre ?? yo?.nombre ?? "Tú")}
                 </span>
                 <span className="truncate text-sm text-muted-foreground">
-                  {cobrador?.nombre ?? "Sin cobrador"}
+                  {cobrador?.nombre ?? `Tú${yo ? ` (${yo.nombre})` : ""}`}
                 </span>
               </div>
 

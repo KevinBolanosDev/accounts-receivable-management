@@ -10,21 +10,10 @@ import {
   type ClienteListItem,
   type CobradorListItem,
   type CreateCreditoRequest,
-  type FrecuenciaPago,
   type RutaListItem,
 } from "@repo/types";
 import { toast } from "sonner";
 
-import {
-  CUOTAS_PLURAL,
-  calcularCredito,
-  fechaVencimientoCuota,
-  parseFechaInicio,
-  type CreditoCalculo,
-} from "@/entities/credit";
-import { cn } from "@/shared/lib/utils";
-import { formatCurrency } from "@/shared/lib/format-currency";
-import { formatDate, formatDateShort } from "@/shared/lib/format-date";
 import { Button } from "@/shared/ui/button";
 import { Input } from "@/shared/ui/input";
 import { Label } from "@/shared/ui/label";
@@ -36,6 +25,7 @@ import {
   FrecuenciaField,
   ProductoField,
 } from "@/features/creditos/ui/CreditoFields";
+import { CreditoCalculoPanel } from "@/features/creditos/ui/CreditoCalculoPanel";
 import { useClientes, useUpdateCliente } from "@/features/clients/api/use-clientes";
 import { useCobradores } from "@/features/collectors/api/use-cobradores";
 import { useRutas } from "@/features/routes-collectors/api/use-rutas";
@@ -130,11 +120,6 @@ export function CreateCreditoScreen({ clienteIdInicial, creditoId }: CreateCredi
   const watched = useWatch({ control });
 
   const frecuencia = watched.frecuencia ?? "DIARIO";
-  const calc = calcularCredito(
-    Number(watched.monto ?? 0),
-    Number(watched.interes ?? 0),
-    Number(watched.cuotas ?? 0),
-  );
 
   async function onSubmit(values: CreateCreditoRequest) {
     try {
@@ -298,11 +283,13 @@ export function CreateCreditoScreen({ clienteIdInicial, creditoId }: CreateCredi
         </div>
 
         {/* Panel derecho — Cálculo estimado */}
-        <CalculoPanel
+        <CreditoCalculoPanel
+          monto={Number(watched.monto ?? 0)}
           interes={Number(watched.interes ?? 0)}
-          calc={calc}
+          cuotas={Number(watched.cuotas ?? 0)}
           frecuencia={frecuencia}
           fechaInicio={watched.fechaInicio ?? hoyISO()}
+          className="self-start lg:sticky lg:top-6"
         />
       </div>
     </form>
@@ -400,113 +387,6 @@ function AsignacionRutaBlock({
   );
 }
 
-function CalculoPanel({
-  interes,
-  calc,
-  frecuencia,
-  fechaInicio,
-}: {
-  interes: number;
-  calc: CreditoCalculo;
-  frecuencia: FrecuenciaPago;
-  fechaInicio: string;
-}) {
-  const base = parseFecha(fechaInicio);
-  const tieneDatos = calc.cuotaDiaria > 0;
-  // Vencimientos por `fechaVencimientoCuota` (el espejo del cronograma del
-  // backend), no por `addDays` a mano: además de respetar la frecuencia, corrige
-  // el desfase de una cuota que tenía esta vista previa — la cuota 1 vence el
-  // MISMO día de inicio, no al día siguiente, así que "Primera" y "Última"
-  // mostraban un día más de lo que después registraba el backend.
-  const vencimiento = (numero: number) => fechaVencimientoCuota(base, numero, frecuencia);
-  const ultimaCuota = calc.cuotas > 0 ? vencimiento(calc.cuotas) : null;
-  // Días entre el desembolso y el vencimiento de la última cuota.
-  const duracionEnDias =
-    calc.cuotas > 0 && ultimaCuota
-      ? Math.round((ultimaCuota.getTime() - base.getTime()) / (24 * 60 * 60 * 1000))
-      : 0;
-  const primeras =
-    calc.cuotas > 0
-      ? Array.from({ length: Math.min(3, calc.cuotas) }, (_, i) => vencimiento(i + 1))
-      : [];
-
-  const primeraCuota = primeras[0] ?? null;
-
-  return (
-    <div className="flex flex-col gap-4 self-start lg:sticky lg:top-6">
-      {/* Card decorativa (#9c): tinte índigo + borde del mismo color. Es el
-          único bloque de la pantalla que no es un campo, así que se separa por
-          color en vez de por otro borde gris más. */}
-      <div className="flex flex-col gap-4 rounded-lg border border-primary/40 bg-primary/5 p-5">
-        <p className="text-caption font-semibold uppercase tracking-wide text-primary">
-          Cálculo estimado
-        </p>
-
-        <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
-          <span className="text-display font-bold leading-none tabular-nums">
-            {tieneDatos ? calc.cuotas : "—"}
-          </span>
-          <span className="text-body-sm text-muted-foreground">
-            {tieneDatos
-              ? `${CUOTAS_PLURAL[frecuencia]} de ${formatCurrency(calc.cuotaDiaria)}`
-              : "Completa monto, interés y n° de cuotas"}
-          </span>
-        </div>
-
-        <div className="flex flex-col gap-2.5 border-t border-primary/20 pt-4">
-          <Row
-            label={`Interés (${interes > 0 ? interes : 0}%)`}
-            value={calc.interesTotal > 0 ? formatCurrency(calc.interesTotal) : "—"}
-          />
-          <Row
-            label="Monto total"
-            value={calc.montoTotal > 0 ? formatCurrency(calc.montoTotal) : "—"}
-            strong
-          />
-        </div>
-
-        <div className="grid grid-cols-3 gap-3 border-t border-primary/20 pt-4">
-          {/* Duración REAL del plan (del primer al último vencimiento), no una
-              estimación en semanas: en un crédito mensual "~ 26 sem" no le dice
-              nada a nadie, y en uno semanal la cuenta en días es exacta. */}
-          <Figure
-            label="Duración"
-            value={duracionEnDias > 0 ? `${duracionEnDias} días` : "—"}
-          />
-          <Figure label="Última cuota" value={ultimaCuota ? formatDate(ultimaCuota) : "—"} />
-          <Figure label="Primera" value={primeraCuota ? formatDate(primeraCuota) : "—"} />
-        </div>
-      </div>
-
-      {primeras.length > 0 ? (
-        <div className="flex flex-col gap-2.5 rounded-lg border border-border bg-card p-5">
-          <span className="text-caption uppercase tracking-wide text-muted-foreground">
-            Primeras cuotas
-          </span>
-          {primeras.map((d, i) => (
-            <div key={i} className="flex items-center justify-between text-sm">
-              <span className="text-muted-foreground">
-                Cuota {i + 1} · {formatDateShort(d)}
-              </span>
-              <span className="font-medium tabular-nums">{formatCurrency(calc.cuotaDiaria)}</span>
-            </div>
-          ))}
-        </div>
-      ) : null}
-    </div>
-  );
-}
-
-/** Columna del pie de la card: etiqueta pequeña + valor compacto. */
-function Figure({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="flex min-w-0 flex-col gap-0.5">
-      <span className="truncate text-caption text-muted-foreground">{label}</span>
-      <span className="truncate text-sm font-semibold tabular-nums">{value}</span>
-    </div>
-  );
-}
-
 function Field({
   id,
   label,
@@ -531,24 +411,5 @@ function Field({
   );
 }
 
-function Row({ label, value, strong }: { label: string; value: string; strong?: boolean }) {
-  return (
-    <div className="flex items-center justify-between text-sm">
-      <span className="text-muted-foreground">{label}</span>
-      <span className={cn("tabular-nums", strong ? "text-base font-semibold" : "font-medium")}>
-        {value}
-      </span>
-    </div>
-  );
-}
-
-// --- fechas (vista previa) ---------------------------------------------------
-// `parseFechaInicio` (espejo del backend) ancla el `"YYYY-MM-DD"` del input al
-// mediodía UTC: con `new Date(s)` a secas era medianoche UTC y `formatDate`
-// (timeZone America/Bogota) mostraba el día anterior en toda la vista previa.
-function parseFecha(s: string): Date {
-  const d = parseFechaInicio(s);
-  return Number.isNaN(d.getTime()) ? new Date() : d;
-}
 
 
