@@ -23,7 +23,12 @@ export interface ClientesService {
   listClientes(query?: ClientesQuery): Promise<ClienteListItem[]>;
   getClientesSummary(): Promise<ClientesSummary>;
   getCliente(id: string): Promise<ClienteDetail>;
-  createCliente(body: CreateClienteRequest): Promise<Cliente>;
+  // Devuelve el DETALLE, no el `Cliente` base: es lo que responde
+  // `POST /clients` y lo que `httpClientesService` ya parseaba con
+  // `clienteDetailSchema`. La firma decía `Cliente` y escondía campos que sí
+  // llegaban en runtime — entre ellos `reactivado`, que distingue un alta
+  // nueva de la reactivación de un cliente dado de baja.
+  createCliente(body: CreateClienteRequest): Promise<ClienteDetail>;
   updateCliente(id: string, body: UpdateClienteRequest): Promise<Cliente>;
   deleteCliente(id: string): Promise<void>;
   uploadFotoDocumento(file: File): Promise<UploadFotoDocumentoResponse>;
@@ -135,6 +140,9 @@ function toDetail(c: MockCliente): ClienteDetail {
   const creditosActivos = c.estado === "pagado" ? [] : [credito];
   const creditosHistorial = c.estado === "pagado" ? [credito] : [];
   return {
+    // Solo `POST /clients` lo pone en `true` (alta que revive a un cliente
+    // dado de baja); una lectura del detalle nunca es una reactivación.
+    reactivado: false,
     id: c.id,
     nombre: c.nombre,
     telefono: c.telefono,
@@ -189,7 +197,7 @@ export const mockClientesService: ClientesService = {
   },
   async createCliente(body) {
     await delay();
-    return clienteSchema.parse({
+    return clienteDetailSchema.parse({
       id: `cl${Math.floor(Math.random() * 1000)}`,
       nombre: body.nombre,
       telefono: body.telefono,
@@ -201,6 +209,18 @@ export const mockClientesService: ClientesService = {
       fotoDocumentoFrenteUrl: null,
       fotoDocumentoReversoUrl: null,
       rutaId: body.rutaId,
+      contactoNombre: body.contactoNombre ?? null,
+      contactoTelefono: body.contactoTelefono ?? null,
+      ruta: null,
+      cobradorNombre: null,
+      // Un cliente recién creado no tiene nada detrás todavía; el mock no
+      // simula la reactivación (eso lo decide el backend con el documento).
+      creditosActivos: [],
+      creditosHistorial: [],
+      tieneAccesoPortal: false,
+      mustChangePassword: false,
+      lastLoginAt: null,
+      reactivado: false,
     });
   },
   async updateCliente(id, body) {

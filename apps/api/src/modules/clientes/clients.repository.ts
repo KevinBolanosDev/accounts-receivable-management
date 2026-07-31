@@ -143,6 +143,20 @@ export class ClientsRepository {
     });
   }
 
+  /**
+   * Busca por documento SIN el filtro `activo` y sin scoping de tenant: es la
+   * consulta que necesita el alta para distinguir tres casos que hoy se veían
+   * todos como el mismo 409 — documento libre, cliente mío dado de baja, y
+   * cliente de OTRA cartera. `admins` viene filtrado por `adminId`, así que
+   * un array vacío significa "no es mío".
+   */
+  findByDocumento(documento: string, adminId: string): Promise<ClientWithDetail | null> {
+    return this.prisma.cliente.findUnique({
+      where: { documento },
+      include: buildClientDetailInclude(adminId),
+    });
+  }
+
   create(data: Prisma.ClienteCreateInput, adminId: string): Promise<ClientWithDetail> {
     return this.prisma.cliente.create({ data, include: buildClientDetailInclude(adminId) });
   }

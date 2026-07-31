@@ -82,6 +82,16 @@ export const clienteDetailSchema = clienteListItemSchema.extend({
   tieneAccesoPortal: z.boolean(),
   mustChangePassword: z.boolean(),
   lastLoginAt: z.string().nullable(),
+  // Solo lo marca `POST /clients` cuando el alta reactivó a un cliente que
+  // este admin había dado de baja (misma persona, mismo documento) en vez de
+  // crear uno nuevo. Los `GET` nunca lo mandan — de ahí el `.default(false)`,
+  // que además es la regla de lector tolerante: un campo de respuesta nuevo y
+  // requerido rompe el front contra un backend que todavía no lo emite.
+  //
+  // Existe porque la diferencia le importa al usuario: al reactivar vuelven
+  // sus créditos y su historial de pagos, y la UI tiene que decirlo en vez de
+  // anunciar un alta limpia.
+  reactivado: z.boolean().default(false),
 });
 export type ClienteDetail = z.infer<typeof clienteDetailSchema>;
 

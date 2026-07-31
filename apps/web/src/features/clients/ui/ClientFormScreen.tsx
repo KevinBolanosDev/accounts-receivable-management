@@ -308,13 +308,25 @@ function ClientFormBody({
             cuotas: v.cuotas,
             fechaInicio: v.fechaInicio || hoyISO(),
           });
-          toast.success("Cliente y crédito creados");
+          toast.success(
+            clienteCreado.reactivado
+              ? "Cliente reactivado y crédito creado"
+              : "Cliente y crédito creados",
+          );
         } catch (error) {
           const motivo = error instanceof ApiError ? error.message : "error desconocido";
           toast.error(
             `Cliente creado (${clienteCreado.id}); el crédito no se guardó (${motivo}) — puedes crearlo desde su detalle.`,
           );
         }
+      // `reactivado` = el documento ya era de un cliente mío dado de baja y el
+      // alta lo revivió en vez de crear uno nuevo. Hay que decirlo: vuelven sus
+      // créditos y su historial de pagos, y sin aviso eso se lee como un bug.
+      } else if (clienteCreado.reactivado) {
+        toast.success("Cliente reactivado", {
+          description:
+            "Ya lo tenías registrado con ese documento y lo habías dado de baja. Se restauraron sus créditos y su historial de pagos.",
+        });
       } else {
         toast.success("Cliente creado");
       }

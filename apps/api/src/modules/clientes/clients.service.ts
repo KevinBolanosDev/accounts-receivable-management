@@ -68,6 +68,28 @@ export class ClientsService {
       await this.assertRouteAccess(body.rutaId, user);
     }
 
+    // Dar de baja un cliente es un SOFT-delete (`ClientAdmin.activo=false`): la
+    // fila `Cliente` sobrevive porque las FKs de dinero son `onDelete: Restrict`
+    // y la auditoría manda. Pero `Cliente.documento` es `@unique` GLOBAL, así
+    // que volver a dar de alta a la misma persona chocaba con el índice y
+    // devolvía "Ya existe un cliente con ese documento" — un callejón sin
+    // salida: el cliente inactivo tampoco aparece en el listado (que filtra por
+    // `activo`), así que no había forma de recuperarlo ni de volver a crearlo.
+    //
+    // El alta de un documento que YA es mío pero está inactivo se trata como
+    // una reactivación. Es la misma persona: conserva su historial y sus
+    // créditos, que es exactamente el motivo por el que la baja es lógica.
+    const existing = await this.clientsRepository.findByDocumento(body.documento, adminId);
+    if (existing) {
+      const myRelation = existing.admins[0];
+      // Cliente activo mío, o cliente de otra cartera: 409 como siempre.
+      // Vincular un cliente existente a un segundo admin sigue siendo una
+      // acción explícita que todavía no existe (ver el comentario del `create`).
+      if (myRelation && !myRelation.activo) {
+        return this.reactivate(existing.id, body, adminId);
+      }
+    }
+
     try {
       const client = await this.clientsRepository.create(
         {
@@ -91,6 +113,48 @@ export class ClientsService {
       );
       const signedUrls = await this.signDocumentPhotos([client]);
       return this.toDetail(client, signedUrls);
+    } catch (error) {
+      throw this.mapError(error);
+    }
+  }
+
+  /**
+   * Vuelve a activar MI relación con un cliente que di de baja, pisando sus
+   * datos con los del alta (quien lo está registrando de nuevo tiene la
+   * información más fresca: puede haber cambiado de teléfono o de dirección).
+   *
+   * Sus créditos y pagos siguen ahí y vuelven a la vista: la baja nunca los
+   * borró — borrarlos habría sido imposible, `Pago`/`Credito` son
+   * `onDelete: Restrict` justamente para que no se pueda hacer desaparecer
+   * plata dando de baja a alguien.
+   */
+  private async reactivate(
+    id: string,
+    body: CreateClienteRequest,
+    adminId: string,
+  ): Promise<ClienteDetail> {
+    try {
+      const client = await this.clientsRepository.update(
+        id,
+        {
+          nombre: body.nombre,
+          telefono: body.telefono,
+          direccion: body.direccion,
+          fotoDocumentoFrentePath: body.fotoDocumentoFrentePath,
+          fotoDocumentoReversoPath: body.fotoDocumentoReversoPath,
+          contactoNombre: body.contactoNombre,
+          contactoTelefono: body.contactoTelefono,
+          admins: {
+            update: {
+              where: { clientId_adminId: { clientId: id, adminId } },
+              data: { activo: true, rutaId: body.rutaId ?? null },
+            },
+          },
+        },
+        adminId,
+      );
+      const signedUrls = await this.signDocumentPhotos([client]);
+      return { ...this.toDetail(client, signedUrls), reactivado: true };
     } catch (error) {
       throw this.mapError(error);
     }
@@ -440,6 +504,10 @@ export class ClientsService {
     const myRelation = client.admins[0];
 
     return {
+      // Solo el alta que reactiva lo pisa a `true` (ver `reactivate`); en todo
+      // lo demás — y en cualquier `GET` — esta respuesta describe un cliente
+      // que ya existía, no una reactivación.
+      reactivado: false,
       id: client.id,
       nombre: client.nombre,
       telefono: client.telefono,

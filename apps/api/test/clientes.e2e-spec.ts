@@ -172,6 +172,97 @@ describe("ClientsController (e2e)", () => {
     expect(relation.activo).toBe(false);
   });
 
+  it("reactivates a soft-deleted client when re-creating it with the same documento", async () => {
+    const admin = await login(app, ADMIN);
+    const documento = `client-e2e-${Date.now()}`;
+
+    const created = await request(app.getHttpServer())
+      .post("/clients")
+      .set("Authorization", `Bearer ${admin.token}`)
+      .send({
+        nombre: "Reactivable Client",
+        telefono: "+573000000000",
+        documento,
+        direccion: "Calle 1",
+        rutaId: routeA.id,
+      })
+      .expect(201);
+    const original = clienteDetailSchema.parse(created.body);
+    expect(original.reactivado).toBe(false);
+
+    await request(app.getHttpServer())
+      .delete(`/clients/${original.id}`)
+      .set("Authorization", `Bearer ${admin.token}`)
+      .expect(204);
+
+    // El bug: `Cliente.documento` es `@unique` GLOBAL y la baja es lógica, así
+    // que el alta de la misma persona chocaba con el índice y devolvía 409
+    // "Ya existe un cliente con ese documento" — sin forma de recuperarlo,
+    // porque el listado tampoco muestra a los inactivos.
+    const again = await request(app.getHttpServer())
+      .post("/clients")
+      .set("Authorization", `Bearer ${admin.token}`)
+      .send({
+        nombre: "Reactivable Client v2",
+        telefono: "+573001111111",
+        documento,
+        direccion: "Calle 2",
+        rutaId: routeA.id,
+      })
+      .expect(201);
+    const revived = clienteDetailSchema.parse(again.body);
+
+    // Es la MISMA fila (conserva id, créditos e historial), con los datos
+    // nuevos del alta y la relación de vuelta en activo.
+    expect(revived.id).toBe(original.id);
+    expect(revived.reactivado).toBe(true);
+    expect(revived.nombre).toBe("Reactivable Client v2");
+    expect(revived.direccion).toBe("Calle 2");
+
+    const relation = await prisma.clientAdmin.findUniqueOrThrow({
+      where: { clientId_adminId: { clientId: original.id, adminId } },
+    });
+    expect(relation.activo).toBe(true);
+
+    // Y vuelve a aparecer en el listado, que filtra por `activo`.
+    const list = await request(app.getHttpServer())
+      .get("/clients")
+      .set("Authorization", `Bearer ${admin.token}`)
+      .expect(200);
+    expect(
+      clienteListItemSchema
+        .array()
+        .parse(list.body)
+        .some((client) => client.id === original.id),
+    ).toBe(true);
+  });
+
+  it("still rejects re-creating a documento that is an ACTIVE client", async () => {
+    const admin = await login(app, ADMIN);
+    const documento = `client-e2e-${Date.now()}`;
+    const body = {
+      nombre: "Duplicate Client",
+      telefono: "+573000000000",
+      documento,
+      direccion: "Calle 1",
+      rutaId: routeA.id,
+    };
+
+    await request(app.getHttpServer())
+      .post("/clients")
+      .set("Authorization", `Bearer ${admin.token}`)
+      .send(body)
+      .expect(201);
+
+    // La reactivación no debe convertirse en un "upsert" silencioso: con el
+    // cliente ACTIVO, un documento repetido sigue siendo un duplicado.
+    await request(app.getHttpServer())
+      .post("/clients")
+      .set("Authorization", `Bearer ${admin.token}`)
+      .send(body)
+      .expect(409);
+  });
+
   it("rejects a CLIENTE (portal) token on the staff clients endpoints", async () => {
     const password = "clienteE2e123";
     const cliente = await prisma.cliente.create({
