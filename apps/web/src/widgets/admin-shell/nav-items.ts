@@ -48,7 +48,7 @@ export const ADMIN_NAV: AdminNavItem[] = [
     icon: CreditCardIcon,
     enabled: true,
   },
-  { label: "Cierres", href: "/admin/closures", icon: SquareCheckBigIcon, enabled: false },
+  { label: "Cierres", href: "/admin/closures", icon: SquareCheckBigIcon, enabled: true },
   { label: "Cobradores", href: "/admin/collectors", icon: UsersRoundIcon, enabled: true },
   { label: "Reportes", href: "/admin/reports", icon: BarChart3Icon, enabled: false },
 ];

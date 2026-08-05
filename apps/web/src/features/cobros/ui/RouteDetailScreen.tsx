@@ -1,8 +1,8 @@
 "use client";
 
+import Link from "next/link";
 import { useParams } from "next/navigation";
 import { CheckIcon } from "lucide-react";
-import { toast } from "sonner";
 import type { RutaDetail } from "@repo/types";
 
 import { ClientCard, ESTADO_CLIENTE_LABEL } from "@/entities/client";
@@ -16,11 +16,11 @@ import { Skeleton } from "@/shared/ui/skeleton";
 import { CollectorHero } from "@/widgets/collector-shell/CollectorHero";
 
 // DESIGN_SYSTEM.md §3.5 — Detalle de ruta (#15c). Hero de marca (CollectorHero)
-// con "Cerrar ruta" (stub Fase 5) + tarjeta resumen superpuesta
-// (Pendientes / Cobrados / Hoy) + lista de clientes: pendientes primero y la
-// sección "Cobrados hoy" atenuada (no oculta). Cada tarjeta lleva avatar,
-// nombre + ruta, saldo + badge de estado y el anillo de avance. Reusa
-// `useRuta(id)` — el mismo hook real que el Admin (8c); el backend ya
+// con "Cerrar ruta" (enlaza a #19c, `features/closures`) + tarjeta resumen
+// superpuesta (Pendientes / Cobrados / Hoy) + lista de clientes: pendientes
+// primero y la sección "Cobrados hoy" atenuada (no oculta). Cada tarjeta
+// lleva avatar, nombre + ruta, saldo + badge de estado y el anillo de avance.
+// Reusa `useRuta(id)` — el mismo hook real que el Admin (8c); el backend ya
 // calcula `clientes[].cobroHoy` a partir de los Pagos del día.
 
 export function RouteDetailScreen() {
@@ -52,18 +52,15 @@ export function RouteDetailScreen() {
         subtitle={`${ruta.cobrador?.nombre ?? "Sin cobrador"} · hoy, ${formatDateShort(new Date())}`}
         backHref="/collector"
         actions={
-          <button
-            type="button"
-            onClick={() =>
-              toast.info("El cierre de ruta llega con el cierre diario (Fase 5).")
-            }
+          <Link
+            href={`/collector/routes/${routeId}/close`}
             className={cn(
               "rounded-full border border-white/40 px-3.5 py-1.5 text-sm font-medium text-primary-foreground",
               "transition-colors hover:bg-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/60",
             )}
           >
             Cerrar ruta
-          </button>
+          </Link>
         }
       />
 
