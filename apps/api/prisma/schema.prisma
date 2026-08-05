@@ -57,7 +57,8 @@ model Usuario {
   cobradores Usuario[] @relation("AdminCobradores")
 
   rutas Ruta[] @relation("CobradorRutas")
-  pagos Pago[] // back-relation Fase 3 (cobrador persiste pagos)
+  pagos         Pago[] // back-relation Fase 3 (cobrador persiste pagos)
+  pagosAnulados Pago[] @relation("PagoAnuladoPor") // quién anuló, no quién cobró
 
   // Back-relations de propiedad (solo pobladas cuando el usuario es ADMIN).
   rutasAdmin     Ruta[]        @relation("AdminRutas")
@@ -243,6 +244,17 @@ model Pago {
   cobrador   Usuario  @relation(fields: [cobradorId], references: [id], onDelete: Restrict)
   reciboUrl  String?
   createdAt  DateTime @default(now())
+
+  // Un pago mal registrado NUNCA se edita ni se borra — se anula (mismo
+  // patrón que `Credito.estado = ANULADO`): el registro queda, el saldo del
+  // crédito se devuelve, y si corresponde se corrige registrando un pago
+  // nuevo. Es lo único consistente con que `Pago`/`Credito` sean
+  // `onDelete: Restrict` en toda la app — la plata no se reescribe en
+  // silencio, se corrige con un evento nuevo y auditable.
+  anulado      Boolean   @default(false)
+  anuladoAt    DateTime?
+  anuladoPorId String?
+  anuladoPor   Usuario?  @relation("PagoAnuladoPor", fields: [anuladoPorId], references: [id], onDelete: Restrict)
 
   @@index([creditoId])
   @@index([cobradorId])

@@ -25,6 +25,9 @@ const badgeVariants = cva(
         missed: "bg-muted text-muted-foreground",
         overdue: "bg-warning/15 text-warning",
         defaulted: "bg-destructive/15 text-destructive",
+        // Pago anulado (error de tipeo, cuota equivocada): ni bueno ni malo,
+        // simplemente "esto no cuenta" — mismo tono neutro que `missed`.
+        anulado: "bg-muted text-muted-foreground",
       },
     },
     defaultVariants: {

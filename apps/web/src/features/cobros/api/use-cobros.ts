@@ -1,7 +1,7 @@
 "use client";
 
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import type { CobroResponse, CreateCobroRequest } from "@repo/types";
+import type { AnularPagoResponse, CobroResponse, CreateCobroRequest } from "@repo/types";
 
 import { cobrosService } from "./cobros-service";
 
@@ -22,6 +22,20 @@ export function useRegistrarCobro() {
   const queryClient = useQueryClient();
   return useMutation<CobroResponse, Error, CreateCobroRequest>({
     mutationFn: (body) => cobrosService.registrarCobro(body),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["creditos"] });
+      queryClient.invalidateQueries({ queryKey: ["clientes"] });
+      queryClient.invalidateQueries({ queryKey: ["rutas"] });
+    },
+  });
+}
+
+// Mismo criterio de invalidación que registrar: el saldo/estado del crédito
+// cambió (se devolvió), así que todo lo que depende de eso se refetchea.
+export function useAnularPago() {
+  const queryClient = useQueryClient();
+  return useMutation<AnularPagoResponse, Error, string>({
+    mutationFn: (pagoId) => cobrosService.anularPago(pagoId),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["creditos"] });
       queryClient.invalidateQueries({ queryKey: ["clientes"] });

@@ -5,6 +5,7 @@ import type { AuthenticatedUser } from "../../core/auth/auth-request";
 import { requireAdminId } from "../../core/auth/tenant.util";
 import { buildReciboCodigo } from "../../core/domain/receipt-code.util";
 import { PrismaService } from "../../core/prisma/prisma.service";
+import { ReceiptTokenService } from "../../core/receipts/receipt-token.service";
 
 type PagoAccessRow = {
   credito: {
@@ -34,7 +35,10 @@ type PagoAccessRow = {
 // que inyecta este mismo service — no duplica la plantilla HTML).
 @Injectable()
 export class ReceiptsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly receiptToken: ReceiptTokenService,
+  ) {}
 
   // Construye el shape `Receipt` para un pago existente. Lanza 404 si el
   // pago no existe (o si es de otro cliente — ver `assertAccess`) y 403 si
@@ -60,6 +64,7 @@ export class ReceiptsService {
             cliente: {
               select: {
                 nombre: true,
+                telefono: true,
                 admins: { select: { adminId: true, ruta: { select: { cobradorId: true } } } },
               },
             },
@@ -106,6 +111,12 @@ export class ReceiptsService {
       saldoRestante,
       fecha: pago.fecha.toISOString(),
       cobradorNombre: pago.cobrador.nombre,
+      // El HTML server-rendered no los usa (trae su propio botón "Imprimir" y
+      // ya se abre desde el link firmado): calcularlos siempre es más simple
+      // que ramificar por consumidor, y firmar un JWT sin I/O es barato.
+      reciboPublicUrl: this.receiptToken.buildPublicUrl(pago.id),
+      clienteTelefono: pago.credito.cliente.telefono,
+      anulado: pago.anulado,
     };
   }
 
@@ -224,6 +235,7 @@ function buildReceiptHtml(r: Receipt): string {
     .actions a, .actions button { display: block; text-align: center; padding: 12px 16px; border-radius: 8px; font-size: 14px; font-weight: 500; text-decoration: none; border: 0; cursor: pointer; }
     .btn-primary { background: var(--primary); color: white; }
     .btn-secondary { background: var(--muted); color: var(--text); }
+    .void-banner { margin: 16px 24px 0; padding: 10px 12px; border-radius: 8px; background: #fef2f2; color: #b91c1c; font-size: 13px; font-weight: 600; text-align: center; }
     @media print {
       .actions { display: none; }
       .wrap { padding: 0; }
@@ -236,6 +248,7 @@ function buildReceiptHtml(r: Receipt): string {
 <body>
   <div class="wrap">
     <div class="card">
+      ${r.anulado ? '<p class="void-banner">Este pago fue ANULADO — no cuenta como abono al crédito.</p>' : ""}
       <div class="header">
         <p class="kicker">Recibo de pago</p>
         <p class="code">${escapeHtml(r.codigo)}</p>

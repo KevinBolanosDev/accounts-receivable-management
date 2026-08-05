@@ -9,6 +9,7 @@ import { CUOTA_LABEL } from "@/entities/credit";
 import {
   PaymentHistory,
   cobroDeHoy,
+  esCuotaAnulada,
   esCuotaSinPagar,
   pagosDeCredito,
 } from "@/entities/payment";
@@ -23,6 +24,7 @@ import { MetricTile, MetricTileGroup } from "@/shared/ui/metric-tile";
 import { Skeleton } from "@/shared/ui/skeleton";
 import { AdminPageHeader } from "@/widgets/admin-shell/AdminPageHeader";
 
+import { AnularPagoButton } from "./AnularPagoButton";
 import { RegistrarCobroSheet } from "./RegistrarCobroSheet";
 
 // Detalle de UN crédito con cobro, para el Admin
@@ -205,23 +207,27 @@ export function AdminCreditCollectScreen({
             emptyText="Este crédito todavía no tiene pagos registrados."
             renderActions={(pago) =>
               esCuotaSinPagar(pago.estado) ? null : (
-                <ReceiptActions
-                  actions={["download", "share"]}
-                  onDownload={() => void recibos.download(pago.id, pago.reciboCodigo ?? undefined)}
-                  pending={recibos.pendingPagoId === pago.id ? recibos.pendingKind : null}
-                  // Al teléfono del cliente: es a quien va dirigido el recibo.
-                  phone={cliente.telefono}
-                  share={{
-                    clienteNombre: cliente.nombre,
-                    producto: credito.producto,
-                    numeroCuota: pago.numeroCuota,
-                    cuotasTotal: credito.cuotasTotal,
-                    monto: pago.monto,
-                    fecha: pago.fecha,
-                    reciboCodigo: pago.reciboCodigo,
-                    publicUrl: pago.reciboPublicUrl,
-                  }}
-                />
+                <div className="flex items-center gap-1">
+                  <ReceiptActions
+                    actions={["download", "share"]}
+                    onDownload={() => void recibos.download(pago.id, pago.reciboCodigo ?? undefined)}
+                    pending={recibos.pendingPagoId === pago.id ? recibos.pendingKind : null}
+                    // Al teléfono del cliente: es a quien va dirigido el recibo.
+                    phone={cliente.telefono}
+                    share={{
+                      clienteNombre: cliente.nombre,
+                      producto: credito.producto,
+                      numeroCuota: pago.numeroCuota,
+                      cuotasTotal: credito.cuotasTotal,
+                      monto: pago.monto,
+                      fecha: pago.fecha,
+                      reciboCodigo: pago.reciboCodigo,
+                      publicUrl: pago.reciboPublicUrl,
+                    }}
+                  />
+                  {/* Un pago ya anulado no se puede anular otra vez. */}
+                  {esCuotaAnulada(pago.estado) ? null : <AnularPagoButton pago={pago} />}
+                </div>
               )
             }
           />

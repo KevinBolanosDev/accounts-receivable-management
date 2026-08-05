@@ -66,4 +66,16 @@ export class UsuariosController {
   async remove(@Param("id") id: string, @CurrentUser() user: AuthenticatedUser): Promise<void> {
     await this.usuariosService.remove(id, user);
   }
+
+  // Baja PERMANENTE (ver `UsuariosService.removePermanent`) — 409 si tiene
+  // algún pago registrado. Ruta aparte de `DELETE /users/:id` a propósito: son
+  // dos acciones con consecuencias muy distintas, no una variante de la misma.
+  @Delete(":id/permanent")
+  @HttpCode(HttpStatus.NO_CONTENT)
+  async removePermanent(
+    @Param("id") id: string,
+    @CurrentUser() user: AuthenticatedUser,
+  ): Promise<void> {
+    await this.usuariosService.removePermanent(id, user);
+  }
 }

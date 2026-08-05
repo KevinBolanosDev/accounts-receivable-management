@@ -40,6 +40,7 @@ import {
   useCobradores,
   useCobradoresSummary,
   useDeleteCobrador,
+  useDeleteCobradorPermanent,
   useUpdateCobrador,
 } from "../api/use-cobradores";
 import { CollectorDialog } from "./CollectorDialog";
@@ -58,10 +59,12 @@ function CobradorCardRow({
   cobrador,
   onEdit,
   onDelete,
+  onDeletePermanent,
 }: {
   cobrador: CobradorListItem;
   onEdit: (c: CobradorListItem) => void;
   onDelete: (c: CobradorListItem) => void;
+  onDeletePermanent: (c: CobradorListItem) => void;
 }) {
   return (
     <div className="flex items-center gap-3 border-b border-border px-4 py-3 last:border-b-0">
@@ -95,6 +98,16 @@ function CobradorCardRow({
             <Trash2Icon />
             Eliminar
           </DropdownMenuItem>
+          <DropdownMenuItem
+            variant="destructive"
+            disabled={cobrador.pagosCount > 0}
+            onSelect={() => onDeletePermanent(cobrador)}
+          >
+            <Trash2Icon />
+            {cobrador.pagosCount > 0
+              ? "Eliminar permanentemente · tiene pagos"
+              : "Eliminar permanentemente"}
+          </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
     </div>
@@ -105,10 +118,12 @@ function CobradoRow({
   cobrador,
   onEdit,
   onDelete,
+  onDeletePermanent,
 }: {
   cobrador: CobradorListItem;
   onEdit: (c: CobradorListItem) => void;
   onDelete: (c: CobradorListItem) => void;
+  onDeletePermanent: (c: CobradorListItem) => void;
 }) {
   const updateCobrador = useUpdateCobrador();
   const sinAbrir = cobrador.cobradoHoy === 0 && cobrador.activo && cobrador.rutas.length > 0;
@@ -179,6 +194,16 @@ function CobradoRow({
                 <Trash2Icon />
                 Eliminar
               </DropdownMenuItem>
+              <DropdownMenuItem
+                variant="destructive"
+                disabled={cobrador.pagosCount > 0}
+                onSelect={() => onDeletePermanent(cobrador)}
+              >
+                <Trash2Icon />
+                {cobrador.pagosCount > 0
+                  ? "Eliminar permanentemente · tiene pagos"
+                  : "Eliminar permanentemente"}
+              </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
         </div>
@@ -191,12 +216,17 @@ export function CollectorsScreen() {
   const { data: cobradores, isLoading } = useCobradores();
   const { data: summary } = useCobradoresSummary();
   const deleteCobrador = useDeleteCobrador();
+  const deleteCobradorPermanent = useDeleteCobradorPermanent();
   const [search, setSearch] = useState("");
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editing, setEditing] = useState<CobradorListItem | undefined>(undefined);
   // Un solo diálogo para toda la tabla, con el cobrador pendiente en estado:
   // uno por fila montaría N diálogos para que solo se abra uno.
   const [deleting, setDeleting] = useState<CobradorListItem | null>(null);
+  // Diálogo APARTE del de arriba, aunque los dos apunten al mismo cobrador:
+  // son dos acciones con consecuencias muy distintas (reversible vs. no) y
+  // mezclarlas en un solo estado obligaría a cargar un modo/variant extra.
+  const [deletingPermanent, setDeletingPermanent] = useState<CobradorListItem | null>(null);
 
   // Filtro local: la lista de cobradores de un admin es corta (decenas), así
   // que no justifica un parámetro de búsqueda en el endpoint.
@@ -234,6 +264,22 @@ export function CollectorsScreen() {
       setDeleting(null);
     } catch (error) {
       toast.error(error instanceof ApiError ? error.message : "No se pudo eliminar el cobrador");
+    }
+  }
+
+  async function handleDeletePermanent() {
+    if (!deletingPermanent) return;
+    try {
+      await deleteCobradorPermanent.mutateAsync(deletingPermanent.id);
+      toast.success(`${deletingPermanent.nombre} se eliminó de forma permanente`);
+      setDeletingPermanent(null);
+    } catch (error) {
+      // El 409 con el conteo de pagos ("tiene N pago(s) registrados...") es el
+      // caso esperado si `pagosCount` quedó desactualizado en caché — mostrar
+      // el mensaje real del backend en vez de un fallback genérico.
+      toast.error(
+        error instanceof ApiError ? error.message : "No se pudo eliminar permanentemente al cobrador",
+      );
     }
   }
 
@@ -307,6 +353,7 @@ export function CollectorsScreen() {
                 cobrador={cobrador}
                 onEdit={openEdit}
                 onDelete={setDeleting}
+                onDeletePermanent={setDeletingPermanent}
               />
             ))
           )}
@@ -340,6 +387,7 @@ export function CollectorsScreen() {
                       cobrador={cobrador}
                       onEdit={openEdit}
                       onDelete={setDeleting}
+                      onDeletePermanent={setDeletingPermanent}
                     />
                   ))}
             </TableBody>
@@ -377,6 +425,27 @@ export function CollectorsScreen() {
         confirmPhrase={deleting?.documento}
         confirmPhraseLabel="Escribe el documento del cobrador para confirmar"
         onConfirm={handleDelete}
+      />
+
+      {/* Solo llega a confirmarse si `pagosCount === 0` (el ítem del menú ya
+          viene deshabilitado si no) — irreversible de verdad, a diferencia
+          del diálogo de arriba, por eso el copy es más tajante. */}
+      <ConfirmDialog
+        open={!!deletingPermanent}
+        onOpenChange={(open) => !open && setDeletingPermanent(null)}
+        title="¿Eliminar permanentemente?"
+        description={
+          deletingPermanent
+            ? `${deletingPermanent.nombre} se borra por completo de la base de datos. Esta acción NO se puede deshacer.`
+            : ""
+        }
+        warning="Esto es distinto de desactivar: no queda ningún registro de este cobrador, ni siquiera para reactivarlo después."
+        confirmLabel="Eliminar permanentemente"
+        variant="destructive"
+        loading={deleteCobradorPermanent.isPending}
+        confirmPhrase={deletingPermanent?.documento}
+        confirmPhraseLabel="Escribe el documento del cobrador para confirmar"
+        onConfirm={handleDeletePermanent}
       />
     </>
   );

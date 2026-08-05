@@ -262,6 +262,81 @@ describe("buildPaymentHistory", () => {
     expect(historial[0]!.estado).toBe("DEFAULTED");
     expect(historial[0]!.diasAtraso).toBe(9);
   });
+
+  // === Pagos anulados ("Anular pago" — corrección de un cobro mal
+  // registrado, nunca una edición) ==========================================
+
+  it("un pago anulado no cuenta como cuota pagada: el período vuelve a verse pendiente", () => {
+    const pagos = [
+      {
+        id: "pg-1",
+        creditoId: "cr-1",
+        monto: 55_000,
+        fecha: dia(1),
+        cobradorId: "u-1",
+        cobradorNombre: "Cobrador Demo",
+        reciboUrl: null,
+        anulado: true,
+      },
+    ];
+    // Día 1: si el pago contara, la cuota 1 estaría pagada y no habría
+    // ninguna fila pendiente. Anulado, la cuota 1 vuelve a estar PENDING.
+    const historial = buildPaymentHistory(credito, pagos, dia(1));
+    const pendiente = historial.find((h) => h.numeroCuota === 1)!;
+    expect(pendiente.estado).toBe("PENDING");
+    expect(pendiente.fechaPago).toBeNull();
+  });
+
+  it("el pago anulado aparece como fila de auditoría con numeroCuota 0 y estado ANULADO", () => {
+    const pagos = [
+      {
+        id: "pg-1",
+        creditoId: "cr-1",
+        monto: 55_000,
+        fecha: dia(1),
+        cobradorId: "u-1",
+        cobradorNombre: "Cobrador Demo",
+        reciboUrl: null,
+        anulado: true,
+      },
+    ];
+    const historial = buildPaymentHistory(credito, pagos, dia(1));
+    const anulado = historial.find((h) => h.id === "pg-1")!;
+    expect(anulado.estado).toBe("ANULADO");
+    expect(anulado.numeroCuota).toBe(0);
+    expect(anulado.monto).toBe(55_000); // el monto se conserva — es auditoría, no se oculta.
+  });
+
+  it("no deja un hueco en la numeración: el siguiente pago vigente sigue siendo la cuota 1", () => {
+    const pagos = [
+      {
+        id: "pg-anulado",
+        creditoId: "cr-1",
+        monto: 55_000,
+        fecha: dia(1),
+        cobradorId: "u-1",
+        cobradorNombre: "Cobrador Demo",
+        reciboUrl: null,
+        anulado: true,
+      },
+      {
+        id: "pg-correcto",
+        creditoId: "cr-1",
+        monto: 55_000,
+        fecha: dia(1),
+        cobradorId: "u-1",
+        cobradorNombre: "Cobrador Demo",
+        reciboUrl: null,
+        anulado: false,
+      },
+    ];
+    const historial = buildPaymentHistory(credito, pagos, dia(1));
+    const correcto = historial.find((h) => h.id === "pg-correcto")!;
+    // Sin el anulado en el medio, el pago correcto sigue siendo la cuota 1 —
+    // no la 2, que sería el caso si el anulado ocupara un lugar en la cuenta.
+    expect(correcto.numeroCuota).toBe(1);
+    expect(correcto.estado).toBe("ON_TIME");
+  });
 });
 
 describe("cuotasVencidasAlDia", () => {

@@ -78,6 +78,7 @@ function buildClientDetailInclude(adminId: string) {
             fecha: true,
             cobradorId: true,
             reciboUrl: true,
+            anulado: true,
             cobrador: { select: { nombre: true } },
           },
           orderBy: { fecha: "asc" },

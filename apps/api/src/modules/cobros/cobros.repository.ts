@@ -58,6 +58,36 @@ export class CobrosRepository {
     });
   }
 
+  /**
+   * Marca el `Pago` como anulado dentro del tx, **condicional**
+   * (`anulado: false` en el WHERE): mismo patrón que `descontarSaldo` — si
+   * `affected = 0`, alguien más ya lo anuló entre el chequeo del service y
+   * este punto, y el caller debe abortar con 409 en vez de anularlo dos veces.
+   */
+  anularPago(tx: Tx, args: { pagoId: string; anuladoPorId: string }) {
+    return tx.pago.updateMany({
+      where: { id: args.pagoId, anulado: false },
+      data: { anulado: true, anuladoAt: new Date(), anuladoPorId: args.anuladoPorId },
+    });
+  }
+
+  /**
+   * Devuelve al saldo del crédito lo que ese pago había descontado, y si el
+   * crédito se había cerrado como PAGADO por ESE pago, lo reabre a ACTIVO.
+   * Nunca puede pasarse de `montoTotal`: solo se devuelve lo que un
+   * `descontarSaldo` anterior efectivamente restó.
+   */
+  devolverSaldo(tx: Tx, args: { creditoId: string; monto: Prisma.Decimal; reabrir: boolean }) {
+    return tx.credito.update({
+      where: { id: args.creditoId },
+      data: {
+        saldoPendiente: { increment: Number(args.monto.toString()) },
+        estado: args.reabrir ? "ACTIVO" : undefined,
+      },
+      include: { producto: { select: { id: true, nombre: true } } },
+    });
+  }
+
   /** Lectura del Crédito dentro del tx (para devolverlo recalculado). */
   findCreditoEnTx(tx: Tx, creditoId: string) {
     return tx.credito.findUnique({

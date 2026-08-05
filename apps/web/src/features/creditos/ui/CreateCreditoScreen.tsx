@@ -4,6 +4,7 @@ import { useEffect, useState, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import { Controller, useForm, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
+import { TriangleAlertIcon } from "lucide-react";
 import {
   createCreditoRequestSchema,
   updateCreditoRequestSchema,
@@ -162,6 +163,7 @@ export function CreateCreditoScreen({ clienteIdInicial, creditoId }: CreateCredi
   }
 
   const saving = createCredito.isPending || updateCredito.isPending;
+  const tienePagos = isEdit && (credito?.pagos.length ?? 0) > 0;
 
   return (
     <form onSubmit={form.handleSubmit(onSubmit)}>
@@ -183,6 +185,18 @@ export function CreateCreditoScreen({ clienteIdInicial, creditoId }: CreateCredi
       />
 
       <div className="grid grid-cols-1 gap-6 p-4 sm:p-6 lg:grid-cols-[minmax(0,1fr)_360px]">
+        {tienePagos ? (
+          <div className="flex items-start gap-2 rounded-md border border-warning/30 bg-warning/10 p-3 text-body-sm text-warning lg:col-span-2">
+            <TriangleAlertIcon className="mt-0.5 size-4 shrink-0" />
+            <span>
+              Este crédito ya tiene {credito!.pagos.length}{" "}
+              {credito!.pagos.length === 1 ? "pago registrado" : "pagos registrados"}. Cambiar el
+              monto, interés, cuotas o frecuencia recalcula el saldo pendiente y puede cambiar cómo
+              se ven las cuotas ya pagadas en el historial (a tiempo/atrasada).
+            </span>
+          </div>
+        ) : null}
+
         {/* Panel izquierdo — Datos del crédito */}
         <div className="flex flex-col gap-4">
           <div className="flex flex-col gap-4 rounded-lg">

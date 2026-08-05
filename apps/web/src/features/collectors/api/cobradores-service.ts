@@ -23,6 +23,12 @@ export interface CobradoresService {
   updateCobrador(id: string, body: UpdateCobradorRequest): Promise<CobradorListItem>;
   /** Baja lógica: desactiva al cobrador y libera sus rutas. Conserva sus pagos. */
   deleteCobrador(id: string): Promise<void>;
+  /**
+   * Baja PERMANENTE: borra la fila de verdad. Solo posible si `pagosCount`
+   * es 0 — el backend responde 409 si el cobrador tiene algún pago
+   * registrado (`Pago.cobradorId` es `onDelete: Restrict`).
+   */
+  deleteCobradorPermanent(id: string): Promise<void>;
 }
 
 const delay = (ms = 280) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -30,12 +36,14 @@ const delay = (ms = 280) => new Promise((resolve) => setTimeout(resolve, ms));
 // ---- Datos simulados (fieles a la pantalla 11a) ------------------------------
 
 const MOCK_COBRADORES: CobradorListItem[] = [
-   { id: "c2", nombre: "Ana Torres", documento: "1.002.000.002", rol: "COBRADOR", telefono: null, activo: true, rutas: [{ id: "r2", nombre: "Ruta 2 · Sur" }], clientesCount: 22, cobradoHoy: 310000 },
-   { id: "c1", nombre: "Carlos Ramírez", documento: "1.001.000.001", rol: "COBRADOR", telefono: null, activo: true, rutas: [{ id: "r3", nombre: "Ruta 3 · Centro" }, { id: "r1", nombre: "Ruta 1 · Norte" }], clientesCount: 62, cobradoHoy: 980000 },
-   { id: "c6", nombre: "Diana Reyes", documento: "1.006.000.006", rol: "COBRADOR", telefono: null, activo: false, rutas: [], clientesCount: 0, cobradoHoy: 0 },
-   { id: "c5", nombre: "Jorge Peña", documento: "1.005.000.005", rol: "COBRADOR", telefono: null, activo: true, rutas: [{ id: "r6", nombre: "Ruta 6 · Kennedy" }], clientesCount: 15, cobradoHoy: 0 },
-   { id: "c4", nombre: "Luis Gómez", documento: "1.004.000.004", rol: "COBRADOR", telefono: null, activo: true, rutas: [{ id: "r4", nombre: "Ruta 4 · Occidente" }], clientesCount: 19, cobradoHoy: 240000 },
-   { id: "c3", nombre: "Marta Díaz", documento: "1.003.000.003", rol: "COBRADOR", telefono: null, activo: true, rutas: [{ id: "r5", nombre: "Ruta 5 · Oriente" }], clientesCount: 26, cobradoHoy: 180000 },
+   { id: "c2", nombre: "Ana Torres", documento: "1.002.000.002", rol: "COBRADOR", telefono: null, activo: true, rutas: [{ id: "r2", nombre: "Ruta 2 · Sur" }], clientesCount: 22, cobradoHoy: 310000, pagosCount: 145 },
+   { id: "c1", nombre: "Carlos Ramírez", documento: "1.001.000.001", rol: "COBRADOR", telefono: null, activo: true, rutas: [{ id: "r3", nombre: "Ruta 3 · Centro" }, { id: "r1", nombre: "Ruta 1 · Norte" }], clientesCount: 62, cobradoHoy: 980000, pagosCount: 402 },
+   // Sin pagos: es el único de la lista con "Eliminar permanentemente"
+   // habilitado — recién creado, todavía no cobró nada.
+   { id: "c6", nombre: "Diana Reyes", documento: "1.006.000.006", rol: "COBRADOR", telefono: null, activo: false, rutas: [], clientesCount: 0, cobradoHoy: 0, pagosCount: 0 },
+   { id: "c5", nombre: "Jorge Peña", documento: "1.005.000.005", rol: "COBRADOR", telefono: null, activo: true, rutas: [{ id: "r6", nombre: "Ruta 6 · Kennedy" }], clientesCount: 15, cobradoHoy: 0, pagosCount: 58 },
+   { id: "c4", nombre: "Luis Gómez", documento: "1.004.000.004", rol: "COBRADOR", telefono: null, activo: true, rutas: [{ id: "r4", nombre: "Ruta 4 · Occidente" }], clientesCount: 19, cobradoHoy: 240000, pagosCount: 87 },
+   { id: "c3", nombre: "Marta Díaz", documento: "1.003.000.003", rol: "COBRADOR", telefono: null, activo: true, rutas: [{ id: "r5", nombre: "Ruta 5 · Oriente" }], clientesCount: 26, cobradoHoy: 180000, pagosCount: 121 },
 ];
 
 // ---- Implementación simulada -------------------------------------------------
@@ -76,6 +84,9 @@ export const mockCobradoresService: CobradoresService = {
   async deleteCobrador() {
     await delay();
   },
+  async deleteCobradorPermanent() {
+    await delay();
+  },
 };
 
 // ---- Implementación real (se activa en el cableado, sub-fase 2.14) -----------
@@ -101,6 +112,12 @@ export const httpCobradoresService: CobradoresService = {
   },
   async deleteCobrador(id) {
     await apiFetchVoid(`/users/${id}`, { method: "DELETE", token: useSessionStore.getState().token });
+  },
+  async deleteCobradorPermanent(id) {
+    await apiFetchVoid(`/users/${id}/permanent`, {
+      method: "DELETE",
+      token: useSessionStore.getState().token,
+    });
   },
 };
 

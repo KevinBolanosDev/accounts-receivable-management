@@ -3,6 +3,7 @@ import type { PaymentHistoryItem } from "@repo/types";
 
 import { formatCurrency } from "@/shared/lib/format-currency";
 import { formatDateShort, formatDateTimeShort } from "@/shared/lib/format-date";
+import { cn } from "@/shared/lib/utils";
 import { Badge } from "@/shared/ui/badge";
 import {
   Table,
@@ -15,6 +16,7 @@ import {
 import {
   CUOTA_ESTADO_BADGE_STATUS,
   CUOTA_ESTADO_LABEL,
+  esCuotaAnulada,
   esCuotaSinPagar,
 } from "../lib/cuota-estado";
 
@@ -87,23 +89,33 @@ export function PaymentHistoryTable({
       <TableBody>
         {pagos.map((pago) => {
           const sinPagar = esCuotaSinPagar(pago.estado);
+          const anulada = esCuotaAnulada(pago.estado);
           return (
             <TableRow
               key={pago.id}
               data-estado={pago.estado}
-              className={pago.estado === "PENDING" ? "opacity-70" : ""}
+              className={pago.estado === "PENDING" || anulada ? "opacity-70" : ""}
             >
               {show("cuota") ? (
                 <TableCell className="tabular-nums">
-                  {pago.numeroCuota}
-                  {cuotasTotal ? (
-                    <span className="text-muted-foreground">/{cuotasTotal}</span>
-                  ) : null}
+                  {/* `numeroCuota` de una fila anulada es un sentinel (0), no
+                      un lugar real del cronograma — "0/30" leería como bug. */}
+                  {anulada ? (
+                    <span className="text-muted-foreground">—</span>
+                  ) : (
+                    <>
+                      {pago.numeroCuota}
+                      {cuotasTotal ? (
+                        <span className="text-muted-foreground">/{cuotasTotal}</span>
+                      ) : null}
+                    </>
+                  )}
                 </TableCell>
               ) : null}
               {show("vencimiento") ? (
                 <TableCell className="text-muted-foreground">
-                  {formatDateShort(pago.fechaVencimiento)}
+                  {/* Idem: no hay una fecha de vencimiento real que mostrar. */}
+                  {anulada ? "—" : formatDateShort(pago.fechaVencimiento)}
                 </TableCell>
               ) : null}
               {show("pago") ? (
@@ -121,7 +133,13 @@ export function PaymentHistoryTable({
                 <TableCell className="text-muted-foreground">{pago.reciboCodigo ?? "—"}</TableCell>
               ) : null}
               {show("monto") ? (
-                <TableCell className="text-right font-medium tabular-nums">
+                <TableCell
+                  className={cn(
+                    "text-right font-medium tabular-nums",
+                    anulada && "line-through text-muted-foreground",
+                  )}
+                >
+                  {/* Anulada SÍ tuvo monto — se tacha, no se oculta (auditoría). */}
                   {sinPagar ? "—" : formatCurrency(pago.monto)}
                 </TableCell>
               ) : null}

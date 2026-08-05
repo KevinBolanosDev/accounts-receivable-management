@@ -1,4 +1,5 @@
 import { Controller, Get, Header, Param } from "@nestjs/common";
+import { receiptSchema, type Receipt } from "@repo/types";
 
 import type { AuthenticatedUser } from "../../core/auth/auth-request";
 import { CurrentUser } from "../../core/auth/current-user.decorator";
@@ -22,5 +23,19 @@ export class ReceiptsController {
     @CurrentUser() user: AuthenticatedUser,
   ): Promise<string> {
     return this.receiptsService.getReceiptHtml(pagoId, user);
+  }
+
+  // JSON del recibo (a diferencia del handler de arriba, que sirve el HTML
+  // standalone). Lo usa `ReceiptScreen`: justo después de cobrar, el front
+  // navega a esta pantalla solo con el `pagoId` y necesita reconstruir el
+  // mensaje de WhatsApp (cliente, producto, monto, `reciboPublicUrl`) sin
+  // tener ya el `CobroResponse` a mano.
+  @Roles("ADMIN", "COBRADOR")
+  @Get(":pagoId")
+  async getReceipt(
+    @Param("pagoId") pagoId: string,
+    @CurrentUser() user: AuthenticatedUser,
+  ): Promise<Receipt> {
+    return receiptSchema.parse(await this.receiptsService.getReceipt(pagoId, user));
   }
 }

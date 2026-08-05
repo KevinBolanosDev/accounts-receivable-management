@@ -249,7 +249,7 @@ const CREDIT_DEMO_MORA: CreditoListItem = {
   cuotasTotal: 48,
 };
 
-// Historial con los CINCO estados de cuota, para revisar los badges, la
+// Historial con los SEIS estados de cuota, para revisar los badges, la
 // escalada por tiempo (Pendiente → Vencida → Mora) y las dos columnas de fecha
 // (vencimiento vs. pago real) sin depender del backend.
 const PAGOS_DEMO: PaymentHistoryItem[] = [
@@ -268,6 +268,7 @@ const PAGOS_DEMO: PaymentHistoryItem[] = [
     fechaPago: null,
     diasAtraso: 0,
     reciboCodigo: null,
+    anulado: false,
   },
   {
     id: "pg-d-4",
@@ -284,6 +285,7 @@ const PAGOS_DEMO: PaymentHistoryItem[] = [
     fechaPago: null,
     diasAtraso: 3,
     reciboCodigo: null,
+    anulado: false,
   },
   {
     id: "pg-d-3",
@@ -300,6 +302,7 @@ const PAGOS_DEMO: PaymentHistoryItem[] = [
     fechaPago: null,
     diasAtraso: 10,
     reciboCodigo: null,
+    anulado: false,
   },
   {
     id: "pg-d-2",
@@ -318,6 +321,7 @@ const PAGOS_DEMO: PaymentHistoryItem[] = [
     fechaPago: "2026-07-26T20:42:00.000Z",
     diasAtraso: 2,
     reciboCodigo: "R-PGD2",
+    anulado: false,
   },
   {
     id: "pg-d-1",
@@ -334,6 +338,25 @@ const PAGOS_DEMO: PaymentHistoryItem[] = [
     fechaPago: "2026-07-25T14:10:00.000Z",
     diasAtraso: 0,
     reciboCodigo: "R-PGD1",
+    anulado: false,
+  },
+  {
+    id: "pg-d-0",
+    creditoId: "cr-2041",
+    monto: 55_000,
+    fecha: "2026-07-23T09:15:00.000Z",
+    cobradorId: "u-2",
+    cobradorNombre: "Carlos Ramírez",
+    reciboUrl: null,
+    reciboPublicUrl: "https://example.com/r/token-0",
+    // Sentinel: una fila anulada no ocupa un lugar real del cronograma.
+    numeroCuota: 0,
+    estado: "ANULADO",
+    fechaVencimiento: "2026-07-23T09:15:00.000Z",
+    fechaPago: "2026-07-23T09:15:00.000Z",
+    diasAtraso: 0,
+    reciboCodigo: "R-PGD0",
+    anulado: true,
   },
 ];
 
@@ -351,6 +374,7 @@ const RECEIPT_DEMO: Receipt = {
   saldoRestante: 1_160_000,
   fecha: "2026-07-24T15:00:00.000Z",
   cobradorNombre: "Cobrador Demo",
+  anulado: false,
 };
 
 function ComboboxDemo() {

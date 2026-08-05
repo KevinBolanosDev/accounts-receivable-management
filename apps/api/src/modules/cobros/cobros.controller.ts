@@ -1,7 +1,9 @@
-import { Body, Controller, Post } from "@nestjs/common";
+import { Body, Controller, Delete, Param, Post } from "@nestjs/common";
 import {
+  anularPagoResponseSchema,
   cobroResponseSchema,
   createCobroRequestSchema,
+  type AnularPagoResponse,
   type CobroResponse,
   type CreateCobroRequest,
 } from "@repo/types";
@@ -32,5 +34,16 @@ export class CobrosController {
     // El controller re-parsea con `cobroResponseSchema` para mantener la
     // convención del proyecto y blindar el shape del contrato.
     return cobroResponseSchema.parse(result);
+  }
+
+  // Anular un pago mal registrado (ver `CobrosService.anularPago`). ADMIN y
+  // COBRADOR — el `@Roles` de la clase ya cubre este handler; el scoping por
+  // ruta del COBRADOR lo valida el service, no el controller.
+  @Delete(":pagoId")
+  async anularPago(
+    @Param("pagoId") pagoId: string,
+    @CurrentUser() user: AuthenticatedUser,
+  ): Promise<AnularPagoResponse> {
+    return anularPagoResponseSchema.parse(await this.cobrosService.anularPago(pagoId, user));
   }
 }

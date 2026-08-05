@@ -1,15 +1,28 @@
 import { useSessionStore } from "@/entities/session";
 import { apiFetch } from "@/shared/api/client";
-import { cobroResponseSchema, type CobroResponse, type CreateCobroRequest } from "@repo/types";
+import {
+  anularPagoResponseSchema,
+  cobroResponseSchema,
+  type AnularPagoResponse,
+  type CobroResponse,
+  type CreateCobroRequest,
+} from "@repo/types";
 
 // El flujo de lectura del cobrador ("Mis rutas" + detalle de ruta + detalle de
 // cliente) NO tiene un mock propio: reusa los servicios YA reales de
 // `features/routes-collectors` (`useRutas`/`useRuta`) y `features/clients`
 // (`useCliente`), ambos scoped por cobrador en el backend. Lo único propio de
-// "cobros" es el registro del pago (`POST /collections`, atómico, Fase 3.9).
+// "cobros" es el registro del pago (`POST /collections`, atómico, Fase 3.9) y
+// anular un pago mal registrado (`DELETE /collections/:pagoId`).
 
 export interface CobrosService {
   registrarCobro(body: CreateCobroRequest): Promise<CobroResponse>;
+  /**
+   * Anula un pago (nunca se edita — ver `CobrosService.anularPago` en el
+   * back): devuelve el saldo al crédito y, si lo había saldado, lo reabre.
+   * La corrección es registrar un cobro nuevo con el monto correcto.
+   */
+  anularPago(pagoId: string): Promise<AnularPagoResponse>;
 }
 
 const delay = (ms = 450) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -24,6 +37,10 @@ export const mockCobrosService: CobrosService = {
     }
     throw new Error("mockCobrosService no implementa un backend fake — usa httpCobrosService.");
   },
+  async anularPago() {
+    await delay();
+    throw new Error("mockCobrosService no implementa un backend fake — usa httpCobrosService.");
+  },
 };
 
 export const httpCobrosService: CobrosService = {
@@ -31,6 +48,12 @@ export const httpCobrosService: CobrosService = {
     return apiFetch("/collections", cobroResponseSchema, {
       method: "POST",
       body,
+      token: useSessionStore.getState().token,
+    });
+  },
+  anularPago(pagoId) {
+    return apiFetch(`/collections/${pagoId}`, anularPagoResponseSchema, {
+      method: "DELETE",
       token: useSessionStore.getState().token,
     });
   },

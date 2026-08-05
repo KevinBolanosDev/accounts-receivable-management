@@ -5,12 +5,18 @@ import request from "supertest";
 import { App } from "supertest/types";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { Prisma, PrismaClient } from "@prisma/client";
-import { cobroResponseSchema, loginResponseSchema, rutaDetailSchema } from "@repo/types";
+import {
+  anularPagoResponseSchema,
+  cobroResponseSchema,
+  loginResponseSchema,
+  rutaDetailSchema,
+} from "@repo/types";
 import { AppModule } from "../src/app.module";
 import { seedAdminId } from "./helpers/tenant";
 
 const ADMIN = { documento: "1000000001", password: "admin123" };
 const COLLECTOR_A = { documento: "1000000002", password: "cobrador123" };
+const COLLECTOR_B = { documento: "1000000003", password: "cobrador123" };
 const ROUTE_PREFIX = "Cobros E2E";
 const PRODUCTO_NOMBRE = "Producto Cobros E2E";
 
@@ -32,6 +38,7 @@ describe("CobrosController (e2e)", () => {
   let clienteId: string;
   let creditoId: string;
   let segundoCreditoId: string;
+  let creditoChicoId: string; // dedicado a los tests de "anular pago"
 
   beforeAll(async () => {
     const adminId = await seedAdminId(prisma);
@@ -77,6 +84,27 @@ describe("CobrosController (e2e)", () => {
       });
     creditoId = (await crear(`CR-CBR-A-${Date.now()}`)).id;
     segundoCreditoId = (await crear(`CR-CBR-B-${Date.now()}`)).id;
+
+    // Crédito chico y aislado para "anular pago": una sola cuota, para poder
+    // saldarlo con un pago y probar que anularlo lo reabre.
+    creditoChicoId = (
+      await prisma.credito.create({
+        data: {
+          codigo: `CR-CBR-ANUL-${Date.now()}`,
+          clienteId: cliente.id,
+          productoId: producto.id,
+          adminId,
+          monto: new Prisma.Decimal(5000),
+          interes: new Prisma.Decimal(0),
+          cuotas: 1,
+          dias: 1,
+          montoTotal: new Prisma.Decimal(5000),
+          cuotaDiaria: new Prisma.Decimal(5000),
+          saldoPendiente: new Prisma.Decimal(5000),
+          estado: "ACTIVO",
+        },
+      })
+    ).id;
   });
 
   beforeEach(async () => {
@@ -210,5 +238,87 @@ describe("CobrosController (e2e)", () => {
     // El bug concreto: con dos créditos pagados hoy, el total NO puede ser
     // igual al último pago suelto.
     expect(cliente!.totalCobradoHoy).toBeGreaterThan(cliente!.cobroHoy!.monto);
+  });
+
+  describe("DELETE /collections/:pagoId (anular pago)", () => {
+    // Un pago mal registrado nunca se edita: se anula (el registro queda,
+    // marcado) y el saldo vuelve al crédito. Corregir = anular + cobrar de
+    // nuevo con el monto correcto — el mismo POST /collections de siempre.
+    it("devuelve el saldo al crédito y reabre el crédito si estaba PAGADO", async () => {
+      const collector = await login(app, COLLECTOR_A);
+
+      // Salda el crédito chico de un solo golpe (monto total = 5000).
+      const cobro = await request(app.getHttpServer())
+        .post("/collections")
+        .set("Authorization", `Bearer ${collector.token}`)
+        .send({ creditoId: creditoChicoId, monto: 5000 })
+        .expect(201);
+      const { pago, credito } = cobroResponseSchema.parse(cobro.body);
+      expect(credito.estado).toBe("PAGADO");
+      expect(credito.saldoPendiente).toBe(0);
+
+      const anulado = await request(app.getHttpServer())
+        .delete(`/collections/${pago.id}`)
+        .set("Authorization", `Bearer ${collector.token}`)
+        .expect(200);
+      const body = anularPagoResponseSchema.parse(anulado.body);
+
+      expect(body.pago.anulado).toBe(true);
+      // Reabierto: el crédito vuelve a ACTIVO y el saldo completo regresa.
+      expect(body.credito.estado).toBe("ACTIVO");
+      expect(body.credito.saldoPendiente).toBe(5000);
+
+      // Y el pago queda marcado en la base — nunca se borró.
+      const enDb = await prisma.pago.findUniqueOrThrow({ where: { id: pago.id } });
+      expect(enDb.anulado).toBe(true);
+      expect(enDb.anuladoAt).not.toBeNull();
+      expect(enDb.anuladoPorId).toBeTruthy();
+    });
+
+    it("rechaza anular el mismo pago dos veces", async () => {
+      const collector = await login(app, COLLECTOR_A);
+
+      const cobro = await request(app.getHttpServer())
+        .post("/collections")
+        .set("Authorization", `Bearer ${collector.token}`)
+        .send({ creditoId, monto: 111 })
+        .expect(201);
+      const { pago } = cobroResponseSchema.parse(cobro.body);
+
+      await request(app.getHttpServer())
+        .delete(`/collections/${pago.id}`)
+        .set("Authorization", `Bearer ${collector.token}`)
+        .expect(200);
+
+      // Segunda vez: ya está anulado, 409.
+      await request(app.getHttpServer())
+        .delete(`/collections/${pago.id}`)
+        .set("Authorization", `Bearer ${collector.token}`)
+        .expect(409);
+    });
+
+    it("un cobrador de otra ruta no puede anular el pago", async () => {
+      const collectorA = await login(app, COLLECTOR_A);
+      const cobro = await request(app.getHttpServer())
+        .post("/collections")
+        .set("Authorization", `Bearer ${collectorA.token}`)
+        .send({ creditoId, monto: 222 })
+        .expect(201);
+      const { pago } = cobroResponseSchema.parse(cobro.body);
+
+      const collectorB = await login(app, COLLECTOR_B);
+      await request(app.getHttpServer())
+        .delete(`/collections/${pago.id}`)
+        .set("Authorization", `Bearer ${collectorB.token}`)
+        .expect(403);
+    });
+
+    it("404 para un pago inexistente", async () => {
+      const admin = await login(app, ADMIN);
+      await request(app.getHttpServer())
+        .delete("/collections/00000000-0000-0000-0000-000000000000")
+        .set("Authorization", `Bearer ${admin.token}`)
+        .expect(404);
+    });
   });
 });

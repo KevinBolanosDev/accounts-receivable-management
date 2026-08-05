@@ -30,10 +30,21 @@ export class AuthClienteService {
   async login(body: ClientLoginRequest): Promise<ClientLoginResponse> {
     const cliente = await this.repository.findByDocumento(body.documento);
 
-    if (!cliente || cliente.passwordHash === null) {
-      // Mismo mensaje para inexistente vs sin acceso: NO se revela si el
-      // documento existe. Esto protege contra enumeración (el `documento`
-      // es público y enumerable — el único secreto es la contraseña).
+    // Ningún admin le da cartera (todas sus relaciones `ClientAdmin` están en
+    // `activo: false`, o nunca tuvo ninguna). Antes de este chequeo, dar de
+    // baja a un cliente NO le cerraba el acceso al portal si ya tenía
+    // contraseña generada — el login solo miraba `passwordHash`, nunca la
+    // relación. Un cliente compartido por varios admins (`ClientAdmin[]`)
+    // conserva su acceso mientras a alguno de ellos le siga siendo cartera
+    // activa: la baja es POR RELACIÓN, no un interruptor único del cliente.
+    const tieneAdminActivo = cliente?.admins.some((a) => a.activo) ?? false;
+
+    if (!cliente || cliente.passwordHash === null || !tieneAdminActivo) {
+      // Mismo mensaje para los tres casos: NO se revela si el documento
+      // existe, si tiene acceso, o si fue dado de baja. Esto protege contra
+      // enumeración (el `documento` es público y enumerable — el único
+      // secreto es la contraseña, y el estado de la cuenta es igual de
+      // sensible).
       throw new UnauthorizedException("Documento o contraseña incorrectos.");
     }
 

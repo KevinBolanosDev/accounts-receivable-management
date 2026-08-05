@@ -17,12 +17,18 @@ import { pagoSchema } from "./payment";
 //
 // Antes había un solo estado `MISSED` para todo lo no pagado, así que una cuota
 // que vencía hoy se veía igual de mal que una de hace un mes.
+//
+// ANULADO: el pago se registró y después se anuló (error de tipeo, cuota
+// equivocada). Es una fila de AUDITORÍA — no ocupa un lugar en el cronograma
+// (su `numeroCuota` es 0, ver `buildPaymentHistory`) y el período que
+// "liberó" vuelve a aparecer como pendiente en una fila aparte.
 export const cuotaEstadoSchema = z.enum([
   "ON_TIME",
   "LATE",
   "PENDING",
   "OVERDUE",
   "DEFAULTED",
+  "ANULADO",
 ]);
 export type CuotaEstado = z.infer<typeof cuotaEstadoSchema>;
 
@@ -35,6 +41,9 @@ export const DIAS_PARA_MORA = 7;
 // sintético, `monto` = 0, `fechaPago` = null y `reciboCodigo`/`reciboPublicUrl`
 // = null (no hay recibo que mostrar ni que compartir).
 export const paymentHistoryItemSchema = pagoSchema.extend({
+  // `0` = fila de auditoría (estado `ANULADO`): no ocupa un número real del
+  // cronograma, así que "Cuota 0/N" nunca debe renderizarse — la UI la
+  // distingue por `estado`, no por este valor.
   numeroCuota: z.number().int(),
   estado: cuotaEstadoSchema,
   // Cuándo TOCABA pagar la cuota. Siempre presente.

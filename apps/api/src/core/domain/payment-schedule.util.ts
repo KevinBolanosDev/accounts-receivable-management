@@ -158,14 +158,25 @@ export interface PaymentScheduleRow {
   cobradorId: string;
   cobradorNombre: string | null;
   reciboUrl: string | null;
+  // Un pago anulado NO cuenta como cuota pagada — ver el comentario grande
+  // más abajo. Opcional para no romper al llamador que todavía no lo pasa
+  // (equivale a "nunca anulado", el comportamiento de siempre).
+  anulado?: boolean;
 }
 
-// Construye el historial enriquecido de un crédito: cada pago real recibe un
-// `numeroCuota` (orden cronológico, 1er pago = cuota 1 — ver decisión #13) y
-// un `estado` (`ON_TIME` si su día de calendario es igual o anterior al
-// esperado, `LATE` si es posterior). Los períodos ya vencidos sin pago
-// correspondiente se agregan como filas sintéticas sin pagar (no persisten en
-// `Pago`, `monto: 0`, `reciboCodigo: null`).
+// Construye el historial enriquecido de un crédito: cada pago VIGENTE (no
+// anulado) recibe un `numeroCuota` (orden cronológico, 1er pago = cuota 1 —
+// ver decisión #13) y un `estado` (`ON_TIME` si su día de calendario es igual
+// o anterior al esperado, `LATE` si es posterior). Los períodos ya vencidos
+// sin pago correspondiente se agregan como filas sintéticas sin pagar (no
+// persisten en `Pago`, `monto: 0`, `reciboCodigo: null`).
+//
+// Los pagos ANULADOS se excluyen de ese cálculo por completo (como si nunca
+// hubieran pasado: el período que "ocupaban" vuelve a contar como pendiente,
+// que es la realidad — la plata se devolvió) y se agregan APARTE, al final,
+// como filas de auditoría con `numeroCuota: 0` y `estado: "ANULADO"`. Nunca
+// desaparecen del historial (mismo principio que anular un crédito: se
+// anula, no se borra), pero tampoco se mezclan con el cronograma real.
 export function buildPaymentHistory(
   credito: PaymentScheduleCredito,
   pagosOrdenados: PaymentScheduleRow[], // ordenados por `fecha` ascendente
@@ -176,7 +187,10 @@ export function buildPaymentHistory(
   // caller (que sí tiene `ReceiptTokenService`) decide cómo construirla.
   buildPublicUrl?: (pagoId: string) => string,
 ): PaymentHistoryItem[] {
-  const historial: PaymentHistoryItem[] = pagosOrdenados.map((pago, index) => {
+  const pagosVigentes = pagosOrdenados.filter((p) => !p.anulado);
+  const pagosAnulados = pagosOrdenados.filter((p) => p.anulado);
+
+  const historial: PaymentHistoryItem[] = pagosVigentes.map((pago, index) => {
     const numeroCuota = index + 1;
     const fechaEsperada = fechaVencimientoCuota(
       credito.fechaInicio,
@@ -202,13 +216,14 @@ export function buildPaymentHistory(
       diasAtraso,
       reciboCodigo: buildReciboCodigo(pago.id),
       reciboPublicUrl: buildPublicUrl?.(pago.id) ?? null,
+      anulado: false,
     };
   });
 
   const cuotasVencidas = cuotasVencidasAlDia(credito, today);
-  const cuotasFaltantes = Math.max(0, cuotasVencidas - pagosOrdenados.length);
+  const cuotasFaltantes = Math.max(0, cuotasVencidas - pagosVigentes.length);
   for (let i = 0; i < cuotasFaltantes; i++) {
-    const numeroCuota = pagosOrdenados.length + i + 1;
+    const numeroCuota = pagosVigentes.length + i + 1;
     const fechaEsperada = fechaVencimientoCuota(
       credito.fechaInicio,
       numeroCuota,
@@ -239,10 +254,36 @@ export function buildPaymentHistory(
       // enlace que compartir.
       reciboCodigo: null,
       reciboPublicUrl: null,
+      anulado: false,
     });
   }
 
-  // Más reciente (o más próxima a vencer) primero.
+  // Filas de auditoría: se agregan al final, agrupadas, y nunca se mezclan
+  // con la numeración real del cronograma (`numeroCuota: 0`).
+  for (const pago of pagosAnulados) {
+    historial.push({
+      id: pago.id,
+      creditoId: pago.creditoId,
+      monto: pago.monto,
+      fecha: pago.fecha.toISOString(),
+      cobradorId: pago.cobradorId,
+      cobradorNombre: pago.cobradorNombre,
+      reciboUrl: pago.reciboUrl,
+      numeroCuota: 0,
+      estado: "ANULADO",
+      // No hay "fecha esperada" real para una fila anulada — se usa la fecha
+      // en la que se había registrado, que es el único dato honesto acá.
+      fechaVencimiento: pago.fecha.toISOString(),
+      fechaPago: pago.fecha.toISOString(),
+      diasAtraso: 0,
+      reciboCodigo: buildReciboCodigo(pago.id),
+      reciboPublicUrl: buildPublicUrl?.(pago.id) ?? null,
+      anulado: true,
+    });
+  }
+
+  // Más reciente (o más próxima a vencer) primero; las anuladas (numeroCuota
+  // 0) quedan agrupadas al final.
   return historial.sort((a, b) => b.numeroCuota - a.numeroCuota);
 }
 

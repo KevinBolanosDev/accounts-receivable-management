@@ -1,11 +1,17 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { ImageIcon, Loader2Icon, TriangleAlertIcon, XIcon } from "lucide-react";
+import { CameraIcon, ImageIcon, Loader2Icon, TriangleAlertIcon, XIcon } from "lucide-react";
 import { ALLOWED_DOCUMENT_PHOTO_MIME, MAX_DOCUMENT_PHOTO_BYTES } from "@repo/types";
 
 import { ApiError } from "@/shared/api/client";
 import { cn } from "@/shared/lib/utils";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/shared/ui/dropdown-menu";
 
 import { useUploadFotoDocumento } from "../api/use-clientes";
 
@@ -17,7 +23,7 @@ interface DocumentUploaderProps {
   onChange: (path: string | null) => void;
   /** Se dispara con `true` mientras sube y `false` al terminar (éxito o error). */
   onUploadingChange?: (uploading: boolean) => void;
-  /** Abre la cámara nativa en móvil (pantalla 17c). */
+  /** Ofrece "Tomar foto" (cámara nativa) además de "Elegir de galería" (pantalla 17c). */
   capture?: boolean;
   /** Texto del estado vacío (ej. "Agregar frente"). */
   placeholder?: string;
@@ -48,6 +54,39 @@ function validateFile(file: File): string | null {
 // `preview` local, así que las fotos guardadas nunca se veían. El estado
 // explícito (`status`) y separar `previewUrl` (servidor) de `localPreview`
 // (objectURL) cierran ambos huecos.
+//
+// `capture` ofrece DOS fuentes (cámara + galería) en vez de forzar una sola:
+// dos `<input type="file">` ocultos (uno con `capture="environment"`, otro
+// sin el atributo) detrás de un menú, porque `capture` es estático por input
+// — no se puede alternar en runtime en el mismo elemento.
+function PhotoSourceMenu({
+  capture,
+  onPickCamera,
+  onPickGallery,
+  children,
+}: {
+  capture?: boolean;
+  onPickCamera: () => void;
+  onPickGallery: () => void;
+  children: React.ReactElement;
+}) {
+  if (!capture) return children;
+
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>{children}</DropdownMenuTrigger>
+      <DropdownMenuContent align="start">
+        <DropdownMenuItem onSelect={onPickCamera}>
+          <CameraIcon /> Tomar foto
+        </DropdownMenuItem>
+        <DropdownMenuItem onSelect={onPickGallery}>
+          <ImageIcon /> Elegir de galería
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
+
 export function DocumentUploader({
   value,
   previewUrl,
@@ -56,7 +95,8 @@ export function DocumentUploader({
   capture,
   placeholder = "Agregar foto",
 }: DocumentUploaderProps) {
-  const inputRef = useRef<HTMLInputElement>(null);
+  const cameraInputRef = useRef<HTMLInputElement>(null);
+  const galleryInputRef = useRef<HTMLInputElement>(null);
   const [localPreview, setLocalPreview] = useState<string | null>(null);
   const [meta, setMeta] = useState<{ name: string; size: number } | null>(null);
   const [status, setStatus] = useState<Status>(value ? "done" : "idle");
@@ -116,12 +156,18 @@ export function DocumentUploader({
     setStatus("idle");
     setErrorMessage(null);
     onChange(null);
-    if (inputRef.current) inputRef.current.value = "";
+    if (cameraInputRef.current) cameraInputRef.current.value = "";
+    if (galleryInputRef.current) galleryInputRef.current.value = "";
   }
 
-  function retry() {
-    setStatus("idle");
-    setErrorMessage(null);
+  // Reabrir el picker (cámara o galería) desde el estado de error primero lo
+  // saca del error — igual que el "Reintentar" original, antes de esperar a
+  // que el usuario efectivamente elija un archivo.
+  function openSource(inputRef: React.RefObject<HTMLInputElement | null>) {
+    if (status === "error") {
+      setStatus("idle");
+      setErrorMessage(null);
+    }
     inputRef.current?.click();
   }
 
@@ -142,13 +188,22 @@ export function DocumentUploader({
   return (
     <>
       <input
-        ref={inputRef}
+        ref={galleryInputRef}
         type="file"
         accept="image/*"
-        {...(capture ? { capture: "environment" as const } : {})}
         className="sr-only"
         onChange={(e) => handleFile(e.target.files?.[0])}
       />
+      {capture ? (
+        <input
+          ref={cameraInputRef}
+          type="file"
+          accept="image/*"
+          capture="environment"
+          className="sr-only"
+          onChange={(e) => handleFile(e.target.files?.[0])}
+        />
+      ) : null}
 
       {filled ? (
         <div
@@ -184,23 +239,19 @@ export function DocumentUploader({
               {meta && status !== "error" ? ` · ${formatSize(meta.size)}` : ""}
             </span>
           </div>
-          {status === "error" ? (
+          <PhotoSourceMenu
+            capture={capture}
+            onPickCamera={() => openSource(cameraInputRef)}
+            onPickGallery={() => openSource(galleryInputRef)}
+          >
             <button
               type="button"
-              onClick={retry}
+              onClick={capture ? undefined : () => openSource(galleryInputRef)}
               className="text-sm font-medium text-primary hover:underline"
             >
-              Reintentar
+              {status === "error" ? "Reintentar" : "Cambiar"}
             </button>
-          ) : (
-            <button
-              type="button"
-              onClick={() => inputRef.current?.click()}
-              className="text-sm font-medium text-primary hover:underline"
-            >
-              Cambiar
-            </button>
-          )}
+          </PhotoSourceMenu>
           <button
             type="button"
             onClick={clear}
@@ -211,23 +262,29 @@ export function DocumentUploader({
           </button>
         </div>
       ) : (
-        <button
-          type="button"
-          onClick={() => inputRef.current?.click()}
-          className={cn(
-            "flex items-center gap-3 rounded-lg border border-dashed border-border bg-background p-3 text-left transition-colors hover:bg-muted",
-          )}
+        <PhotoSourceMenu
+          capture={capture}
+          onPickCamera={() => openSource(cameraInputRef)}
+          onPickGallery={() => openSource(galleryInputRef)}
         >
-          <span className="flex size-12 shrink-0 items-center justify-center rounded-md bg-muted text-muted-foreground">
-            <ImageIcon className="size-5" />
-          </span>
-          <div className="flex flex-col">
-            <span className="text-sm font-medium">{placeholder}</span>
-            <span className="text-caption text-muted-foreground">
-              {capture ? "Tomar con la cámara" : "JPG o PNG, máx. 5 MB"}
+          <button
+            type="button"
+            onClick={capture ? undefined : () => openSource(galleryInputRef)}
+            className={cn(
+              "flex items-center gap-3 rounded-lg border border-dashed border-border bg-background p-3 text-left transition-colors hover:bg-muted",
+            )}
+          >
+            <span className="flex size-12 shrink-0 items-center justify-center rounded-md bg-muted text-muted-foreground">
+              <ImageIcon className="size-5" />
             </span>
-          </div>
-        </button>
+            <div className="flex flex-col">
+              <span className="text-sm font-medium">{placeholder}</span>
+              <span className="text-caption text-muted-foreground">
+                {capture ? "Cámara o galería" : "JPG o PNG, máx. 5 MB"}
+              </span>
+            </div>
+          </button>
+        </PhotoSourceMenu>
       )}
     </>
   );

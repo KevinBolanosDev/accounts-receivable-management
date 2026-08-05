@@ -98,6 +98,7 @@ export class ClientPortalService {
         cobradorId: p.cobradorId,
         cobradorNombre: p.cobrador?.nombre ?? null,
         reciboUrl: p.reciboUrl ?? null,
+        anulado: p.anulado,
       })),
       new Date(),
       (pagoId) => this.receiptToken.buildPublicUrl(pagoId),

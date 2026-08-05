@@ -8,6 +8,13 @@ export const cobradorListItemSchema = usuarioSchema.extend({
   rutas: z.array(z.object({ id: z.string(), nombre: z.string() })),
   clientesCount: z.number().int(),
   cobradoHoy: z.number(),
+  // Cuántos `Pago` tiene este cobrador en toda su historia (no solo hoy). Es
+  // lo que decide si el botón "Eliminar permanentemente" está habilitado:
+  // `Pago.cobradorId` es `onDelete: Restrict`, así que un cobrador con algún
+  // pago registrado NO se puede borrar de verdad sin perder el rastro de
+  // quién cobró qué — solo desactivar. `.default(0)` porque es un campo de
+  // respuesta nuevo (lector tolerante, ver CLAUDE.md raíz).
+  pagosCount: z.number().int().nonnegative().default(0),
 });
 export type CobradorListItem = z.infer<typeof cobradorListItemSchema>;
 

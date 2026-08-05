@@ -32,7 +32,6 @@ export function CreditoDetailScreen({ creditoId }: { creditoId: string }) {
   const { data: credito, isLoading } = useCredito(creditoId);
   const anular = useAnularCredito();
   const [confirmOpen, setConfirmOpen] = useState(false);
-  const tienePagos = (credito?.pagos?.length ?? 0) > 0;
 
   if (isLoading || !credito) {
     return (
@@ -80,10 +79,12 @@ export function CreditoDetailScreen({ creditoId }: { creditoId: string }) {
                 label: "Editar",
                 icon: <PencilIcon />,
                 href: `/admin/credits/${credito.id}/edit`,
-                disabled: tienePagos || credito.estado !== "ACTIVO",
-                disabledReason: tienePagos
-                  ? "No se puede editar un crédito con pagos."
-                  : "Solo se editan créditos activos.",
+                // Esta pantalla es ADMIN-only (`/admin/credits/[id]`), así que
+                // no hace falta chequear rol acá: el backend igual lo exige
+                // (`CreditosService.update`) para el caso en que alguien
+                // golpee el endpoint directo.
+                disabled: credito.estado !== "ACTIVO",
+                disabledReason: "Solo se editan créditos activos.",
               },
               {
                 id: "anular",

@@ -23,5 +23,17 @@ export const receiptSchema = z.object({
   saldoRestante: z.number(),
   fecha: z.string(),
   cobradorNombre: z.string(),
+  // Enlace público firmado (`/r/:token`) y teléfono del cliente — lo que le
+  // falta a este shape para armar el mensaje de WhatsApp sin otro round-trip.
+  // `.optional()` porque son campos nuevos de respuesta (lector tolerante,
+  // ver CLAUDE.md raíz): el HTML server-rendered nunca los necesitó y no
+  // todos los llamadores de `loadReceipt` los completan.
+  reciboPublicUrl: z.string().url().nullable().optional(),
+  clienteTelefono: z.string().nullable().optional(),
+  // El pago detrás de este recibo fue anulado DESPUÉS de compartirlo. El
+  // enlace (`/r/:token`, 90 días) sigue siendo válido — el HTML lo marca
+  // como anulado en vez de seguir mostrando el pago como vigente, para que
+  // quien abra un link viejo no crea que esa plata sigue contando.
+  anulado: z.boolean().default(false),
 });
 export type Receipt = z.infer<typeof receiptSchema>;

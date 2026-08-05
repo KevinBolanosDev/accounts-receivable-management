@@ -54,9 +54,21 @@ export class ClientsService {
     return clients.map((client) => this.toListItem(client));
   }
 
-  async findOne(id: string, user: AuthenticatedUser): Promise<ClienteDetail> {
+  // `query.estado` deja pedir un cliente INACTIVO explícitamente (ADMIN-only,
+  // ver `scopedWhere`) — lo usa la pantalla de "Clientes inactivos" para
+  // previsualizar sus créditos abiertos antes de reactivarlo. Sin `estado`
+  // (el caso de siempre) se comporta igual que antes: solo activos.
+  async findOne(
+    id: string,
+    user: AuthenticatedUser,
+    query: ClientesQuery = {},
+  ): Promise<ClienteDetail> {
     const adminId = requireAdminId(user);
-    const client = await this.clientsRepository.findById(id, this.scopeWhere(user), adminId);
+    const client = await this.clientsRepository.findById(
+      id,
+      this.scopedWhere(user, query),
+      adminId,
+    );
     if (!client) throw new NotFoundException("Cliente no encontrado.");
     const signedUrls = await this.signDocumentPhotos([client]);
     return this.toDetail(client, signedUrls);
@@ -231,6 +243,40 @@ export class ClientsService {
     );
   }
 
+  // Reactivación DIRECTA desde la pantalla "Clientes inactivos" — a
+  // diferencia de `reactivate` (privado, arriba), que revive al cliente como
+  // efecto secundario de un alta con el mismo documento y PISA sus datos con
+  // los del formulario nuevo, esta acción no pide nada: solo vuelve a activar
+  // la relación tal cual estaba. Es la vía pensada para "me equivoqué, no
+  // quería darlo de baja" o "vuelve a cobrar con este cliente" sin re-tipear
+  // nombre/teléfono/dirección que no cambiaron.
+  async reactivateInactive(id: string, user: AuthenticatedUser): Promise<ClienteDetail> {
+    const adminId = requireAdminId(user);
+    const client = await this.clientsRepository.findById(
+      id,
+      { admins: { some: { adminId, activo: false } } },
+      adminId,
+    );
+    if (!client) {
+      throw new NotFoundException("Cliente no encontrado o ya está activo.");
+    }
+
+    const updated = await this.clientsRepository.update(
+      id,
+      {
+        admins: {
+          update: {
+            where: { clientId_adminId: { clientId: id, adminId } },
+            data: { activo: true },
+          },
+        },
+      },
+      adminId,
+    );
+    const signedUrls = await this.signDocumentPhotos([updated]);
+    return { ...this.toDetail(updated, signedUrls), reactivado: true };
+  }
+
   // Fase 4.13 — genera (o resetea) el acceso del cliente al portal: password
   // temporal + `mustChangePassword=true` + expiración de 24h. El staff ve
   // `temporaryPassword` UNA sola vez (no se persiste en claro).
@@ -361,11 +407,15 @@ export class ClientsService {
 
   private scopedWhere(user: AuthenticatedUser, query: ClientesQuery): Prisma.ClienteWhereInput {
     const adminId = requireAdminId(user);
+    // `estado` es ADMIN-only: un COBRADOR nunca tuvo motivo para navegar la
+    // cartera dada de baja de su admin, así que cualquier valor que mande se
+    // ignora y cae al default de siempre ("activos").
+    const estado = user.rol === "ADMIN" ? (query.estado ?? "activos") : "activos";
     return {
       admins: {
         some: {
           adminId,
-          activo: true,
+          ...(estado === "todos" ? {} : { activo: estado === "inactivos" ? false : true }),
           ...(user.rol === "COBRADOR" ? { ruta: { cobradorId: user.sub, activa: true } } : {}),
           ...(query.rutaId ? { rutaId: query.rutaId } : {}),
         },
@@ -558,6 +608,7 @@ export class ClientsService {
             cobradorId: pago.cobradorId,
             cobradorNombre: pago.cobrador?.nombre ?? null,
             reciboUrl: pago.reciboUrl,
+            anulado: pago.anulado,
           })),
           hoy,
           (pagoId) => this.receiptToken.buildPublicUrl(pagoId),

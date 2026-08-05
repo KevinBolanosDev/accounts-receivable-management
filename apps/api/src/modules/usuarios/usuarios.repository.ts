@@ -11,6 +11,7 @@ const cobradorInclude = {
       _count: { select: { clientAdmins: { where: { activo: true } } } },
     },
   },
+  _count: { select: { pagos: true } },
 } satisfies Prisma.UsuarioInclude;
 
 export type CobradorWithRelations = Prisma.UsuarioGetPayload<{ include: typeof cobradorInclude }>;
@@ -81,6 +82,27 @@ export class UsuariosRepository {
         where: { id, adminId, rol: "COBRADOR" },
         data: { activo: false },
       }),
+    ]);
+  }
+
+  // `Pago.cobradorId` es `onDelete: Restrict` — un cobrador con algún pago en
+  // su historia NO se puede borrar de verdad (Postgres rechaza el DELETE), así
+  // que el service consulta esto ANTES de intentarlo para devolver un 409 con
+  // mensaje claro en vez de un error de FK opaco.
+  countPagos(cobradorId: string): Promise<number> {
+    return this.prisma.pago.count({ where: { cobradorId } });
+  }
+
+  // Borrado FÍSICO. Mismo primer paso que `softDelete` (liberar sus rutas)
+  // pero termina en `delete`, no en `activo:false`. Seguro de llamar solo
+  // cuando `countPagos` dio 0 — el service es quien lo garantiza.
+  async hardDelete(id: string, adminId: string): Promise<void> {
+    await this.prisma.$transaction([
+      this.prisma.ruta.updateMany({
+        where: { cobradorId: id, adminId },
+        data: { cobradorId: null },
+      }),
+      this.prisma.usuario.deleteMany({ where: { id, adminId, rol: "COBRADOR" } }),
     ]);
   }
 }

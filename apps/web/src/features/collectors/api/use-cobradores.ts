@@ -58,3 +58,16 @@ export function useDeleteCobrador() {
     },
   });
 }
+
+export function useDeleteCobradorPermanent() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => cobradoresService.deleteCobradorPermanent(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: cobradoresKeys.all });
+      queryClient.invalidateQueries({ queryKey: cobradoresKeys.summary });
+      queryClient.invalidateQueries({ queryKey: ["rutas"] });
+      queryClient.invalidateQueries({ queryKey: ["clientes"] });
+    },
+  });
+}

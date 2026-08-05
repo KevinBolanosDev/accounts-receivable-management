@@ -3,6 +3,10 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { ArrowLeftIcon } from "lucide-react";
+import type { Receipt } from "@repo/types";
+
+import { ReceiptActions } from "@/entities/receipt";
+import { printHtmlDocument } from "@/shared/lib/print";
 
 import { receiptsService } from "../api/receipts-service";
 
@@ -10,11 +14,13 @@ interface ReceiptScreenProps {
   pagoId: string;
 }
 
-// Barra superior con "volver". El recibo se abre justo después de registrar un
-// cobro (`router.push`) y también desde el historial, así que la pantalla es un
-// callejón sin salida sin esto: el iframe ocupa todo el alto y el tab bar queda
-// tapado. `router.back()` respeta de dónde se vino en ambos casos.
-function ReceiptTopBar() {
+// Barra superior con "volver" + acciones (compartir/descargar). El recibo se
+// abre justo después de registrar un cobro (`router.push`) y también desde el
+// historial, así que la pantalla es un callejón sin salida sin el back — y,
+// hasta acá, también sin forma de compartirlo: era la única pantalla de
+// recibo sin `ReceiptActions`, así que justo después de cobrar no había cómo
+// mandarlo por WhatsApp (había que ir al historial y buscar la misma fila).
+function ReceiptTopBar({ actions }: { actions?: React.ReactNode }) {
   const router = useRouter();
 
   return (
@@ -27,7 +33,8 @@ function ReceiptTopBar() {
       >
         <ArrowLeftIcon className="size-5" />
       </button>
-      <span className="text-body-sm font-semibold">Recibo</span>
+      <span className="flex-1 text-body-sm font-semibold">Recibo</span>
+      {actions}
     </header>
   );
 }
@@ -49,6 +56,10 @@ type ReceiptState =
 // localmente porque es exactamente lo que queremos hacer aquí.
 function ReceiptScreenInner({ pagoId }: ReceiptScreenProps) {
   const [state, setState] = useState<ReceiptState>({ status: "loading" });
+  // Aparte del HTML: un fallo acá no debe tumbar la vista del recibo, solo
+  // dejar "Compartir" apagado (mismo criterio que en el resto de la app — un
+  // botón deshabilitado con motivo, nunca uno que promete algo que no pasa).
+  const [data, setData] = useState<Receipt | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -63,6 +74,24 @@ function ReceiptScreenInner({ pagoId }: ReceiptScreenProps) {
         if (cancelled) return;
         const message = err instanceof Error ? err.message : "Error al cargar el recibo.";
         setState({ status: "error", message });
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [pagoId]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    void receiptsService
+      .getData(pagoId)
+      .then((value) => {
+        if (!cancelled) setData(value);
+      })
+      .catch(() => {
+        // Silencioso a propósito: `data` se queda en `null` y las acciones se
+        // pintan deshabilitadas en vez de romper la pantalla.
       });
 
     return () => {
@@ -92,12 +121,41 @@ function ReceiptScreenInner({ pagoId }: ReceiptScreenProps) {
     );
   }
 
+  const html = state.html;
+
   return (
     <div className="flex min-h-full flex-col">
-      <ReceiptTopBar />
+      <ReceiptTopBar
+        actions={
+          <ReceiptActions
+            actions={["download", "share"]}
+            onDownload={() => {
+              // Reusa el MISMO HTML que ya está en pantalla (el del iframe) —
+              // sin re-pedirlo — así que el PDF generado es idéntico a lo que
+              // se ve. `printHtmlDocument` es el iframe fuera de pantalla con
+              // layout real (ver `shared/lib/print.ts`); un `window.print()`
+              // acá imprimiría también esta barra y el shell de la app.
+              printHtmlDocument(html, { title: data?.codigo ?? `Recibo ${pagoId}` });
+            }}
+            phone={data?.clienteTelefono}
+            share={
+              data
+                ? {
+                    clienteNombre: data.credito.clienteNombre,
+                    producto: data.credito.productoNombre,
+                    monto: data.monto,
+                    fecha: data.fecha,
+                    reciboCodigo: data.codigo,
+                    publicUrl: data.reciboPublicUrl,
+                  }
+                : undefined
+            }
+          />
+        }
+      />
       <iframe
         title={`Recibo ${pagoId}`}
-        srcDoc={state.html}
+        srcDoc={html}
         // `flex-1` en vez de `h-screen`: con el alto completo de viewport la
         // barra empujaba el iframe y aparecía scroll de más.
         className="min-h-[70vh] w-full flex-1 border-0 bg-background"

@@ -34,6 +34,13 @@ export interface ClientesService {
   uploadFotoDocumento(file: File): Promise<UploadFotoDocumentoResponse>;
   generateAccess(id: string): Promise<GenerateAccessResponse>;
   deleteAccess(id: string): Promise<void>;
+  // Variante de `getCliente` para un cliente YA dado de baja (`estado=todos`
+  // en la query, ADMIN-only — ver `ClientsService.findOne`). La usa el diálogo
+  // de reactivación para previsualizar créditos abiertos antes de confirmar.
+  getClienteInactivo(id: string): Promise<ClienteDetail>;
+  // Reactiva la relación tal cual estaba (no pisa datos) — distinto del
+  // `POST /clients` con el mismo documento, que sí los pisa con el alta.
+  reactivateCliente(id: string): Promise<ClienteDetail>;
 }
 
 const delay = (ms = 280) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -99,13 +106,13 @@ function toListItem(c: MockCliente): ClienteListItem {
 // `PaymentHistoryItem[]` — el mismo shape que consume el Portal del Cliente.
 // Se dejan horas distintas a propósito: el historial ahora muestra la hora.
 const HISTORIAL_PAGOS: NonNullable<ClienteDetail["historialPagos"]> = [
-  { id: "pg-h-7", creditoId: "cr-2041", cobradorId: "u-1000000002", cobradorNombre: "Carlos Ramírez", reciboUrl: null, reciboPublicUrl: null, monto: 20000, fecha: "2026-07-21T13:05:00.000Z", numeroCuota: 7, estado: "ON_TIME", fechaVencimiento: "2026-07-21T13:00:00.000Z", fechaPago: "2026-07-21T13:05:00.000Z", diasAtraso: 0, reciboCodigo: "R-PGH7" },
-  { id: "pg-h-6", creditoId: "cr-2041", cobradorId: "u-1000000002", cobradorNombre: "Carlos Ramírez", reciboUrl: null, reciboPublicUrl: null, monto: 20000, fecha: "2026-07-20T15:40:00.000Z", numeroCuota: 6, estado: "LATE", fechaVencimiento: "2026-07-18T13:00:00.000Z", fechaPago: "2026-07-20T15:40:00.000Z", diasAtraso: 2, reciboCodigo: "R-PGH6" },
-  { id: "pg-h-5", creditoId: "cr-2041", cobradorId: "u-1000000002", cobradorNombre: "Carlos Ramírez", reciboUrl: null, reciboPublicUrl: null, monto: 20000, fecha: "2026-07-19T14:10:00.000Z", numeroCuota: 5, estado: "ON_TIME", fechaVencimiento: "2026-07-19T13:00:00.000Z", fechaPago: "2026-07-19T14:10:00.000Z", diasAtraso: 0, reciboCodigo: "R-PGH5" },
-  { id: "pg-h-4", creditoId: "cr-2041", cobradorId: "u-1000000002", cobradorNombre: "Carlos Ramírez", reciboUrl: null, reciboPublicUrl: null, monto: 20000, fecha: "2026-07-18T13:00:00.000Z", numeroCuota: 4, estado: "ON_TIME", fechaVencimiento: "2026-07-18T13:00:00.000Z", fechaPago: "2026-07-18T13:00:00.000Z", diasAtraso: 0, reciboCodigo: "R-PGH4" },
-  { id: "pg-h-3", creditoId: "cr-2041", cobradorId: "u-1000000002", cobradorNombre: "Carlos Ramírez", reciboUrl: null, reciboPublicUrl: null, monto: 20000, fecha: "2026-07-17T16:25:00.000Z", numeroCuota: 3, estado: "ON_TIME", fechaVencimiento: "2026-07-17T13:00:00.000Z", fechaPago: "2026-07-17T16:25:00.000Z", diasAtraso: 0, reciboCodigo: "R-PGH3" },
-  { id: "pg-h-2", creditoId: "cr-2041", cobradorId: "u-1000000002", cobradorNombre: "Carlos Ramírez", reciboUrl: null, reciboPublicUrl: null, monto: 20000, fecha: "2026-07-16T13:30:00.000Z", numeroCuota: 2, estado: "ON_TIME", fechaVencimiento: "2026-07-16T13:00:00.000Z", fechaPago: "2026-07-16T13:30:00.000Z", diasAtraso: 0, reciboCodigo: "R-PGH2" },
-  { id: "pg-h-1", creditoId: "cr-2041", cobradorId: "u-1000000002", cobradorNombre: "Carlos Ramírez", reciboUrl: null, reciboPublicUrl: null, monto: 20000, fecha: "2026-07-15T13:15:00.000Z", numeroCuota: 1, estado: "ON_TIME", fechaVencimiento: "2026-07-15T13:00:00.000Z", fechaPago: "2026-07-15T13:15:00.000Z", diasAtraso: 0, reciboCodigo: "R-PGH1" },
+  { id: "pg-h-7", creditoId: "cr-2041", cobradorId: "u-1000000002", cobradorNombre: "Carlos Ramírez", reciboUrl: null, reciboPublicUrl: null, monto: 20000, fecha: "2026-07-21T13:05:00.000Z", numeroCuota: 7, estado: "ON_TIME", fechaVencimiento: "2026-07-21T13:00:00.000Z", fechaPago: "2026-07-21T13:05:00.000Z", diasAtraso: 0, reciboCodigo: "R-PGH7", anulado: false },
+  { id: "pg-h-6", creditoId: "cr-2041", cobradorId: "u-1000000002", cobradorNombre: "Carlos Ramírez", reciboUrl: null, reciboPublicUrl: null, monto: 20000, fecha: "2026-07-20T15:40:00.000Z", numeroCuota: 6, estado: "LATE", fechaVencimiento: "2026-07-18T13:00:00.000Z", fechaPago: "2026-07-20T15:40:00.000Z", diasAtraso: 2, reciboCodigo: "R-PGH6", anulado: false },
+  { id: "pg-h-5", creditoId: "cr-2041", cobradorId: "u-1000000002", cobradorNombre: "Carlos Ramírez", reciboUrl: null, reciboPublicUrl: null, monto: 20000, fecha: "2026-07-19T14:10:00.000Z", numeroCuota: 5, estado: "ON_TIME", fechaVencimiento: "2026-07-19T13:00:00.000Z", fechaPago: "2026-07-19T14:10:00.000Z", diasAtraso: 0, reciboCodigo: "R-PGH5", anulado: false },
+  { id: "pg-h-4", creditoId: "cr-2041", cobradorId: "u-1000000002", cobradorNombre: "Carlos Ramírez", reciboUrl: null, reciboPublicUrl: null, monto: 20000, fecha: "2026-07-18T13:00:00.000Z", numeroCuota: 4, estado: "ON_TIME", fechaVencimiento: "2026-07-18T13:00:00.000Z", fechaPago: "2026-07-18T13:00:00.000Z", diasAtraso: 0, reciboCodigo: "R-PGH4", anulado: false },
+  { id: "pg-h-3", creditoId: "cr-2041", cobradorId: "u-1000000002", cobradorNombre: "Carlos Ramírez", reciboUrl: null, reciboPublicUrl: null, monto: 20000, fecha: "2026-07-17T16:25:00.000Z", numeroCuota: 3, estado: "ON_TIME", fechaVencimiento: "2026-07-17T13:00:00.000Z", fechaPago: "2026-07-17T16:25:00.000Z", diasAtraso: 0, reciboCodigo: "R-PGH3", anulado: false },
+  { id: "pg-h-2", creditoId: "cr-2041", cobradorId: "u-1000000002", cobradorNombre: "Carlos Ramírez", reciboUrl: null, reciboPublicUrl: null, monto: 20000, fecha: "2026-07-16T13:30:00.000Z", numeroCuota: 2, estado: "ON_TIME", fechaVencimiento: "2026-07-16T13:00:00.000Z", fechaPago: "2026-07-16T13:30:00.000Z", diasAtraso: 0, reciboCodigo: "R-PGH2", anulado: false },
+  { id: "pg-h-1", creditoId: "cr-2041", cobradorId: "u-1000000002", cobradorNombre: "Carlos Ramírez", reciboUrl: null, reciboPublicUrl: null, monto: 20000, fecha: "2026-07-15T13:15:00.000Z", numeroCuota: 1, estado: "ON_TIME", fechaVencimiento: "2026-07-15T13:00:00.000Z", fechaPago: "2026-07-15T13:15:00.000Z", diasAtraso: 0, reciboCodigo: "R-PGH1", anulado: false },
 ];
 
 function toCreditoListItem(
@@ -259,6 +266,16 @@ export const mockClientesService: ClientesService = {
   async deleteAccess() {
     await delay();
   },
+  async getClienteInactivo(id) {
+    await delay();
+    const c = MOCK_CLIENTES.find((x) => x.id === id) ?? MOCK_CLIENTES[0]!;
+    return clienteDetailSchema.parse(toDetail(c));
+  },
+  async reactivateCliente(id) {
+    await delay();
+    const c = MOCK_CLIENTES.find((x) => x.id === id) ?? MOCK_CLIENTES[0]!;
+    return clienteDetailSchema.parse({ ...toDetail(c), reactivado: true });
+  },
 };
 
 // ---- Implementación real (se activa en el cableado, sub-fase 2.14) -----------
@@ -269,6 +286,7 @@ export const httpClientesService: ClientesService = {
     const params = new URLSearchParams();
     if (query?.search) params.set("search", query.search);
     if (query?.rutaId) params.set("rutaId", query.rutaId);
+    if (query?.estado) params.set("estado", query.estado);
     const qs = params.toString();
     return apiFetch(`/clients${qs ? `?${qs}` : ""}`, clienteListItemSchema.array(), { token });
   },
@@ -312,6 +330,17 @@ export const httpClientesService: ClientesService = {
   async deleteAccess(id) {
     await apiFetchVoid(`/clients/${id}/access`, {
       method: "DELETE",
+      token: useSessionStore.getState().token,
+    });
+  },
+  getClienteInactivo(id) {
+    return apiFetch(`/clients/${id}?estado=todos`, clienteDetailSchema, {
+      token: useSessionStore.getState().token,
+    });
+  },
+  reactivateCliente(id) {
+    return apiFetch(`/clients/${id}/reactivate`, clienteDetailSchema, {
+      method: "POST",
       token: useSessionStore.getState().token,
     });
   },

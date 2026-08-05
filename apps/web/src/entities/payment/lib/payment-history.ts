@@ -1,7 +1,7 @@
 import type { PaymentHistoryItem } from "@repo/types";
 
 import { isToday } from "@/shared/lib/format-date";
-import { esCuotaSinPagar } from "./cuota-estado";
+import { esCuotaAnulada, esCuotaSinPagar } from "./cuota-estado";
 
 // Helpers puros sobre el historial de pagos.
 //
@@ -10,9 +10,14 @@ import { esCuotaSinPagar } from "./cuota-estado";
 // ahora llega correcto del backend (`buildPaymentHistory`, con unit tests), así
 // que acá solo queda agrupar y resumir.
 
-/** Solo los pagos REALES: descarta las filas sintéticas de cuota sin pagar. */
+/**
+ * Solo los pagos REALES y VIGENTES: descarta las filas sintéticas de cuota
+ * sin pagar Y los pagos anulados. Sin lo segundo, "Anular pago" devolvía el
+ * saldo al crédito pero el banner "Cobrado hoy" (que resume ESTA lista) seguía
+ * contando la plata que ya se había devuelto — como si nunca se hubiera anulado.
+ */
 export function soloPagosReales(pagos: PaymentHistoryItem[]): PaymentHistoryItem[] {
-  return pagos.filter((pago) => !esCuotaSinPagar(pago.estado));
+  return pagos.filter((pago) => !esCuotaSinPagar(pago.estado) && !esCuotaAnulada(pago.estado));
 }
 
 export function pagosDeCredito(

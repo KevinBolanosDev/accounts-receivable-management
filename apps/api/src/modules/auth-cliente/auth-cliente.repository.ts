@@ -13,8 +13,16 @@ type Tx = Omit<PrismaClient, "$connect" | "$disconnect">;
 export class AuthClienteRepository {
   constructor(private readonly prisma: PrismaService) {}
 
+  // Incluye `admins` (la relación cliente↔admin, ver `ClientAdmin` en
+  // schema.prisma) para que `login` pueda rechazar a un cliente al que NINGÚN
+  // admin le sigue dando cartera — dar de baja al cliente desde `/clients/:id`
+  // desactiva esa relación, pero antes de este chequeo el login no la miraba
+  // en absoluto.
   findByDocumento(documento: string) {
-    return this.prisma.cliente.findUnique({ where: { documento } });
+    return this.prisma.cliente.findUnique({
+      where: { documento },
+      include: { admins: { select: { activo: true } } },
+    });
   }
 
   findById(id: string) {

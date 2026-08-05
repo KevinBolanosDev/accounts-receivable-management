@@ -35,7 +35,10 @@ function buildRutaReadInclude(adminId: string, desde: Date, hasta: Date) {
               include: {
                 producto: { select: { nombre: true } },
                 pagos: {
-                  where: { fecha: { gte: desde, lt: hasta } },
+                  // `anulado: false`: un pago anulado hoy no debe seguir
+                  // sumando al "Cobrado hoy" de la ruta — el saldo ya volvió
+                  // al crédito, sería contar plata que se devolvió.
+                  where: { fecha: { gte: desde, lt: hasta }, anulado: false },
                   orderBy: { fecha: "desc" },
                 },
               },

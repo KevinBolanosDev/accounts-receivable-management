@@ -124,6 +124,7 @@ const MOCK_DETAIL: Record<string, CreditoDetail> = Object.fromEntries(
           cobradorId: "u-1000000002",
           cobradorNombre: "Carlos Ramírez",
           reciboUrl: null,
+          anulado: false,
         },
         {
           id: `pg-${c.id}-6`,
@@ -133,6 +134,7 @@ const MOCK_DETAIL: Record<string, CreditoDetail> = Object.fromEntries(
           cobradorId: "u-1000000002",
           cobradorNombre: "Carlos Ramírez",
           reciboUrl: null,
+          anulado: false,
         },
         {
           id: `pg-${c.id}-5`,
@@ -142,6 +144,7 @@ const MOCK_DETAIL: Record<string, CreditoDetail> = Object.fromEntries(
           cobradorId: "u-1000000002",
           cobradorNombre: "Carlos Ramírez",
           reciboUrl: null,
+          anulado: false,
         },
       ],
     },

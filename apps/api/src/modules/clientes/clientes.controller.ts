@@ -73,9 +73,13 @@ export class ClientesController {
   @Get(":id")
   async findOne(
     @Param("id") id: string,
+    // Mismo query que la lista: `estado=inactivos|todos` (ADMIN-only, el
+    // service lo ignora para COBRADOR) deja alcanzar el detalle de un
+    // cliente dado de baja — lo usa la previsualización antes de reactivar.
+    @Query(new ZodValidationPipe(clientesQuerySchema)) query: ClientesQuery,
     @CurrentUser() user: AuthenticatedUser,
   ): Promise<ClienteDetail> {
-    return clienteDetailSchema.parse(await this.clientsService.findOne(id, user));
+    return clienteDetailSchema.parse(await this.clientsService.findOne(id, user, query));
   }
 
   @Post()
@@ -100,6 +104,17 @@ export class ClientesController {
   @Roles("ADMIN")
   async remove(@Param("id") id: string, @CurrentUser() user: AuthenticatedUser): Promise<void> {
     await this.clientsService.remove(id, user);
+  }
+
+  // Reactivación directa desde "Clientes inactivos" — ver el comentario de
+  // `ClientsService.reactivateInactive`.
+  @Post(":id/reactivate")
+  @Roles("ADMIN")
+  async reactivate(
+    @Param("id") id: string,
+    @CurrentUser() user: AuthenticatedUser,
+  ): Promise<ClienteDetail> {
+    return clienteDetailSchema.parse(await this.clientsService.reactivateInactive(id, user));
   }
 
   // Fase 4.13 — genera/resetea la contraseña temporal del portal del

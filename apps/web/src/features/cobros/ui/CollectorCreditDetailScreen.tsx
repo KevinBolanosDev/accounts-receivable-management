@@ -6,6 +6,7 @@ import { CheckIcon } from "lucide-react";
 import {
   PaymentHistory,
   cobroDeHoy,
+  esCuotaAnulada,
   esCuotaSinPagar,
   pagosDeCredito,
 } from "@/entities/payment";
@@ -19,6 +20,7 @@ import { MetricTile, MetricTileGroup } from "@/shared/ui/metric-tile";
 import { Skeleton } from "@/shared/ui/skeleton";
 import { CollectorHero } from "@/widgets/collector-shell/CollectorHero";
 
+import { AnularPagoButton } from "./AnularPagoButton";
 import { RegistrarCobroSheet } from "./RegistrarCobroSheet";
 
 // Detalle de UN crédito para el Cobrador: info del crédito + el historial de
@@ -153,24 +155,27 @@ export function CollectorCreditDetailScreen({
           emptyText="Este crédito todavía no tiene pagos registrados."
           renderActions={(pago) =>
             esCuotaSinPagar(pago.estado) ? null : (
-              <ReceiptActions
-                actions={["download", "share"]}
-                onDownload={() => void recibos.download(pago.id, pago.reciboCodigo ?? undefined)}
-                pending={recibos.pendingPagoId === pago.id ? recibos.pendingKind : null}
-                // Se comparte al teléfono del cliente: es a quien va dirigido
-                // el recibo, y evita que el cobrador tenga que buscarlo.
-                phone={cliente.telefono}
-                share={{
-                  clienteNombre: cliente.nombre,
-                  producto: credito.producto,
-                  numeroCuota: pago.numeroCuota,
-                  cuotasTotal: credito.cuotasTotal,
-                  monto: pago.monto,
-                  fecha: pago.fecha,
-                  reciboCodigo: pago.reciboCodigo,
-                  publicUrl: pago.reciboPublicUrl,
-                }}
-              />
+              <div className="flex items-center gap-1">
+                <ReceiptActions
+                  actions={["download", "share"]}
+                  onDownload={() => void recibos.download(pago.id, pago.reciboCodigo ?? undefined)}
+                  pending={recibos.pendingPagoId === pago.id ? recibos.pendingKind : null}
+                  // Se comparte al teléfono del cliente: es a quien va dirigido
+                  // el recibo, y evita que el cobrador tenga que buscarlo.
+                  phone={cliente.telefono}
+                  share={{
+                    clienteNombre: cliente.nombre,
+                    producto: credito.producto,
+                    numeroCuota: pago.numeroCuota,
+                    cuotasTotal: credito.cuotasTotal,
+                    monto: pago.monto,
+                    fecha: pago.fecha,
+                    reciboCodigo: pago.reciboCodigo,
+                    publicUrl: pago.reciboPublicUrl,
+                  }}
+                />
+                {esCuotaAnulada(pago.estado) ? null : <AnularPagoButton pago={pago} />}
+              </div>
             )
           }
         />

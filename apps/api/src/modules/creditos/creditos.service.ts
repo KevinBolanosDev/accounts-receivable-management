@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   ConflictException,
   ForbiddenException,
   Injectable,
@@ -133,9 +134,14 @@ export class CreditosService {
     const existing = await this.creditosRepository.findById(id, where, adminId);
     if (!existing) throw new NotFoundException("Crédito no encontrado.");
 
-    if (existing.pagos.length > 0) {
-      throw new ConflictException(
-        "No puedes editar un crédito con pagos. Primero anúlalo si corresponde.",
+    const tienePagos = existing.pagos.length > 0;
+    // Con pagos de por medio, cambiar términos es una decisión de negocio (se
+    // reestructura un crédito, no se opera desde la calle) — igual que anular,
+    // que ya es ADMIN-only. Sin pagos, editar sigue abierto a ambos roles como
+    // siempre: nada de valor se movió todavía.
+    if (tienePagos && user.rol !== "ADMIN") {
+      throw new ForbiddenException(
+        "Solo un administrador puede editar un crédito con pagos registrados.",
       );
     }
 
@@ -150,10 +156,9 @@ export class CreditosService {
       productoId = producto.id;
     }
 
-    // Recalcular montos si cambió monto/interes/cuotas/frecuencia. Como el
-    // crédito no tiene pagos (validado arriba), es seguro reasignar
-    // saldoPendiente = montoTotal. La frecuencia entra en el recálculo porque
-    // redefine `dias` (el plazo nominal), aunque no toque el valor de la cuota.
+    // Recalcular montos si cambió monto/interes/cuotas/frecuencia. La
+    // frecuencia entra en el recálculo porque redefine `dias` (el plazo
+    // nominal), aunque no toque el valor de la cuota.
     const recalcular =
       body.monto !== undefined ||
       body.interes !== undefined ||
@@ -168,6 +173,24 @@ export class CreditosService {
         )
       : undefined;
 
+    // Sin pagos, `saldoPendiente = montoTotal` a secas (nada se ha abonado
+    // todavía). CON pagos, hay que restar lo ya cobrado — reasignar el total
+    // completo borraría de un plumazo que el cliente ya pagó algo. El corte:
+    // el nuevo total no puede quedar por debajo de lo ya pagado (un crédito no
+    // puede deber en negativo); si eso pasa, ADMIN debe bajar el monto con
+    // cuidado o anular el crédito en vez de editarlo.
+    const totalPagado = existing.pagos.reduce((sum, p) => sum.add(p.monto), new Prisma.Decimal(0));
+    if (tienePagos && derivados && derivados.montoTotal.lt(totalPagado)) {
+      throw new BadRequestException(
+        `El nuevo monto total (${derivados.montoTotal.toFixed(2)}) es menor a lo ya pagado (${totalPagado.toFixed(2)}). Ajusta el monto o anula el crédito.`,
+      );
+    }
+    const saldoPendienteNuevo = derivados
+      ? tienePagos
+        ? derivados.montoTotal.sub(totalPagado)
+        : derivados.montoTotal
+      : undefined;
+
     const updated = await this.prisma.credito.update({
       where: { id },
       data: {
@@ -179,7 +202,7 @@ export class CreditosService {
         dias: derivados?.dias,
         montoTotal: derivados?.montoTotal,
         cuotaDiaria: derivados?.cuotaDiaria,
-        saldoPendiente: derivados?.montoTotal,
+        saldoPendiente: saldoPendienteNuevo,
       },
       include: { producto: { select: { id: true, nombre: true } } },
     });
@@ -337,6 +360,9 @@ function toDetail(row: CreditoWithDetail): CreditoDetail {
       cobradorId: p.cobradorId,
       cobradorNombre: p.cobrador?.nombre ?? null,
       reciboUrl: p.reciboUrl ?? null,
+      anulado: p.anulado,
+      anuladoAt: p.anuladoAt ? p.anuladoAt.toISOString() : null,
+      anuladoPorNombre: p.anuladoPor?.nombre ?? null,
     })),
   };
 }

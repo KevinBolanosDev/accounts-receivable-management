@@ -7,7 +7,13 @@ import {
 } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import { Prisma, type PrismaClient } from "@prisma/client";
-import type { CobroResponse, CreateCobroRequest, CreditoListItem, Pago } from "@repo/types";
+import type {
+  AnularPagoResponse,
+  CobroResponse,
+  CreateCobroRequest,
+  CreditoListItem,
+  Pago,
+} from "@repo/types";
 
 import { PrismaService } from "../../core/prisma/prisma.service";
 import type { AuthenticatedUser } from "../../core/auth/auth-request";
@@ -146,6 +152,80 @@ export class CobrosService {
 
     return result;
   }
+
+  // Un pago mal registrado se ANULA, nunca se edita: el registro queda (con
+  // `anulado: true`, quién y cuándo), su saldo vuelve al crédito, y si ese
+  // pago había saldado el crédito (`estado: PAGADO`), se reabre a `ACTIVO`.
+  // La corrección es un cobro NUEVO — el mismo `POST /collections` de
+  // siempre, sin matemática especial que inventar.
+  async anularPago(pagoId: string, user: AuthenticatedUser): Promise<AnularPagoResponse> {
+    const adminId = requireAdminId(user);
+
+    // Scoping por tenant en la propia búsqueda, igual que `registrar`: un
+    // pago de otro admin se reporta como inexistente.
+    const pago = await this.prisma.pago.findFirst({
+      where: { id: pagoId, credito: { adminId } },
+      include: {
+        credito: {
+          include: {
+            cliente: {
+              include: { admins: { where: { adminId }, take: 1, include: { ruta: true } } },
+            },
+          },
+        },
+      },
+    });
+    if (!pago) {
+      throw new NotFoundException("El pago no existe.");
+    }
+    const clientRelation = pago.credito.cliente.admins[0];
+
+    // Mismo criterio de scoping que cobrar: un COBRADOR solo anula pagos de
+    // clientes de SUS rutas (ADMIN pasa sin chequeo).
+    if (user.rol === "COBRADOR" && clientRelation?.ruta?.cobradorId !== user.sub) {
+      throw new ForbiddenException("Solo puedes anular pagos de clientes de tus rutas.");
+    }
+
+    if (pago.anulado) {
+      throw new ConflictException("Este pago ya fue anulado.");
+    }
+
+    let result!: AnularPagoResponse;
+
+    await this.prisma.$transaction(async (txParam) => {
+      const tx = txParam as unknown as PrismaTx;
+
+      // 1) marcar el pago como anulado, condicional (control de carrera).
+      const anulado = await this.cobrosRepository.anularPago(tx as unknown as Tx, {
+        pagoId,
+        anuladoPorId: user.sub,
+      });
+      if (anulado.count === 0) {
+        // Alguien más lo anuló entre el chequeo de arriba y este punto.
+        throw new ConflictException("Este pago ya fue anulado.");
+      }
+
+      // 2) devolver el saldo del crédito; reabrir si este pago lo había saldado.
+      const creditoActualizado = await this.cobrosRepository.devolverSaldo(tx as unknown as Tx, {
+        creditoId: pago.creditoId,
+        monto: pago.monto,
+        reabrir: pago.credito.estado === "PAGADO",
+      });
+
+      // 3) lectura final del pago (con quién lo anuló) para la respuesta.
+      const pagoFinal = await tx.pago.findUniqueOrThrow({
+        where: { id: pagoId },
+        include: { anuladoPor: { select: { nombre: true } } },
+      });
+
+      result = {
+        pago: toPago(pagoFinal),
+        credito: toCredito(creditoActualizado),
+      };
+    });
+
+    return result;
+  }
 }
 
 // === toDto: Decimal → number, Date → ISO string (re-parseo vía schema) ======
@@ -177,6 +257,9 @@ function toPago(p: {
   fecha: Date;
   cobradorId: string;
   reciboUrl: string | null;
+  anulado?: boolean;
+  anuladoAt?: Date | null;
+  anuladoPor?: { nombre: string } | null;
 }): Pago {
   return {
     id: p.id,
@@ -185,6 +268,9 @@ function toPago(p: {
     fecha: p.fecha.toISOString(),
     cobradorId: p.cobradorId,
     reciboUrl: p.reciboUrl ?? null,
+    anulado: p.anulado ?? false,
+    anuladoAt: p.anuladoAt ? p.anuladoAt.toISOString() : null,
+    anuladoPorNombre: p.anuladoPor?.nombre ?? null,
   };
 }
 

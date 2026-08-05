@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import Link from "next/link";
-import { ChevronRightIcon, PlusIcon, SearchIcon } from "lucide-react";
+import { ChevronRightIcon, PlusIcon, RotateCcwIcon, SearchIcon } from "lucide-react";
 import type { ClienteDetail, ClienteListItem, EstadoCliente } from "@repo/types";
 
 import {
@@ -21,12 +21,43 @@ import { ProgressRing } from "@/shared/ui/progress-ring";
 import { useRutas } from "@/features/routes-collectors/api/use-rutas";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/shared/ui/select";
 import { Skeleton } from "@/shared/ui/skeleton";
+import { TabsList, TabsRoot, TabsTrigger } from "@/shared/ui/tabs";
 import { AdminPageHeader } from "@/widgets/admin-shell/AdminPageHeader";
 
 import { useCliente, useClientes, useClientesSummary } from "../api/use-clientes";
+import { ReactivateClientDialog } from "./ReactivateClientDialog";
 
 /** "all" = sin filtro de estado. Radix Select no admite `value=""`. */
 type EstadoFiltro = "all" | EstadoCliente;
+
+/**
+ * Fila de un cliente dado de baja: sin chevron ni link (no hay detalle que
+ * abrir — `GET /clients/:id` sin `estado=todos` le da 404), solo el dato
+ * mínimo y la acción de vuelta.
+ */
+function InactiveClientRow({
+  cliente,
+  onReactivate,
+}: {
+  cliente: ClienteListItem;
+  onReactivate: () => void;
+}) {
+  return (
+    <div className="flex items-center gap-3 px-4 py-3">
+      <span className="flex size-9 shrink-0 items-center justify-center rounded-full bg-secondary text-xs font-semibold text-muted-foreground">
+        {getInitials(cliente.nombre)}
+      </span>
+      <div className="flex min-w-0 flex-1 flex-col">
+        <span className="truncate text-sm font-medium">{cliente.nombre}</span>
+        <span className="truncate text-caption text-muted-foreground">{cliente.documento}</span>
+      </div>
+      <Button type="button" variant="secondary" size="sm" onClick={onReactivate}>
+        <RotateCcwIcon />
+        Reactivar
+      </Button>
+    </div>
+  );
+}
 
 function rutaCorta(nombre: string | undefined): string {
   return nombre?.split("·")[0]?.trim() ?? "Sin ruta";
@@ -157,11 +188,21 @@ export function ClientsListScreen() {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [routeId, setRouteId] = useState("all");
   const [estado, setEstado] = useState<EstadoFiltro>("all");
+  // Eje aparte de `estado` (que es el estado de PAGO — al día/mora/etc.):
+  // `vista` es si la relación con este admin está activa o dada de baja.
+  // Confusión a propósito evitada con nombres distintos: un cliente inactivo
+  // igual "tiene" un estado de pago, solo que ya no importa mientras no se
+  // reactive.
+  const [vista, setVista] = useState<"activos" | "inactivos">("activos");
+  const [reactivating, setReactivating] = useState<{ id: string; nombre: string } | null>(null);
   const { data: rutas = [] } = useRutas();
   const { data: summary } = useClientesSummary();
   const { data: clientes, isLoading } = useClientes({
     ...(search ? { search } : {}),
-    ...(routeId !== "all" && routeId !== "sin-ruta" ? { rutaId: routeId } : {}),
+    ...(vista === "activos" && routeId !== "all" && routeId !== "sin-ruta"
+      ? { rutaId: routeId }
+      : {}),
+    ...(vista === "inactivos" ? { estado: "inactivos" as const } : {}),
   });
 
   // `search` y `rutaId` los filtra el backend; `sin-ruta` y `estado` no están
@@ -172,8 +213,11 @@ export function ClientsListScreen() {
   );
 
   const clientesFiltrados = useMemo(
-    () => (estado === "all" ? porRuta : porRuta.filter((c) => c.estado === estado)),
-    [porRuta, estado],
+    () =>
+      vista === "inactivos" || estado === "all"
+        ? porRuta
+        : porRuta.filter((c) => c.estado === estado),
+    [porRuta, estado, vista],
   );
 
   // Los contadores se calculan ANTES del filtro de estado (pero después del de
@@ -191,7 +235,10 @@ export function ClientsListScreen() {
     [porRuta],
   );
 
-  const activeId = selectedId ?? clientesFiltrados[0]?.id ?? "";
+  // Sin esto, con `vista === "inactivos"` este id apunta a un cliente inactivo
+  // y `useCliente` (que exige `activo:true`) le pega un 404 innecesario en
+  // segundo plano — el panel de preview no aplica a esa vista de todos modos.
+  const activeId = vista === "activos" ? (selectedId ?? clientesFiltrados[0]?.id ?? "") : "";
   const { data: cliente } = useCliente(activeId);
 
   const subtitle = summary
@@ -211,6 +258,18 @@ export function ClientsListScreen() {
         }
       />
 
+      {/* ADMIN-only por naturaleza de la pantalla (`/admin/clients`), así que
+          no hace falta un chequeo de rol acá: un cliente dado de baja solo
+          tiene sentido navegarlo desde donde se administra la cartera. */}
+      <div className="px-4 pt-4 sm:px-6 sm:pt-6">
+        <TabsRoot value={vista} onValueChange={(value) => setVista(value as typeof vista)}>
+          <TabsList>
+            <TabsTrigger value="activos">Activos</TabsTrigger>
+            <TabsTrigger value="inactivos">Inactivos</TabsTrigger>
+          </TabsList>
+        </TabsRoot>
+      </div>
+
       {/* `min-w-0` en el grid y en sus columnas: por defecto una pista de grid
           mide `min-content`, así que un hijo con scroll propio (los chips) la
           estiraría más allá del viewport en vez de scrollear dentro. */}
@@ -227,49 +286,53 @@ export function ClientsListScreen() {
             />
            </div>
 
-           <div className="flex flex-col gap-3 lg:flex-row">
-             <Select value={routeId} onValueChange={setRouteId}>
-               <SelectTrigger className="w-full lg:flex-1">
-                 <SelectValue placeholder="Todas las rutas" />
-               </SelectTrigger>
-               <SelectContent>
-                 <SelectItem value="all">Todas las rutas</SelectItem>
-                 <SelectItem value="sin-ruta">Sin ruta</SelectItem>
-                 {rutas.map((route) => (
-                   <SelectItem key={route.id} value={route.id}>
-                     {route.nombre}
-                   </SelectItem>
-                 ))}
-               </SelectContent>
-             </Select>
+           {vista === "activos" ? (
+             <>
+               <div className="flex flex-col gap-3 lg:flex-row">
+                 <Select value={routeId} onValueChange={setRouteId}>
+                   <SelectTrigger className="w-full lg:flex-1">
+                     <SelectValue placeholder="Todas las rutas" />
+                   </SelectTrigger>
+                   <SelectContent>
+                     <SelectItem value="all">Todas las rutas</SelectItem>
+                     <SelectItem value="sin-ruta">Sin ruta</SelectItem>
+                     {rutas.map((route) => (
+                       <SelectItem key={route.id} value={route.id}>
+                         {route.nombre}
+                       </SelectItem>
+                     ))}
+                   </SelectContent>
+                 </Select>
 
-             {/* El mismo filtro de estado en dos formas: chips en móvil
-                 (§2.5) y select en escritorio, donde conviven en una fila. */}
-             <Select
-               value={estado}
-               onValueChange={(value) => setEstado(value as EstadoFiltro)}
-             >
-               <SelectTrigger className="hidden w-full lg:flex lg:flex-1">
-                 <SelectValue placeholder="Todos los estados" />
-               </SelectTrigger>
-               <SelectContent>
-                 <SelectItem value="all">Todos los estados</SelectItem>
-                 {ESTADO_CLIENTE_ORDER.map((value) => (
-                   <SelectItem key={value} value={value}>
-                     {ESTADO_CLIENTE_FILTER_LABEL[value]}
-                   </SelectItem>
-                 ))}
-               </SelectContent>
-             </Select>
-           </div>
+                 {/* El mismo filtro de estado en dos formas: chips en móvil
+                     (§2.5) y select en escritorio, donde conviven en una fila. */}
+                 <Select
+                   value={estado}
+                   onValueChange={(value) => setEstado(value as EstadoFiltro)}
+                 >
+                   <SelectTrigger className="hidden w-full lg:flex lg:flex-1">
+                     <SelectValue placeholder="Todos los estados" />
+                   </SelectTrigger>
+                   <SelectContent>
+                     <SelectItem value="all">Todos los estados</SelectItem>
+                     {ESTADO_CLIENTE_ORDER.map((value) => (
+                       <SelectItem key={value} value={value}>
+                         {ESTADO_CLIENTE_FILTER_LABEL[value]}
+                       </SelectItem>
+                     ))}
+                   </SelectContent>
+                 </Select>
+               </div>
 
-           <FilterChips
-             label="Filtrar por estado"
-             value={estado}
-             onValueChange={setEstado}
-             options={estadoOptions}
-             className="lg:hidden"
-           />
+               <FilterChips
+                 label="Filtrar por estado"
+                 value={estado}
+                 onValueChange={setEstado}
+                 options={estadoOptions}
+                 className="lg:hidden"
+               />
+             </>
+           ) : null}
 
            <div className="overflow-hidden rounded-lg border border-border bg-card">
              {isLoading ? (
@@ -279,6 +342,22 @@ export function ClientsListScreen() {
                   <Skeleton key={i} className="h-12 w-full" />
                 ))}
               </div>
+            ) : vista === "inactivos" ? (
+              (clientes ?? []).length > 0 ? (
+                <div className="flex flex-col divide-y divide-border">
+                  {(clientes ?? []).map((c) => (
+                    <InactiveClientRow
+                      key={c.id}
+                      cliente={c}
+                      onReactivate={() => setReactivating({ id: c.id, nombre: c.nombre })}
+                    />
+                  ))}
+                </div>
+              ) : (
+                <p className="p-8 text-center text-body-sm text-muted-foreground">
+                  {search ? `Sin resultados para “${search}”.` : "No hay clientes inactivos."}
+                </p>
+              )
             ) : clientesFiltrados && clientesFiltrados.length > 0 ? (
               <div className="flex flex-col divide-y divide-border">
                 {clientesFiltrados.map((c) => (
@@ -302,7 +381,11 @@ export function ClientsListScreen() {
             en móvil la fila navega al detalle completo y este panel quedaría
             apilado debajo de toda la lista, fuera de la vista. */}
         <div className="hidden min-w-0 flex-col rounded-lg border border-border bg-card p-6 lg:flex">
-          {cliente ? (
+          {vista === "inactivos" ? (
+            <p className="m-auto text-body-sm text-muted-foreground">
+              Elige &ldquo;Reactivar&rdquo; en un cliente para revisar sus créditos antes de confirmar.
+            </p>
+          ) : cliente ? (
             <ClientPreview cliente={cliente} />
           ) : (
             <p className="m-auto text-body-sm text-muted-foreground">
@@ -324,6 +407,11 @@ export function ClientsListScreen() {
           Nuevo cliente
         </Link>
       </Button>
+
+      <ReactivateClientDialog
+        cliente={reactivating}
+        onOpenChange={(open) => !open && setReactivating(null)}
+      />
     </>
   );
 }

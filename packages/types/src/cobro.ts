@@ -34,3 +34,13 @@ export const cobroResponseSchema = z.object({
   recibo: reciboInfoSchema,
 });
 export type CobroResponse = z.infer<typeof cobroResponseSchema>;
+
+// Respuesta de anular un pago (`DELETE /collections/:pagoId`). Sin `recibo`
+// a propósito: anular no genera uno nuevo — el recibo del pago original
+// sigue existiendo tal cual (para no perder el rastro de que existió), el
+// HTML server-rendered simplemente lo mostrará marcado como anulado.
+export const anularPagoResponseSchema = z.object({
+  pago: pagoSchema,
+  credito: creditoListItemSchema,
+});
+export type AnularPagoResponse = z.infer<typeof anularPagoResponseSchema>;

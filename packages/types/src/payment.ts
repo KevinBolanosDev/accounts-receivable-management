@@ -19,5 +19,13 @@ export const pagoSchema = z.object({
   cobradorId: z.string(),
   cobradorNombre: z.string().nullable().optional(), // nombre del cobrador (columna del detalle #10a)
   reciboUrl: z.string().url().nullable(),
+  // Un pago mal registrado se ANULA, nunca se edita ni se borra (mismo
+  // patrón que `Credito.estado = ANULADO`): el registro queda, el saldo del
+  // crédito se devuelve, y la corrección es un pago NUEVO. `.default(false)`
+  // porque es un campo de respuesta nuevo (lector tolerante, ver CLAUDE.md
+  // raíz) — un backend viejo que todavía no lo manda no debe romper el parse.
+  anulado: z.boolean().default(false),
+  anuladoAt: z.string().nullable().optional(),
+  anuladoPorNombre: z.string().nullable().optional(),
 });
 export type Pago = z.infer<typeof pagoSchema>;

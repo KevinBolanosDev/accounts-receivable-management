@@ -30,11 +30,21 @@ Dos convenciones (también en `specs/PLAN_DESARROLLO.md` §5):
 | **5** Cierre diario + reportes PDF | — | ⬜ |
 | **6** Hardening + tests | Unit tests + filtros globales + auditoria + CI | ⬜ |
 
-**Tests hoy:** 105 casos e2e en 14 suites de `apps/api/test/` (`app`, `auth`, `clientes`, `clientes-foto`, `rutas`, `usuarios`, `auth-cliente`, `client-portal`, `receipts`, `clientes-access`, `client-sharing`, `multi-tenancy`, `cobros`, `creditos`) + 37 unit tests (`core/domain/payment-schedule.util.spec.ts` 32 + `core/contracts/repo-types-integrity.spec.ts` 5). Cero tests en front.
+**Tests hoy:** 109 casos e2e en 14 suites de `apps/api/test/` (`app`, `auth`, `clientes`, `clientes-foto`, `rutas`, `usuarios`, `auth-cliente`, `client-portal`, `receipts`, `clientes-access`, `client-sharing`, `multi-tenancy`, `cobros`, `creditos`) + 40 unit tests (`core/domain/payment-schedule.util.spec.ts` 35 + `core/contracts/repo-types-integrity.spec.ts` 5). Cero tests en front.
 
 **Bajas: qué se borra de verdad.** `Cliente` (relación `ClientAdmin.activo=false`) y `Usuario`/cobrador (`activo=false` + sus rutas quedan sin cobrador) son **soft-delete** — `Pago.cobradorId` y las FKs de dinero son `onDelete: Restrict` y la auditoría manda. `Ruta` es el **único borrado físico**, y solo si no le quedan clientes activos (409 en caso contrario). El login filtra por `activo`, que es lo que hace que la baja del cobrador signifique algo; sin eso el switch activo/inactivo era decorativo. Limitación conocida: `JwtAuthGuard` es stateless, así que un token ya emitido sigue válido hasta `JWT_EXPIRES_IN` (1d) — verificar `activo` por request es Fase 6.
 
 **Volver a dar de alta a un cliente dado de baja = reactivación, no alta nueva.** `Cliente.documento` es `@unique` **global** y la baja es lógica, así que la fila sobrevive: registrar otra vez a la misma persona chocaba con el índice y devolvía `409 "Ya existe un cliente con ese documento"`. Era un callejón sin salida — el cliente inactivo tampoco aparece en `GET /clients` (filtra por `activo`), así que no había forma de recuperarlo *ni* de volver a crearlo. `POST /clients` ahora mira el documento antes de insertar (`ClientsRepository.findByDocumento`, sin filtro `activo` ni scoping) y distingue tres casos que antes eran el mismo 409: documento libre → alta normal; **cliente mío inactivo → reactiva** (`ClientAdmin.activo=true`, pisa los datos con los del alta y responde `reactivado: true`); cliente mío activo o de otra cartera → 409 como siempre. Al reactivar **vuelven sus créditos y su historial de pagos** — nunca se borraron, `Credito`/`Pago` son `onDelete: Restrict` justamente para que dar de baja a alguien no haga desaparecer plata —, y por eso el front lo anuncia distinto ("Cliente reactivado") en vez de como un alta limpia. Vincular un cliente existente a un **segundo** admin sigue siendo una acción explícita que no existe todavía.
+
+**Un pago mal registrado se anula, nunca se edita ni se borra.** Mismo principio que anular un crédito, un nivel más abajo. `Pago` ganó `anulado Boolean`, `anuladoAt DateTime?`, `anuladoPorId String?` (`onDelete: Restrict`, igual que `cobradorId` — no se puede perder el rastro de quién anuló qué). `DELETE /collections/:pagoId` (transacción atómica, mismo `updateMany` condicional que el cobro) marca el pago, **devuelve el saldo al crédito**, y si ese pago lo había dejado `PAGADO`, lo reabre a `ACTIVO`. Corregir un monto o una fecha mal cobrados es: anular + registrar el cobro correcto con `POST /collections` de siempre — no hace falta matemática especial, y el crédito conserva su código y su historial completo. El historial (`buildPaymentHistory`) excluye los pagos anulados del cronograma (el período que ocupaban vuelve a verse pendiente) y los muestra aparte, al final, como fila de auditoría con `numeroCuota: 0` y `estado: "ANULADO"` — nunca desaparecen. `soloPagosReales` (front, `entities/payment/lib/payment-history.ts`) los excluye también de "Cobrado hoy": sin eso, anular un pago de hoy devolvía el saldo pero el banner seguía mostrando la plata como cobrada.
+
+**Editar un crédito con pagos ya registrados — solo ADMIN, ahora permitido.** Antes `PATCH /credits/:id` rechazaba con 409 cualquier edición si el crédito tenía pagos; hoy lo permite para ADMIN (COBRADOR sigue bloqueado con pagos, sin pagos pueden ambos como siempre) y recalcula `saldoPendiente = montoTotal nuevo − lo ya pagado`, rechazando con 400 si el nuevo total queda por debajo de lo que el cliente ya pagó. Es una herramienta distinta de "anular pago": corrige los **términos** del crédito (monto, interés, cuotas, frecuencia), no un cobro puntual. No reemplaza un refinanciamiento formal — hoy no queda ningún rastro de que los términos cambiaron a mitad de camino, es una decisión pendiente de discutir si se necesita.
+
+**Baja permanente de cobrador — solo si nunca cobró nada.** `DELETE /users/:id/permanent` borra la fila de verdad (a diferencia de `DELETE /users/:id`, que solo desactiva). Es posible únicamente cuando `Pago.cobradorId` no tiene ninguna fila para ese cobrador — la FK es `Restrict`, así que no hay forma de saltarlo ni con un query directo. `CobradorListItem.pagosCount` es lo que el front usa para deshabilitar el botón de antemano con el motivo a la vista, en vez de dejar que falle después.
+
+**El login del portal ahora exige al menos una relación `ClientAdmin` activa.** Antes, dar de baja a un cliente no le cerraba el acceso si ya tenía `passwordHash`: el login solo miraba la contraseña, nunca la relación con el admin. Un cliente compartido por varios admins (`ClientAdmin[]`) conserva el acceso mientras a alguno le siga siendo cartera activa — la baja es por relación, no un interruptor único del cliente. Mismo límite ya conocido para tokens de staff: si el cliente ya tenía una sesión abierta cuando lo diste de baja, ese token sigue sirviendo hasta que expira (stateless, Fase 6 lo cierra).
+
+**"Historial" en los créditos del cliente = solo terminados.** `AdminClientCreditsScreen`/`ClientPaymentsScreen` mezclaban ahí cualquier crédito con al menos un pago, incluidos los que seguían `ACTIVO` — un crédito en curso aparecía en las dos pestañas a la vez. Ahora esa pestaña sale directo de `cliente.creditosHistorial` (que el backend ya separa como "no `ACTIVO`/`MORA`"), sin mezclar.
 
 **Endpoints implementados** (en inglés, ver refactor reciente):
 
@@ -47,12 +57,14 @@ Dos convenciones (también en `specs/PLAN_DESARROLLO.md` §5):
 | GET, POST | `/users` | Jwt + Roles | ADMIN |
 | PATCH | `/users/:id` | Jwt + Roles | ADMIN |
 | DELETE | `/users/:id` | Jwt + Roles | ADMIN — baja lógica del cobrador (`activo:false` + libera sus rutas); 403 al auto-borrarse, 404 fuera del tenant |
+| DELETE | `/users/:id/permanent` | Jwt + Roles | ADMIN — baja **permanente** (borra la fila); 409 si tiene algún `Pago` en su historia (`Pago.cobradorId` es `Restrict`, no hay forma de saltarlo) |
 | GET | `/clients` | Jwt + Roles | ADMIN/COBRADOR, scoping por rol |
 | GET | `/clients/summary` | Jwt + Roles | ADMIN/COBRADOR, scoping |
 | GET | `/clients/:id` | Jwt + Roles | ADMIN/COBRADOR, scoping |
 | POST | `/clients` | Jwt + Roles | ADMIN/COBRADOR, scoping |
 | PATCH | `/clients/:id` | Jwt + Roles | ADMIN/COBRADOR, scoping |
 | DELETE | `/clients/:id` | Jwt + Roles | ADMIN (soft-delete) |
+| POST | `/clients/:id/reactivate` | Jwt + Roles | ADMIN — reactivación **directa** desde "Clientes inactivos" (solo voltea `ClientAdmin.activo=true`, no pisa datos); distinta de la reactivación automática de `POST /clients` con el mismo documento |
 | POST | `/clients/id-document-photo` | Jwt + Roles | ADMIN/COBRADOR, multipart, bucket privado — devuelve `{ path, url }` (path a persistir, URL firmada solo para el preview inmediato) |
 | GET | `/routes` | Jwt + Roles | ADMIN/COBRADOR, scoping |
 | GET | `/routes/:id` | Jwt + Roles | ADMIN/COBRADOR, scoping |
@@ -68,12 +80,14 @@ Dos convenciones (también en `specs/PLAN_DESARROLLO.md` §5):
 | PATCH | `/credits/:id` | Jwt + Roles | ADMIN/COBRADOR, scoping |
 | DELETE | `/credits/:id` | Jwt + Roles | ADMIN (anular, soft) |
 | POST | `/collections` | Jwt + Roles | ADMIN/COBRADOR, scoping, tx atómica — el ADMIN cobra en cualquier ruta de su tenant (el chequeo "la ruta es mía" solo aplica a COBRADOR) y el `Pago` queda a su nombre |
+| DELETE | `/collections/:pagoId` | Jwt + Roles | ADMIN/COBRADOR, scoping — **anula** un pago mal registrado (nunca lo edita ni lo borra): devuelve el saldo al crédito, reabre a `ACTIVO` si estaba `PAGADO` por ese pago, 409 si ya estaba anulado. Corregir = anular + registrar el cobro correcto |
 | POST | `/clients/:id/access` | Jwt + Roles + scoping | ADMIN/COBRADOR de la ruta — genera/resetea password temporal |
 | DELETE | `/clients/:id/access` | Jwt + Roles + scoping | ADMIN/COBRADOR de la ruta — revoca acceso |
 | POST | `/client-auth/login` | `@Public()` + Throttle(5/min) | público (rol se emite en el JWT) |
 | GET | `/client-auth/me` | Jwt + Roles + MustChangePassword | CLIENTE |
 | POST | `/client-auth/change-password` | Jwt + Roles | CLIENTE (sin `MustChangePasswordGuard` — es la salida del lockout) |
 | GET | `/payments/:pagoId/receipt` | Jwt + Roles | ADMIN/COBRADOR de la ruta del cliente (`text/html`) |
+| GET | `/payments/:pagoId` | Jwt + Roles | ADMIN/COBRADOR de la ruta del cliente — mismo recibo en **JSON** (`Receipt`). Lo usa `ReceiptScreen` para armar el mensaje de WhatsApp justo después de cobrar, cuando solo tiene el `pagoId` y no el `CobroResponse` completo |
 | GET | `/r/:token` | `@Public()` + Throttle(30/min) | público — recibo por enlace firmado (capability URL); el token ES la autorización |
 | GET | `/client-portal/credits` | Jwt + Roles + MustChangePassword | CLIENTE, scoping por `clienteId` |
 | GET | `/client-portal/credits/:id` | ídem | 404 si el crédito es de otro cliente |
@@ -207,6 +221,7 @@ modules/
 - **`prisma.config.ts` DEBE estar en `apps/api` raíz**, no en `src/`. Si no, el CLI falla con "datasource.url is required" engañoso.
 - Modelos actuales: `Usuario`, `Ruta`, `Cliente`, `ClientAdmin`, `Producto`, `Credito`, `Pago` + enums `Rol` (`ADMIN | COBRADOR | CLIENTE` — `CLIENTE` agregado en Fase 4), `EstadoCredito`, `FrecuenciaPago` (`DIARIO | SEMANAL | MENSUAL`). FKs de dinero (`Cliente.rutaId`, `Credito.cliente/producto`, `Pago.credito/cobrador`) son **`onDelete: Restrict`** (auditable). Solo `Ruta.cobradorId` es `SetNull` (cobrador borrado no debe borrar rutas).
 - **`Cliente` (Fase 4):** `tokenAcceso` eliminado (ya no se usa); agregó `passwordHash String?`, `mustChangePassword Boolean`, `passwordExpiresAt DateTime?`, `failedLoginAttempts Int`, `lockedUntil DateTime?`, `lastLoginAt DateTime?` — acceso al portal por credenciales, no por token.
+- **`Pago` (post-Fase-4):** agregó `anulado Boolean @default(false)`, `anuladoAt DateTime?`, `anuladoPorId String?` (`onDelete: Restrict`, relación `"PagoAnuladoPor"` hacia `Usuario`) — ver "Un pago mal registrado se anula" arriba.
 - Secuencia Postgres `credito_codigo_seq` (start 2000) para códigos `CR-XXXX` race-safe. **Gotcha:** `nextval` solo garantiza unicidad entre los códigos que emite ELLA. El seed inserta códigos a mano (`CR-2041`, `CR-2050`, `CR-2060`, `CR-2070`) en el mismo espacio numérico, así que la secuencia fue subiendo desde 2000 y al llegar a esos valores generó códigos ya existentes → `POST /credits` devolvía **409 "Conflicto generando código de crédito"** sin causa visible. Se detectó cuando `creditos.e2e-spec.ts` empujó la secuencia por esa zona. `prisma/seed.ts` ahora termina con `alinearSecuenciaDeCodigos()` (un `setval` que solo avanza, idempotente): todo código hardcodeado nuevo tiene que quedar por debajo de la secuencia.
 
 ### Next.js structure (`apps/web/src`)
@@ -218,7 +233,7 @@ Resumen:
 - `app/` = composición pura (server components que importan de `widgets`/`features`). Route-groups: `(admin)` (dark), `(collector)` (light + bottom tab), `(client)` (light — Fase 4: login, cambio de contraseña, lista de créditos, detalle), `dev/ui` (galería).
 - `widgets/` = bloques compuestos (shells, login). `features/` = 10 features con `api/ + ui/` (Fase 4 agregó `client-auth`, `client-portal`, `receipts`). `entities/` = 3 (client, credit, session — `session` incluye el store separado del cliente, `client-session-store.ts`). `shared/` = api client, motion (GSAP), ui primitives (23 shadcn + variantes `on-time`/`late`/`missed` en `Badge`), icons, lib.
 - `shared/api/client.ts` (`apiFetch` + `uploadFile`): base URL `NEXT_PUBLIC_API_URL` (default `http://localhost:3001`). Token se pasa **explícitamente** en cada llamada (no interceptor) para mantener `shared` libre de imports de capas superiores.
-- Patrón swap mock→real: `export const xxxService: XxxService = httpXxxService` en cada `*-service.ts`. Mocks siguen implementados. **Excepción actual:** `client-portal` sigue en `mockClientCreditService` (backend ya existe y está probado por e2e; el swap del front no se hizo en Fase 4).
+- Patrón swap mock→real: `export const xxxService: XxxService = httpXxxService` en cada `*-service.ts`. Mocks siguen implementados. `client-portal` también está en `httpClientCreditService` — el swap se activó tras la auditoría post-Fase 4 (quedó documentado como pendiente en `ESTADO_ACTUAL.md` §8.1, pero ya no lo está).
 - Zustand para sesión: `entities/session/model/session-store.ts` (staff, clave `session-storage`) y `client-session-store.ts` (cliente final, Fase 4, clave `client-session` — separado a propósito para que ambas sesiones convivan en el mismo navegador). Ambos con flag `hasHydrated` para evitar redirección prematura en SSR.
 - TanStack Query para todo lo demás. Cada feature define `queryKeys` jerárquico y mutaciones invalidan con `<feature>Keys.all`. Sin `defaultOptions` (defaults v5).
 - Validación en cliente: cada `apiFetch(path, schema, opts)` ejecuta `schema.parse(json)` con el MISMO schema Zod de `@repo/types`. Errores de shape lanzan `ZodError`.

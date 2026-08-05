@@ -28,7 +28,10 @@ function buildCreditoDetailInclude(adminId: string) {
     },
     pagos: {
       orderBy: { fecha: "desc" },
-      include: { cobrador: { select: { nombre: true } } },
+      include: {
+        cobrador: { select: { nombre: true } },
+        anuladoPor: { select: { nombre: true } },
+      },
     },
   } satisfies Prisma.CreditoInclude;
 }

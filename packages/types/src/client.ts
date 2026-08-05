@@ -134,9 +134,18 @@ export type UpdateClienteRequest = z.infer<typeof updateClienteRequestSchema>;
 
 // Filtros de la lista (pantalla 3c). El filtro por `estado` se difiere a la
 // Fase 3 (depende de Crédito); aquí solo buscador y filtro por ruta.
+// `estado` filtra por la relación ClientAdmin del que consulta, no por el
+// Cliente global (ver el comentario de `admins` en `schema.prisma`).
+// Ausente = "activos" (el comportamiento de siempre); "inactivos"/"todos" son
+// ADMIN-only — el service los ignora para COBRADOR (nunca tuvo motivo para
+// navegar la cartera dada de baja de su admin).
+export const clientesEstadoFiltroSchema = z.enum(["activos", "inactivos", "todos"]);
+export type ClientesEstadoFiltro = z.infer<typeof clientesEstadoFiltroSchema>;
+
 export const clientesQuerySchema = z.object({
   search: z.string().optional(),
   rutaId: z.string().optional(),
+  estado: clientesEstadoFiltroSchema.optional(),
 });
 export type ClientesQuery = z.infer<typeof clientesQuerySchema>;
 

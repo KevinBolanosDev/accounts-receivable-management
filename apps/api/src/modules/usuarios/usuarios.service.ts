@@ -113,6 +113,33 @@ export class UsuariosService {
     await this.usuariosRepository.softDelete(id, adminId);
   }
 
+  // Baja PERMANENTE: borra la fila de verdad. Solo posible si el cobrador
+  // nunca registró un pago — `Pago.cobradorId` es `onDelete: Restrict`, así
+  // que la base de datos rechazaría el DELETE igual si se lo saltara acá; el
+  // chequeo previo solo cambia un error de FK opaco por un 409 legible. Con
+  // historial, la única baja posible sigue siendo `remove` (desactivar).
+  async removePermanent(id: string, user: AuthenticatedUser): Promise<void> {
+    const adminId = requireAdminId(user);
+
+    if (id === user.sub) {
+      throw new ForbiddenException("No puedes eliminar tu propio usuario.");
+    }
+
+    const existing = await this.usuariosRepository.findById(id, { adminId });
+    if (!existing || existing.rol !== "COBRADOR") {
+      throw new NotFoundException("Cobrador no encontrado.");
+    }
+
+    const pagosCount = await this.usuariosRepository.countPagos(id);
+    if (pagosCount > 0) {
+      throw new ConflictException(
+        `No puedes eliminar permanentemente a este cobrador: tiene ${pagosCount} pago(s) registrados en su historia. Solo puedes desactivarlo.`,
+      );
+    }
+
+    await this.usuariosRepository.hardDelete(id, adminId);
+  }
+
   // `/users` es la gestión de staff del admin autenticado.
   //   · rol=COBRADOR (default) → los cobradores de SU tenant.
   //   · rol=ADMIN → solo él mismo. Un admin no administra a otros admins; los
@@ -143,6 +170,7 @@ export class UsuariosService {
       rutas: usuario.rutas.map((ruta) => ({ id: ruta.id, nombre: ruta.nombre })),
       clientesCount: usuario.rutas.reduce((sum, ruta) => sum + ruta._count.clientAdmins, 0),
       cobradoHoy: 0,
+      pagosCount: usuario._count.pagos,
     };
   }
 }

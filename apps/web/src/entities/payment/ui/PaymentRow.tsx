@@ -8,6 +8,7 @@ import { Badge } from "@/shared/ui/badge";
 import {
   CUOTA_ESTADO_BADGE_STATUS,
   CUOTA_ESTADO_LABEL_SHORT,
+  esCuotaAnulada,
   esCuotaSinPagar,
 } from "../lib/cuota-estado";
 
@@ -35,6 +36,7 @@ export function PaymentRow({
   ...props
 }: PaymentRowProps) {
   const sinPagar = esCuotaSinPagar(pago.estado);
+  const anulada = esCuotaAnulada(pago.estado);
 
   return (
     <div
@@ -42,7 +44,7 @@ export function PaymentRow({
       data-estado={pago.estado}
       className={cn(
         "flex items-center gap-3 rounded-xl border border-border bg-card p-3",
-        pago.estado === "PENDING" && "opacity-70",
+        (pago.estado === "PENDING" || anulada) && "opacity-70",
         className,
       )}
       {...props}
@@ -54,19 +56,24 @@ export function PaymentRow({
             {CUOTA_ESTADO_LABEL_SHORT[pago.estado]}
           </Badge>
         </div>
+        {/* Una fila anulada no tiene "Cuota N/Total" — su `numeroCuota` es un
+            sentinel (0), no un lugar real del cronograma (ver
+            `buildPaymentHistory`). Mostrar "Cuota 0/30" leería como un bug. */}
         <span className="truncate text-caption text-muted-foreground">
-          Cuota {pago.numeroCuota}
-          {cuotasTotal ? `/${cuotasTotal}` : ""} · vence{" "}
-          {formatDateShort(pago.fechaVencimiento)}
+          {anulada
+            ? "No cuenta como cuota — el saldo se devolvió al crédito"
+            : `Cuota ${pago.numeroCuota}${cuotasTotal ? `/${cuotasTotal}` : ""} · vence ${formatDateShort(pago.fechaVencimiento)}`}
         </span>
         {/* Las dos fechas separadas: cuándo vencía (arriba) y cuándo se pagó
             realmente (acá). Antes se mostraba una sola y no se sabía cuál era. */}
         <span className="truncate text-caption text-muted-foreground">
-          {pago.fechaPago
-            ? `Pagado ${formatDateTimeShort(pago.fechaPago)}`
-            : pago.diasAtraso > 0
-              ? `Sin pagar · hace ${pago.diasAtraso} ${pago.diasAtraso === 1 ? "día" : "días"}`
-              : "Sin pagar"}
+          {anulada
+            ? `Registrado ${formatDateTimeShort(pago.fecha)}`
+            : pago.fechaPago
+              ? `Pagado ${formatDateTimeShort(pago.fechaPago)}`
+              : pago.diasAtraso > 0
+                ? `Sin pagar · hace ${pago.diasAtraso} ${pago.diasAtraso === 1 ? "día" : "días"}`
+                : "Sin pagar"}
         </span>
         {pago.reciboCodigo ? (
           <span className="truncate text-caption text-muted-foreground">
@@ -76,9 +83,15 @@ export function PaymentRow({
       </div>
 
       <div className="flex shrink-0 items-center gap-1">
-        <span className="text-body-sm font-bold tabular-nums">
+        <span
+          className={cn(
+            "text-body-sm font-bold tabular-nums",
+            anulada && "line-through text-muted-foreground",
+          )}
+        >
           {/* Una cuota sin pagar no tiene monto: mostrar $0 haría creer que se
-              registró un pago de cero. */}
+              registró un pago de cero. Una anulada SÍ tuvo monto — se muestra
+              tachado, no oculto, porque de eso se trata la auditoría. */}
           {sinPagar ? "—" : formatCurrency(pago.monto)}
         </span>
         {actions}

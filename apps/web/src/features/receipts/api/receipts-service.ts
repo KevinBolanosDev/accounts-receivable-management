@@ -1,10 +1,17 @@
+import { receiptSchema, type Receipt } from "@repo/types";
+
 import { fetchReceiptHtml } from "@/entities/receipt";
 import { useSessionStore } from "@/entities/session";
+import { apiFetch } from "@/shared/api/client";
 
 export interface ReceiptsService {
   // Devuelve el HTML server-rendered del recibo (no JSON). El front lo monta
   // en un iframe con `srcDoc`. Requiere JWT del staff.
   getByPagoId(pagoId: string): Promise<string>;
+  // Contraparte JSON del mismo recibo — lo que necesita `ReceiptScreen` para
+  // armar el mensaje de WhatsApp (cliente, producto, monto, `reciboPublicUrl`)
+  // justo después de cobrar, cuando solo tiene el `pagoId` en la URL.
+  getData(pagoId: string): Promise<Receipt>;
 }
 
 // Mock — devuelve un HTML placeholder con datos del seed para poder iterar
@@ -30,6 +37,21 @@ export const mockReceiptsService: ReceiptsService = {
   async getByPagoId(pagoId: string): Promise<string> {
     return mockHtml(pagoId);
   },
+  async getData(pagoId: string): Promise<Receipt> {
+    return receiptSchema.parse({
+      id: pagoId,
+      pagoId,
+      codigo: `R-${pagoId.slice(0, 6).toUpperCase()}`,
+      createdAt: new Date().toISOString(),
+      credito: { codigo: "CR-2041", clienteNombre: "Cliente mock", productoNombre: "Producto mock" },
+      monto: 20000,
+      saldoRestante: 180000,
+      fecha: new Date().toISOString(),
+      cobradorNombre: "Cobrador mock",
+      reciboPublicUrl: null,
+      clienteTelefono: null,
+    });
+  },
 };
 
 // Variante real: delega en `entities/receipt`, donde vive el transporte desde
@@ -40,6 +62,11 @@ export const httpReceiptsService: ReceiptsService = {
   getByPagoId(pagoId: string): Promise<string> {
     const token = useSessionStore.getState().token;
     return fetchReceiptHtml({ pagoId, scope: "staff", token });
+  },
+  getData(pagoId: string): Promise<Receipt> {
+    return apiFetch(`/payments/${pagoId}`, receiptSchema, {
+      token: useSessionStore.getState().token,
+    });
   },
 };
 

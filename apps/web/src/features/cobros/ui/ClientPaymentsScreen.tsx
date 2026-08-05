@@ -59,17 +59,17 @@ export function ClientPaymentsScreen({
 }: ClientPaymentsScreenProps) {
   const { data: cliente, isLoading } = useCliente(clienteId);
 
-  // Un crédito por producto para la pestaña Historial. Incluye los ACTIVOS que
-  // ya tengan pagos: son los que concentran casi todo el historial, y esta
-  // pestaña es la puerta de entrada al detalle por crédito.
-  const creditosConPagos = useMemo(() => {
+  // Un crédito por producto para la pestaña Historial — SOLO terminados
+  // (`cliente.creditosHistorial`: PAGADO o ANULADO). Antes también entraban
+  // los ACTIVOS que ya tuvieran algún pago, y un crédito en curso aparecía en
+  // las dos pestañas a la vez (ver el mismo fix en `AdminClientCreditsScreen`,
+  // su espejo del Admin — se cambian juntas).
+  const creditosTerminados = useMemo(() => {
     if (!cliente) return [];
     const porCredito = agruparPagosPorCredito(cliente.historialPagos);
-    const todos = [...cliente.creditosActivos, ...cliente.creditosHistorial];
 
-    return todos
+    return cliente.creditosHistorial
       .map((credito) => ({ credito, resumen: resumenHistorial(porCredito.get(credito.id) ?? []) }))
-      .filter((fila) => fila.resumen.pagos > 0)
       .sort((a, b) => (b.resumen.ultimoPago ?? "").localeCompare(a.resumen.ultimoPago ?? ""));
   }, [cliente]);
 
@@ -152,7 +152,7 @@ export function ClientPaymentsScreen({
         <TabsRoot defaultValue={initialTab}>
           <TabsList>
             <TabsTrigger value="activos">Activos ({creditosActivos.length})</TabsTrigger>
-            <TabsTrigger value="historial">Historial ({creditosConPagos.length})</TabsTrigger>
+            <TabsTrigger value="historial">Historial ({creditosTerminados.length})</TabsTrigger>
           </TabsList>
 
           <TabsContent value="activos">
@@ -175,21 +175,25 @@ export function ClientPaymentsScreen({
 
           <TabsContent value="historial">
             <div className="flex flex-col gap-3">
-              {creditosConPagos.length === 0 ? (
-                <EmptyState text="Este cliente todavía no tiene pagos registrados." />
+              {creditosTerminados.length === 0 ? (
+                <EmptyState text="Este cliente todavía no tiene créditos terminados." />
               ) : (
-                creditosConPagos.map(({ credito, resumen }) => (
+                creditosTerminados.map(({ credito, resumen }) => (
                   <CreditSummaryCard
                     key={credito.id}
                     credito={credito}
                     href={`/collector/routes/payments/${clienteId}/credits/${credito.id}`}
                     amountKind="pagado"
-                    meta={`${resumen.pagos} pago${resumen.pagos === 1 ? "" : "s"} · último ${formatRelativeDateTime(resumen.ultimoPago)}`}
+                    meta={
+                      resumen.pagos > 0
+                        ? `${resumen.pagos} pago${resumen.pagos === 1 ? "" : "s"} · último ${formatRelativeDateTime(resumen.ultimoPago)}`
+                        : "Sin pagos registrados"
+                    }
                     badge={
                       credito.estado === "PAGADO" ? (
                         <Badge status="pagado">Pagado</Badge>
-                      ) : credito.estado === "MORA" ? (
-                        <Badge status="mora">Mora</Badge>
+                      ) : credito.estado === "ANULADO" ? (
+                        <Badge status="ruta-cerrada">Anulado</Badge>
                       ) : null
                     }
                     className="shadow-sm"

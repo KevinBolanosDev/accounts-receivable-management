@@ -17,6 +17,7 @@ export const clientesKeys = {
   list: (query?: ClientesQuery) => ["clientes", "list", query ?? {}] as const,
   summary: ["clientes", "summary"] as const,
   detail: (id: string) => ["clientes", id] as const,
+  inactivo: (id: string) => ["clientes", id, "inactivo"] as const,
 };
 
 export function useClientes(query?: ClientesQuery) {
@@ -95,5 +96,27 @@ export function useDeleteClientAccess() {
   return useMutation({
     mutationFn: (id: string) => clientesService.deleteAccess(id),
     onSuccess: (_data, id) => queryClient.invalidateQueries({ queryKey: clientesKeys.detail(id) }),
+  });
+}
+
+// Query key propia (`inactivo`, no `detail`): son dos vistas del mismo id con
+// scoping distinto en el backend (`estado=todos` salta el filtro `activo`),
+// así que no deben compartir caché — una nunca debe "resolver" a la otra.
+export function useClienteInactivo(id: string) {
+  return useQuery({
+    queryKey: clientesKeys.inactivo(id),
+    queryFn: () => clientesService.getClienteInactivo(id),
+    enabled: !!id,
+  });
+}
+
+export function useReactivateCliente() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => clientesService.reactivateCliente(id),
+    onSuccess: (_data, id) => {
+      queryClient.invalidateQueries({ queryKey: clientesKeys.all });
+      queryClient.removeQueries({ queryKey: clientesKeys.inactivo(id) });
+    },
   });
 }

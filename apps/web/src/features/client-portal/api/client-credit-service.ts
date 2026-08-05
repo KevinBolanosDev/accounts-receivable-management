@@ -60,6 +60,7 @@ function buildCr2041Pagos(): PaymentHistoryItem[] {
       fechaPago: fecha.toISOString(),
       diasAtraso: atraso,
       reciboCodigo: mockReciboCodigo(id),
+      anulado: false,
     });
   }
 
@@ -88,6 +89,7 @@ function buildCr2041Pagos(): PaymentHistoryItem[] {
       fechaPago: null,
       diasAtraso,
       reciboCodigo: null,
+      anulado: false,
     });
   }
 
@@ -166,6 +168,7 @@ function buildCr2055Pagos(): PaymentHistoryItem[] {
       fechaPago: fecha.toISOString(),
       diasAtraso: 0,
       reciboCodigo: mockReciboCodigo(id),
+      anulado: false,
     });
   }
   return pagos.sort((a, b) => b.numeroCuota - a.numeroCuota);
