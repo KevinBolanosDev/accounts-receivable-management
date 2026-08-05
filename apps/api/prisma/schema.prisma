@@ -34,6 +34,15 @@ enum FrecuenciaPago {
   MENSUAL
 }
 
+// Fase 5 — estado de un cierre diario. El MVP solo persiste filas CLOSED: "día
+// abierto" = no existe cierre para (ruta, hoy). OPEN queda por fidelidad a la
+// spec y para un futuro registro explícito antes de congelar (ver
+// `core/domain/daily-closure.util.ts`).
+enum ClosureStatus {
+  OPEN
+  CLOSED
+}
+
 model Usuario {
   id           String   @id @default(uuid())
   nombre       String
@@ -66,6 +75,11 @@ model Usuario {
   productosAdmin Producto[]    @relation("AdminProductos")
   creditosAdmin  Credito[]     @relation("AdminCreditos")
 
+  // Fase 5 — cierres que este usuario cerró manualmente (`closedById`). Un
+  // cierre automático (cron) lo deja en null, así que esta lista son solo los
+  // manuales.
+  cierres DailyClosure[]
+
   @@index([adminId])
 }
 
@@ -85,6 +99,10 @@ model Ruta {
   clientAdmins ClientAdmin[]
   createdAt    DateTime      @default(now())
   updatedAt    DateTime      @updatedAt
+
+  // Fase 5 — historial de cierres diarios de esta ruta (snapshot inmutable,
+  // uno por día gracias a `@@unique([routeId, date])` en `DailyClosure`).
+  dailyClosures DailyClosure[]
 
   @@unique([adminId, nombre])
   @@index([cobradorId])
@@ -258,4 +276,32 @@ model Pago {
 
   @@index([creditoId])
   @@index([cobradorId])
+}
+
+// Fase 5 — snapshot inmutable del cierre de una ruta en una fecha.
+// `unpaidClients` congela la lista al cerrar (auditable); `unpaidCount`/
+// `collectedCount` la denormalizan para la tabla del histórico sin parsear
+// JSON. `pdfUrl` reservado (el PDF se sirve on-demand, ver 5.8). El MVP solo
+// escribe filas CLOSED — "día abierto" = no existe cierre para (ruta, hoy).
+model DailyClosure {
+  id               String        @id @default(uuid())
+  routeId          String
+  ruta             Ruta          @relation(fields: [routeId], references: [id], onDelete: Restrict)
+  date             DateTime      @db.Date
+  totalCollected   Decimal       @db.Decimal(12, 2)
+  collectedCount   Int           @default(0)
+  newCredits       Int           @default(0)
+  newCreditsAmount Decimal       @db.Decimal(12, 2) @default(0)
+  productsSold     Int           @default(0)
+  unpaidClients    Json // [{ clienteId, nombre, saldoPendiente, telefono }]
+  unpaidCount      Int           @default(0)
+  pdfUrl           String?
+  status           ClosureStatus @default(CLOSED)
+  closedById       String?
+  closedBy         Usuario?      @relation(fields: [closedById], references: [id], onDelete: SetNull)
+  createdAt        DateTime      @default(now())
+
+  @@unique([routeId, date]) // idempotencia: un día no se cierra dos veces
+  @@index([routeId])
+  @@index([date])
 }

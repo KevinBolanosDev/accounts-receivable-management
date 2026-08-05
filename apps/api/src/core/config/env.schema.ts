@@ -16,6 +16,11 @@ export const envSchema = z.object({
   // del recibo directamente (ver módulo `receipts`), esta URL es la del back,
   // no la del front.
   PUBLIC_APP_URL: z.string().url().default("http://localhost:3001"),
+  // Fase 5 — cierre automático de rutas por cron (`@nestjs/schedule`,
+  // `core/reports/closure-policy.ts`). Apagado por default: el cierre manual
+  // con `closedById` es el camino auditable; el cron es conveniencia, no debe
+  // arrancar solo en un ambiente que no lo pidió explícitamente.
+  DAILY_CLOSURE_CRON_ENABLED: z.coerce.boolean().default(false),
 });
 
 export type Env = z.infer<typeof envSchema>;

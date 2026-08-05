@@ -413,6 +413,113 @@ async function seedCreditos(adminId: string): Promise<void> {
   }
 }
 
+// Fase 5 — cierres diarios demo para "Ruta Centro" (la del Cobrador Demo,
+// 1000000002), que es la que usan las pantallas de #19c/#12c/#13c. Fechas
+// FIJAS (no relativas a "hoy"): el `@@unique([routeId, date])` es la clave del
+// upsert, así que una fecha relativa apuntaría a una fila distinta cada día
+// que se corra el seed y dejaría huérfanos los cierres de la corrida anterior
+// — lo mismo por lo que `CREDITOS` usa códigos fijos en vez de generados.
+// Dos cierres con clientes sin pagar (María y Carlos, los mismos del portal)
+// y uno sin morosos, para que el histórico (#12c) tenga los dos casos de
+// entrada sin esperar al flujo real.
+interface CierreSeed {
+  rutaNombre: string;
+  date: string; // "YYYY-MM-DD"
+  totalCollected: string;
+  collectedCount: number;
+  newCredits: number;
+  newCreditsAmount: string;
+  productsSold: number;
+  clientesSinPagar: { documento: string; saldoPendiente: string }[];
+}
+
+const CIERRES: CierreSeed[] = [
+  {
+    rutaNombre: "Ruta Centro",
+    date: "2026-08-04",
+    totalCollected: "180000.00",
+    collectedCount: 8,
+    newCredits: 1,
+    newCreditsAmount: "600000.00",
+    productsSold: 1,
+    clientesSinPagar: [
+      { documento: "1000000010", saldoPendiente: "1160000.00" },
+      { documento: "1000000011", saldoPendiente: "480000.00" },
+    ],
+  },
+  {
+    rutaNombre: "Ruta Centro",
+    date: "2026-08-03",
+    totalCollected: "220000.00",
+    collectedCount: 10,
+    newCredits: 0,
+    newCreditsAmount: "0.00",
+    productsSold: 0,
+    clientesSinPagar: [],
+  },
+  {
+    rutaNombre: "Ruta Centro",
+    date: "2026-08-02",
+    totalCollected: "200000.00",
+    collectedCount: 9,
+    newCredits: 0,
+    newCreditsAmount: "0.00",
+    productsSold: 0,
+    clientesSinPagar: [{ documento: "1000000010", saldoPendiente: "1160000.00" }],
+  },
+];
+
+async function seedCierres(adminId: string): Promise<void> {
+  // `closedById`: el cobrador de la ruta cerró manualmente (nunca null en el
+  // seed — null es "cierre automático por cron", que acá no aplica).
+  const cobrador = await prisma.usuario.findUniqueOrThrow({ where: { documento: "1000000002" } });
+
+  for (const c of CIERRES) {
+    const ruta = await prisma.ruta.findUniqueOrThrow({
+      where: { adminId_nombre: { adminId, nombre: c.rutaNombre } },
+    });
+
+    const unpaidClients = await Promise.all(
+      c.clientesSinPagar.map(async ({ documento, saldoPendiente }) => {
+        const cliente = await prisma.cliente.findUniqueOrThrow({ where: { documento } });
+        return {
+          clienteId: cliente.id,
+          nombre: cliente.nombre,
+          saldoPendiente: Number(saldoPendiente),
+          telefono: cliente.telefono,
+        };
+      }),
+    );
+
+    // Mediodía UTC, mismo ancla que `parseFechaInicio`: para un `@db.Date` no
+    // cambia el día que Postgres guarda, pero evita un instante a medianoche
+    // exacta que confunda a cualquier lectura futura que sí mire la hora.
+    const date = new Date(`${c.date}T12:00:00.000Z`);
+
+    const data = {
+      totalCollected: new Prisma.Decimal(c.totalCollected),
+      collectedCount: c.collectedCount,
+      newCredits: c.newCredits,
+      newCreditsAmount: new Prisma.Decimal(c.newCreditsAmount),
+      productsSold: c.productsSold,
+      unpaidClients,
+      unpaidCount: unpaidClients.length,
+      status: "CLOSED" as const,
+      closedById: cobrador.id,
+    };
+
+    await prisma.dailyClosure.upsert({
+      where: { routeId_date: { routeId: ruta.id, date } },
+      update: data,
+      create: { routeId: ruta.id, date, ...data },
+    });
+
+    console.log(
+      `Cierre sembrado: ${c.rutaNombre} · ${c.date} · ${unpaidClients.length} sin pagar`,
+    );
+  }
+}
+
 // Alinea `credito_codigo_seq` por encima del código más alto que exista.
 //
 // Bug real que esto arregla: el seed inserta códigos A MANO (`CR-2041`,
@@ -450,6 +557,7 @@ async function main(): Promise<void> {
   await seedClientes(adminId);
   await seedProductos(adminId);
   await seedCreditos(adminId);
+  await seedCierres(adminId);
   // Después de los créditos: los códigos hardcodeados de arriba tienen que
   // quedar por debajo de la secuencia, o la app emitirá uno repetido.
   await alinearSecuenciaDeCodigos();
