@@ -3,6 +3,8 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { DailyClosure, DailyClosureListQuery } from "@repo/types";
 
+import { downloadBlob } from "@/shared/lib/download-blob";
+
 import { closuresService } from "./closures-service";
 
 export const closuresKeys = {
@@ -26,8 +28,22 @@ export function useCloseRoute(routeId: string) {
     mutationFn: () => closuresService.close(routeId),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: closuresKeys.all });
-      // Cross-feature: cerrar la ruta cambia su `estadoDia` (Fase 5.9/5.10).
+      // Cross-feature (claves crudas, no un import de `routes-collectors`/
+      // `dashboard` — misma convención que `use-cobros.ts`): cerrar la ruta
+      // cambia su `estadoDia` (rutas) y las métricas agregadas (dashboard).
       queryClient.invalidateQueries({ queryKey: ["rutas"] });
+      queryClient.invalidateQueries({ queryKey: ["dashboard"] });
+    },
+  });
+}
+
+// Descarga el PDF del cierre (Fase 5.8/5.10): fetch autenticado → Blob → guardar
+// como archivo. No es un `<a href>` directo porque la ruta exige JWT.
+export function useDownloadClosurePdf() {
+  return useMutation<void, Error, { id: string; filename: string }>({
+    mutationFn: async ({ id, filename }) => {
+      const blob = await closuresService.getPdfBlob(id);
+      downloadBlob(blob, filename);
     },
   });
 }

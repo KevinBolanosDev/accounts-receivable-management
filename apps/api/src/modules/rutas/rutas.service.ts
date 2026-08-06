@@ -16,7 +16,13 @@ import type {
 
 import type { AuthenticatedUser } from "../../core/auth/auth-request";
 import { requireAdminId } from "../../core/auth/tenant.util";
-import { mapCreditoListItem, rollupEstadoCliente } from "../../core/domain/credito-cliente.util";
+import {
+  computeAvanceDelDia,
+  mapCreditoListItem,
+  rollupEstadoCliente,
+} from "../../core/domain/credito-cliente.util";
+import { isRouteClosedOn } from "../../core/domain/daily-closure.util";
+import { CLOSURE_TIMEZONE } from "../../core/reports/closure-policy";
 import { RutasRepository, type RutaWithClientesHoy, type RutaWithCount } from "./rutas.repository";
 
 // El scoping vive aquí, no en el repository: lee el rol/sub de @CurrentUser()
@@ -203,6 +209,8 @@ export class RutasService {
 
   // Ruta recién creada/actualizada: sin clientes que agregar todavía en el
   // mismo request, así que el resumen del día es 0 (no hace falta re-leer).
+  // `estadoDia` sí puede ser real (editar el nombre de una ruta ya cerrada
+  // hoy no debe mostrarla como "abierta").
   private toListItemFromWrite(ruta: RutaWithCount): RutaListItem {
     return {
       id: ruta.id,
@@ -213,7 +221,7 @@ export class RutasService {
       clientesCount: ruta._count.clientAdmins,
       totalCobradoHoy: 0,
       avanceDelDia: 0,
-      estadoDia: "abierta",
+      estadoDia: estadoDiaDe(ruta.dailyClosures),
     };
   }
 
@@ -228,8 +236,7 @@ export class RutasService {
       clientesCount: ruta.clientAdmins.length,
       totalCobradoHoy: resumen.totalCobradoHoy,
       avanceDelDia: resumen.avanceDelDia,
-      // Stub Fase 5: el cierre diario es lo que abre/cierra el día de una ruta.
-      estadoDia: "abierta",
+      estadoDia: estadoDiaDe(ruta.dailyClosures),
     };
   }
 
@@ -242,18 +249,45 @@ export class RutasService {
       cobradorId: ruta.cobradorId,
       cobrador: ruta.cobrador ? { id: ruta.cobrador.id, nombre: ruta.cobrador.nombre } : null,
       cobradorTelefono: ruta.cobrador?.telefono ?? null,
-      estadoDia: "abierta",
+      estadoDia: estadoDiaDe(ruta.dailyClosures),
       avanceDelDia: resumen.avanceDelDia,
       clientesCount: ruta.clientAdmins.length,
       cobradoHoy: resumen.totalCobradoHoy,
-      // Stub Fase 5: MORA se persiste a nivel de Crédito con el cierre diario;
-      // hoy ningún crédito llega a ese estado, así que el rollup nunca lo marca.
+      // Ya no es stub: cuenta créditos `estado=MORA` de verdad — antes ningún
+      // crédito llegaba a ese estado porque nada lo escribía; el cierre
+      // diario (Fase 5.7) lo materializa en la transacción de cerrar.
       enMora: resumen.clientes.filter((c) => c.estado === "mora").length,
       saldoTotal: resumen.saldoTotal,
-      cierres: [],
+      cierres: ruta.dailyClosures.map(toCierreResumen),
       clientes: resumen.clientes,
     };
   }
+}
+
+// Cerrada si existe un cierre para HOY (día local `CLOSURE_TIMEZONE`) entre
+// los últimos `RECENT_CLOSURES_TAKE` — como están ordenados `date desc`, el
+// de hoy (si existe) siempre es el primero, así que el recorte nunca esconde
+// el dato que importa para esta pregunta puntual.
+function estadoDiaDe(dailyClosures: { date: Date }[]): "abierta" | "cerrada" {
+  return isRouteClosedOn(dailyClosures, new Date(), CLOSURE_TIMEZONE) ? "cerrada" : "abierta";
+}
+
+function toCierreResumen(closure: {
+  id: string;
+  date: Date;
+  totalCollected: Prisma.Decimal;
+  status: "OPEN" | "CLOSED";
+  newCredits: number;
+  unpaidCount: number;
+}): RutaDetail["cierres"][number] {
+  return {
+    id: closure.id,
+    fecha: closure.date.toISOString().slice(0, 10),
+    total: Number(closure.totalCollected.toString()),
+    estado: closure.status,
+    creditosNuevos: closure.newCredits,
+    clientesSinPagar: closure.unpaidCount,
+  };
 }
 
 function hoyRange(): { desde: Date; hasta: Date } {
@@ -272,9 +306,8 @@ function summarizeRuta(ruta: RutaWithClientesHoy): {
 } {
   const hoy = new Date();
   let totalCobradoHoy = 0;
-  let elegibles = 0;
-  let cobrados = 0;
   let saldoTotal = 0;
+  const actividad: { elegible: boolean; cobrado: boolean }[] = [];
 
   const clientes: RutaCliente[] = ruta.clientAdmins.map((clientAdmin) => {
     const cliente = clientAdmin.client;
@@ -326,10 +359,10 @@ function summarizeRuta(ruta: RutaWithClientesHoy): {
     saldoTotal += saldoActivos;
     // Elegible para el resumen del día: tiene algo activo para cobrar, o ya se
     // le cobró hoy (incluye el caso "pagó su última cuota justo hoy").
-    if (creditosActivos.length > 0 || cobroHoy) {
-      elegibles += 1;
-      if (cobroHoy) cobrados += 1;
-    }
+    actividad.push({
+      elegible: creditosActivos.length > 0 || Boolean(cobroHoy),
+      cobrado: Boolean(cobroHoy),
+    });
     totalCobradoHoy += totalCobradoHoyCliente;
 
     return {
@@ -359,7 +392,7 @@ function summarizeRuta(ruta: RutaWithClientesHoy): {
   return {
     clientes,
     totalCobradoHoy: Number(totalCobradoHoy.toFixed(2)),
-    avanceDelDia: elegibles > 0 ? Math.round((cobrados / elegibles) * 100) : 0,
+    avanceDelDia: computeAvanceDelDia(actividad),
     saldoTotal: Number(saldoTotal.toFixed(2)),
   };
 }

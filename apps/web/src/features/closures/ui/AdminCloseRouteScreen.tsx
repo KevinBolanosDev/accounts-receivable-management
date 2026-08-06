@@ -1,12 +1,10 @@
 "use client";
 
 import { useState } from "react";
-import { useParams } from "next/navigation";
-import { CheckCircle2Icon, DownloadIcon } from "lucide-react";
+import { DownloadIcon } from "lucide-react";
 import { toast } from "sonner";
 import type { DailyClosure } from "@repo/types";
 
-import { ClientCard } from "@/entities/client";
 import { buildWhatsAppUrl } from "@/entities/receipt";
 import { ApiError } from "@/shared/api/client";
 import { formatCurrency } from "@/shared/lib/format-currency";
@@ -15,41 +13,41 @@ import { Button } from "@/shared/ui/button";
 import { MetricTile, MetricTileGroup } from "@/shared/ui/metric-tile";
 import { Skeleton } from "@/shared/ui/skeleton";
 import { WhatsAppIcon } from "@/shared/ui/icons/whatsapp-icon";
-import { CollectorHero } from "@/widgets/collector-shell/CollectorHero";
+import { AdminPageHeader } from "@/widgets/admin-shell/AdminPageHeader";
 
 import { useCloseRoute, useClosurePreview, useDownloadClosurePdf } from "../api/use-closures";
 import { buildClosureShareText } from "../lib/build-share-text";
 import { closurePdfFilename } from "../lib/pdf-filename";
 import { ConfirmCloseDialog } from "./ConfirmCloseDialog";
+import { UnpaidClientsList } from "./UnpaidClientsList";
 
-// DESIGN_SYSTEM.md §4.6 — Cierre de ruta (#19c). Hero + tarjeta resumen
-// superpuesta (mismo patrón que el detalle de ruta, #15c: `MetricTileGroup`
-// con `overlap`) → clientes sin pagar (Client card compacta, sin porcentaje
-// de avance: `ClosurePreview.unpaidClients` no lo trae, es un agregado del
-// cierre, no del crédito) → botón destructive pegado al fondo → modal de
-// confirmación. "Ruta ya cerrada hoy" bloquea el botón; justo después de
-// cerrar (con el snapshot ya en mano) ofrece descargar el PDF y compartir un
-// resumen por WhatsApp — un cierre reabierto en otra sesión (sin el
-// snapshot a mano) solo muestra el estado, sin esas acciones: `ClosurePreview`
-// no trae el `id` del cierre cuando ya estaba cerrado de antes.
-export function CloseRouteScreen() {
-  const params = useParams<{ id: string }>();
-  const routeId = params.id;
-  const { data: preview, isLoading, isError, refetch } = useClosurePreview(routeId);
-  const closeRoute = useCloseRoute(routeId);
+// Espejo de `CloseRouteScreen` (#19c, Cobrador) en la superficie del Admin —
+// mismos hooks (`useClosurePreview`/`useCloseRoute`/`useDownloadClosurePdf`,
+// genéricos, sin acoplamiento a una superficie) y misma lógica de estado
+// (preview → confirmar → snapshot recién cerrado con PDF/WhatsApp), pero con
+// `AdminPageHeader` en vez de `CollectorHero` y la lista rica de clientes sin
+// pagar (`UnpaidClientsList`, con llamar/recordar) que ya usa `ClosureDetailScreen`
+// en vez del `ClientCard` simple del Cobrador — el Admin también puede cerrar
+// "Mis rutas" (las que cobra en persona, ver `RouteDetailScreen` de
+// `features/cobros`) o cualquier ruta de cobradores de su tenant.
+export function AdminCloseRouteScreen({ rutaId }: { rutaId: string }) {
+  const { data: preview, isLoading, isError, refetch } = useClosurePreview(rutaId);
+  const closeRoute = useCloseRoute(rutaId);
   const download = useDownloadClosurePdf();
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [closedResult, setClosedResult] = useState<DailyClosure | null>(null);
 
+  const backHref = `/admin/routes-collectors/${rutaId}`;
+
   // Sin esto, un fetch que falla (red caída, API mal configurada) dejaba
   // `isLoading=false` y `preview=undefined` — la condición de abajo seguía
   // siendo verdadera para siempre y la pantalla quedaba en Skeleton sin
-  // ningún indicio de error.
+  // ningún indicio de error. Mismo fix que `CloseRouteScreen`.
   if (isError) {
     return (
-      <div className="flex flex-col pb-6">
-        <CollectorHero title="Cierre de ruta" backHref={`/collector/routes/${routeId}`} />
-        <div className="flex flex-col items-center gap-3 px-4 pt-6 text-center">
+      <>
+        <AdminPageHeader backHref={backHref} eyebrow="Rutas" title="Cerrar ruta" />
+        <div className="flex flex-col items-center gap-3 p-4 pt-8 text-center sm:p-6">
           <p className="text-sm font-medium">No pudimos cargar el cierre de esta ruta</p>
           <p className="text-caption text-muted-foreground">
             Revisá tu conexión e intentá de nuevo.
@@ -58,21 +56,19 @@ export function CloseRouteScreen() {
             Reintentar
           </Button>
         </div>
-      </div>
+      </>
     );
   }
 
   if (isLoading || !preview) {
     return (
-      <div className="flex flex-col pb-6">
-        <CollectorHero title="Cierre de ruta" backHref={`/collector/routes/${routeId}`} />
-        <div className="-mt-9 flex flex-col gap-3 px-4">
-          <Skeleton className="h-19 w-full rounded-xl" />
-          {Array.from({ length: 3 }).map((_, i) => (
-            <Skeleton key={i} className="h-19 w-full rounded-xl" />
-          ))}
+      <>
+        <AdminPageHeader backHref={backHref} eyebrow="Rutas" title="Cerrar ruta" />
+        <div className="flex flex-col gap-4 p-4 sm:p-6">
+          <Skeleton className="h-20 w-full" />
+          <Skeleton className="h-64 w-full" />
         </div>
-      </div>
+      </>
     );
   }
 
@@ -102,32 +98,30 @@ export function CloseRouteScreen() {
   };
 
   return (
-    <div className="flex flex-col pb-6">
-      <CollectorHero
-        title="Cierre de ruta"
-        subtitle={`${preview.rutaNombre} · hoy, ${formatDateShort(new Date())}`}
-        backHref={`/collector/routes/${routeId}`}
+    <>
+      <AdminPageHeader
+        backHref={backHref}
+        eyebrow="Rutas"
+        title={`Cerrar ${preview.rutaNombre}`}
+        subtitle={`Hoy, ${formatDateShort(new Date())}`}
       />
 
-      <div className="px-4">
-        <MetricTileGroup columns={3} divided overlap>
+      <div className="flex min-w-0 flex-col gap-6 p-4 sm:p-6">
+        <MetricTileGroup columns={3} divided>
           <MetricTile value={formatCurrency(preview.totalCollected)} label="Cobrado hoy" />
           <MetricTile value={String(preview.collectedCount)} label="Cobros" />
           <MetricTile value={String(unpaidCount)} label="Sin pagar" tone="destructive" />
         </MetricTileGroup>
-      </div>
 
-      <div className="flex flex-col gap-4 px-4 pt-4">
         {alreadyClosed ? (
-          <div className="flex flex-col items-center gap-3 rounded-xl border border-dashed border-border bg-card p-8 text-center">
-            <CheckCircle2Icon className="size-8 text-success" aria-hidden />
+          <div className="flex flex-col items-center gap-3 rounded-lg border border-dashed border-border bg-card p-8 text-center">
             <p className="text-sm font-medium">Ruta ya cerrada hoy</p>
             <p className="text-caption text-muted-foreground">
               El cierre de hoy ya quedó registrado. Mañana esta pantalla vuelve a abrir el día.
             </p>
 
             {closedResult ? (
-              <div className="mt-2 flex w-full flex-col gap-2">
+              <div className="mt-2 flex w-full flex-col gap-2 sm:max-w-sm">
                 <Button variant="secondary" loading={download.isPending} onClick={handleDownloadPdf}>
                   <DownloadIcon />
                   Descargar PDF
@@ -147,34 +141,23 @@ export function CloseRouteScreen() {
           </div>
         ) : (
           <>
-            <div className="flex flex-col gap-2">
-              <h2 className="text-caption font-semibold tracking-wide text-muted-foreground uppercase">
-                Clientes sin pagar
+            <div className="flex min-w-0 flex-col gap-3">
+              <h2 className="text-body-sm font-semibold uppercase tracking-wide text-muted-foreground">
+                Clientes sin pagar ({unpaidCount})
               </h2>
               {unpaidCount === 0 ? (
-                <p className="rounded-lg border border-dashed border-border bg-card p-4 text-center text-caption text-muted-foreground">
+                <p className="rounded-lg border border-dashed border-border bg-card p-8 text-center text-body-sm text-muted-foreground">
                   Todos los clientes de la ruta pagaron hoy.
                 </p>
               ) : (
-                <div className="flex flex-col gap-3">
-                  {preview.unpaidClients.map((cliente) => (
-                    <ClientCard
-                      key={cliente.clienteId}
-                      cliente={{ nombre: cliente.nombre, ruta: { id: routeId, nombre: preview.rutaNombre } }}
-                      amount={cliente.saldoPendiente}
-                    />
-                  ))}
-                </div>
+                <UnpaidClientsList clients={preview.unpaidClients} />
               )}
             </div>
 
-            {/* Pegado al fondo del área scrolleable (por encima de la bottom
-                tab bar, que vive fuera de `main` en `CollectorShell`): siempre
-                alcanzable sin tener que llegar al final de la lista. */}
             <Button
               variant="destructive"
               size="lg"
-              className="sticky bottom-4 mt-2 shadow-lg"
+              className="sm:max-w-xs"
               onClick={() => setConfirmOpen(true)}
             >
               Cerrar ruta
@@ -192,6 +175,6 @@ export function CloseRouteScreen() {
         loading={closeRoute.isPending}
         onConfirm={handleConfirm}
       />
-    </div>
+    </>
   );
 }

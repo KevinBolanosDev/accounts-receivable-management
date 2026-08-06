@@ -295,6 +295,10 @@ model DailyClosure {
   productsSold     Int           @default(0)
   unpaidClients    Json // [{ clienteId, nombre, saldoPendiente, telefono }]
   unpaidCount      Int           @default(0)
+  // Nullable a propósito: cierres de antes de este campo no lo tienen y no
+  // se recalculan (snapshot inmutable) — el front/PDF muestran "no
+  // disponible" para esos, en vez de fingir que nadie pagó ese día.
+  paidClients      Json? // [{ clienteId, clienteNombre, numeroCuota, monto }]
   pdfUrl           String?
   status           ClosureStatus @default(CLOSED)
   closedById       String?

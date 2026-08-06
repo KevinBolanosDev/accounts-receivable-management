@@ -4,15 +4,20 @@ import { useEffect, useRef, useState } from "react";
 import { notFound } from "next/navigation";
 import { useForm } from "react-hook-form";
 import {
+  BanknoteIcon,
   CheckIcon,
   ChevronsUpDownIcon,
+  CreditCardIcon,
+  DownloadIcon,
   LogOutIcon,
   MoreHorizontalIcon,
+  PackageIcon,
   PencilIcon,
   PlusIcon,
   SendIcon,
   Trash2Icon,
   UserIcon,
+  UsersIcon,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -21,9 +26,10 @@ import { CreditCard, CreditSummaryCard } from "@/entities/credit";
 import { PaymentHistory, esCuotaSinPagar } from "@/entities/payment";
 import { ReceiptActions } from "@/entities/receipt";
 import { ReceiptCard } from "@/features/receipts";
-import type { CreditoListItem, PaymentHistoryItem, Receipt } from "@repo/types";
+import type { CreditoListItem, DailyClosureListItem, PaymentHistoryItem, Receipt } from "@repo/types";
 import { formatCurrency } from "@/shared/lib/format-currency";
 import { DataField, DataFieldList } from "@/shared/ui/data-field";
+import { MetricCard } from "@/shared/ui/metric-card";
 import { MetricTile, MetricTileGroup } from "@/shared/ui/metric-tile";
 import {
   animateProgressRing,
@@ -376,6 +382,39 @@ const RECEIPT_DEMO: Receipt = {
   cobradorNombre: "Cobrador Demo",
   anulado: false,
 };
+
+const CIERRES_DEMO: DailyClosureListItem[] = [
+  {
+    id: "dc-demo-1",
+    routeId: "r3",
+    rutaNombre: "Ruta 3 · Centro",
+    date: "2026-08-05",
+    totalCollected: 540_000,
+    collectedCount: 24,
+    newCredits: 2,
+    newCreditsAmount: 1_200_000,
+    productsSold: 2,
+    unpaidCount: 3,
+    status: "CLOSED",
+    closedByNombre: "Carlos Ramírez",
+    createdAt: "2026-08-05T22:03:00.000Z",
+  },
+  {
+    id: "dc-demo-2",
+    routeId: "r1",
+    rutaNombre: "Ruta 1 · Norte",
+    date: "2026-08-04",
+    totalCollected: 420_000,
+    collectedCount: 19,
+    newCredits: 0,
+    newCreditsAmount: 0,
+    productsSold: 0,
+    unpaidCount: 0,
+    status: "CLOSED",
+    closedByNombre: "Carlos Ramírez",
+    createdAt: "2026-08-04T22:01:00.000Z",
+  },
+];
 
 function ComboboxDemo() {
   const [open, setOpen] = useState(false);
@@ -1036,6 +1075,76 @@ export default function UiGalleryPage() {
               />
             </DialogContent>
           </Dialog>
+        </div>
+      </Section>
+
+      <Section
+        title="Cierre diario"
+        description="Metric cards del cierre + tabla del histórico + PDF on-demand — Fase 5 (#19c/#12c/#13c)"
+      >
+        <div className="flex flex-col gap-6">
+          <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
+            <MetricCard
+              icon={<BanknoteIcon />}
+              label="Total cobrado"
+              value={formatCurrency(540_000)}
+              tone="primary"
+            />
+            <MetricCard icon={<CreditCardIcon />} label="Créditos nuevos" value="2" tone="accent" />
+            <MetricCard icon={<PackageIcon />} label="Productos vendidos" value="2" tone="success" />
+            <MetricCard
+              icon={<UsersIcon />}
+              label="Clientes sin pagar"
+              value="3"
+              tone="destructive"
+            />
+          </div>
+
+          <div className="overflow-hidden rounded-lg border border-border">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Fecha</TableHead>
+                  <TableHead>Ruta</TableHead>
+                  <TableHead>Total cobrado</TableHead>
+                  <TableHead>Estado</TableHead>
+                  <TableHead className="text-right">PDF</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {CIERRES_DEMO.map((cierre) => (
+                  <TableRow key={cierre.id}>
+                    <TableCell>{cierre.date}</TableCell>
+                    <TableCell className="font-medium">{cierre.rutaNombre}</TableCell>
+                    <TableCell className="tabular-nums">{formatCurrency(cierre.totalCollected)}</TableCell>
+                    <TableCell>
+                      <Badge status={cierre.status === "OPEN" ? "ruta-abierta" : "ruta-cerrada"}>
+                        {cierre.status === "OPEN" ? "Abierta" : "Cerrada"}
+                      </Badge>
+                    </TableCell>
+                    <TableCell className="text-right">
+                      <Button variant="ghost" size="icon" aria-label="Descargar PDF">
+                        <DownloadIcon />
+                      </Button>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
+
+          <div className="flex items-center gap-4 rounded-lg border border-dashed border-border bg-card p-4">
+            <div className="flex size-12 shrink-0 items-center justify-center rounded-lg bg-muted">
+              <DownloadIcon className="size-5 text-muted-foreground" />
+            </div>
+            <div className="flex flex-col gap-0.5">
+              <p className="text-sm font-medium">cierre-ruta-3-centro-2026-08-05.pdf</p>
+              <p className="text-caption text-muted-foreground">
+                Generado on-demand con pdfkit (<code>GET /daily-closures/:id/pdf</code>): encabezado,
+                resumen del día, tabla de clientes sin pagar y pie con quién cerró — sin tocar Storage.
+              </p>
+            </div>
+          </div>
         </div>
       </Section>
     </div>

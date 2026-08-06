@@ -52,6 +52,33 @@ const USERS: SeedUser[] = [
     password: "cobrador123",
     rol: "COBRADOR" as const,
   },
+  // Nuevo admin Kevin con datos de prueba personalizado
+  { documento: "1144697697", nombre: "Kevin", password: "admin123", rol: "ADMIN" as const },
+];
+
+// Cobradores para el admin Kevin (solo se crean como parte del tenant de Kevin)
+const KEVIN_COBRADORES: SeedUser[] = [
+  {
+    documento: "1144697701",
+    nombre: "Carlos Mendoza",
+    telefono: "3101111111",
+    password: "cobrador123",
+    rol: "COBRADOR" as const,
+  },
+  {
+    documento: "1144697702",
+    nombre: "María García",
+    telefono: "3102222222",
+    password: "cobrador123",
+    rol: "COBRADOR" as const,
+  },
+  {
+    documento: "1144697703",
+    nombre: "Juan Pérez",
+    telefono: "3103333333",
+    password: "cobrador123",
+    rol: "COBRADOR" as const,
+  },
 ];
 
 // rutaId se resuelve en runtime (después de sembrar rutas).
@@ -124,6 +151,50 @@ const PRODUCTOS = [
 // Antonio es un ADMIN aparte: es la raíz de su propio tenant y arranca con
 // cartera vacía a propósito.
 const OWNER_DOCUMENTO = "1000000001";
+const KEVIN_DOCUMENTO = "1144697697";
+
+// Nombres de clientes para generar datos aleatorios para Kevin
+const NOMBRES_CLIENTES = [
+  "Ana Martínez",
+  "Roberto López",
+  "Carmen Ruiz",
+  "Felipe Sánchez",
+  "Beatriz Navarro",
+  "Miguel Ángel Torres",
+  "Elena Jiménez",
+  "Diego Moreno",
+  "Sofía García",
+  "Andrés Rodríguez",
+  "Valentina Domínguez",
+  "Pablo Fernández",
+  "Mariana Castillo",
+  "Lucas Ramírez",
+  "Isabela Cordero",
+  "Javier Medina",
+  "Catalina Vargas",
+  "Daniel Herrera",
+  "Lorena Solís",
+  "Antonio Reyes",
+  "Patricia Fuentes",
+  "Enrique Campos",
+  "Mónica Ponce",
+  "Raúl Acosta",
+  "Sandra Bravo",
+  "Sergio Salazar",
+  "Estela Ramos",
+  "Nicolás Quezada",
+  "Francisca Vega",
+  "Gustavo Prieto",
+];
+
+// Nombres de rutas para Kevin
+const NOMBRES_RUTAS_KEVIN = [
+  "Ruta Centro Kevin",
+  "Ruta Norte Kevin",
+  "Ruta Sur Kevin",
+  "Ruta Este Kevin",
+  "Ruta Oeste Kevin",
+];
 
 async function upsertUsuario(user: SeedUser, adminId: string | null): Promise<void> {
   const passwordHash = await bcrypt.hash(user.password, 10);
@@ -149,7 +220,7 @@ async function upsertUsuario(user: SeedUser, adminId: string | null): Promise<vo
 // ya persistido. Resolver el owner con una lectura aparte —en vez de
 // capturarlo del upsert dentro del loop— es lo que rompe el ciclo de
 // inferencia de TS (`usuario` → `adminId` → `ownerId` → `usuario.id`, TS7022).
-async function seedUsuarios(): Promise<string> {
+async function seedUsuarios(): Promise<{ owner: string; kevin: string }> {
   for (const user of USERS.filter((u) => u.rol === "ADMIN")) {
     await upsertUsuario(user, null);
   }
@@ -159,11 +230,21 @@ async function seedUsuarios(): Promise<string> {
     throw new Error(`El seed requiere un ADMIN con documento ${OWNER_DOCUMENTO} en USERS.`);
   }
 
+  const kevin = await prisma.usuario.findUnique({ where: { documento: KEVIN_DOCUMENTO } });
+  if (!kevin) {
+    throw new Error(`El seed requiere un ADMIN con documento ${KEVIN_DOCUMENTO} en USERS.`);
+  }
+
   for (const user of USERS.filter((u) => u.rol !== "ADMIN")) {
     await upsertUsuario(user, owner.id);
   }
 
-  return owner.id;
+  // Crear cobradores de Kevin bajo su tenant
+  for (const cobrador of KEVIN_COBRADORES) {
+    await upsertUsuario(cobrador, kevin.id);
+  }
+
+  return { owner: owner.id, kevin: kevin.id };
 }
 
 async function seedRutas(adminId: string): Promise<void> {
@@ -186,6 +267,32 @@ async function seedRutas(adminId: string): Promise<void> {
     });
 
     console.log(`Ruta sembrada: ${ruta.nombre}`);
+  }
+}
+
+async function seedRutasKevin(kevinId: string): Promise<void> {
+  const cobradores = await prisma.usuario.findMany({
+    where: {
+      adminId: kevinId,
+      rol: "COBRADOR",
+    },
+  });
+
+  if (cobradores.length === 0) {
+    throw new Error("No se encontraron cobradores para Kevin");
+  }
+
+  // Distribuir las 5 rutas entre los 3 cobradores
+  for (let i = 0; i < NOMBRES_RUTAS_KEVIN.length; i++) {
+    const cobradorId = cobradores[i % cobradores.length]!.id;
+
+    await prisma.ruta.upsert({
+      where: { adminId_nombre: { adminId: kevinId, nombre: NOMBRES_RUTAS_KEVIN[i]! } },
+      update: { cobradorId },
+      create: { nombre: NOMBRES_RUTAS_KEVIN[i]!, cobradorId, adminId: kevinId },
+    });
+
+    console.log(`Ruta sembrada para Kevin: ${NOMBRES_RUTAS_KEVIN[i]}`);
   }
 }
 
@@ -235,6 +342,67 @@ async function seedClientes(adminId: string): Promise<void> {
   }
 }
 
+async function seedClientesKevin(kevinId: string): Promise<void> {
+  const rutas = await prisma.ruta.findMany({
+    where: { adminId: kevinId },
+  });
+
+  if (rutas.length === 0) {
+    throw new Error("No se encontraron rutas para Kevin");
+  }
+
+  // Distribuir 30 clientes entre las rutas de forma aleatoria
+  const clientePorRuta = Math.floor(30 / rutas.length);
+  const clientesExtra = 30 % rutas.length;
+  let clienteIndex = 0;
+
+  for (let i = 0; i < rutas.length; i++) {
+    const ruta = rutas[i]!;
+    const cantClientes = clientePorRuta + (i < clientesExtra ? 1 : 0);
+
+    for (let j = 0; j < cantClientes; j++) {
+      if (clienteIndex >= NOMBRES_CLIENTES.length) break;
+
+      const nombre = NOMBRES_CLIENTES[clienteIndex]!;
+      const documento = `5555555${String(clienteIndex).padStart(3, "0")}`;
+      const telefono = `310${String(Math.floor(Math.random() * 10000000)).padStart(7, "0")}`;
+      const direccion = `Calle ${clienteIndex + 1} #${Math.floor(Math.random() * 100)}-${Math.floor(Math.random() * 50)}, ${ruta.nombre}`;
+
+      const cli = await prisma.cliente.upsert({
+        where: { documento },
+        update: {
+          nombre,
+          telefono,
+          direccion,
+        },
+        create: {
+          documento,
+          nombre,
+          telefono,
+          direccion,
+          passwordHash: null,
+          mustChangePassword: false,
+          passwordExpiresAt: null,
+          failedLoginAttempts: 0,
+          lockedUntil: null,
+          fotoDocumentoFrentePath: null,
+          fotoDocumentoReversoPath: null,
+        },
+      });
+
+      await prisma.clientAdmin.upsert({
+        where: { clientId_adminId: { clientId: cli.id, adminId: kevinId } },
+        update: { rutaId: ruta.id, activo: true },
+        create: { clientId: cli.id, adminId: kevinId, rutaId: ruta.id, activo: true },
+      });
+
+      clienteIndex++;
+    }
+  }
+
+  console.log(`✓ 30 clientes sembrados para Kevin, distribuidos entre ${rutas.length} rutas`);
+}
+
 async function seedProductos(adminId: string): Promise<void> {
   for (const producto of PRODUCTOS) {
     await prisma.producto.upsert({
@@ -250,6 +418,22 @@ async function seedProductos(adminId: string): Promise<void> {
 
     console.log(`Producto sembrado: ${producto.nombre}`);
   }
+}
+
+async function seedProductosKevin(kevinId: string): Promise<void> {
+  for (const producto of PRODUCTOS) {
+    await prisma.producto.upsert({
+      where: { adminId_nombre: { adminId: kevinId, nombre: producto.nombre } },
+      update: { precioBase: new Prisma.Decimal(producto.precioBase), activo: true },
+      create: {
+        nombre: producto.nombre,
+        precioBase: new Prisma.Decimal(producto.precioBase),
+        activo: true,
+        adminId: kevinId,
+      },
+    });
+  }
+  console.log(`✓ Productos sembrados para Kevin`);
 }
 
 interface CreditoSeed {
@@ -413,6 +597,98 @@ async function seedCreditos(adminId: string): Promise<void> {
   }
 }
 
+async function seedCreditosKevin(kevinId: string): Promise<void> {
+  // Obtener todos los clientes de Kevin y los cobradores
+  const clientes = await prisma.cliente.findMany({
+    where: {
+      admins: {
+        some: {
+          adminId: kevinId,
+          activo: true,
+        },
+      },
+    },
+  });
+
+  const cobradores = await prisma.usuario.findMany({
+    where: {
+      adminId: kevinId,
+      rol: "COBRADOR",
+    },
+  });
+
+  if (cobradores.length === 0) {
+    throw new Error("No se encontraron cobradores para Kevin");
+  }
+
+  const frecuencias: FrecuenciaPago[] = ["DIARIO", "SEMANAL", "MENSUAL"];
+  const montos = [500000, 750000, 1000000, 1200000, 1500000];
+  const intereses = [15, 18, 20, 22, 25];
+
+  let creditoCount = 3000; // Empezar en 3000 para evitar conflicto con códigos existentes
+
+  for (const cliente of clientes) {
+    // 1-3 créditos por cliente
+    const cantCreditos = Math.floor(Math.random() * 3) + 1;
+
+    for (let i = 0; i < cantCreditos; i++) {
+      const codigo = `CR-${creditoCount}`;
+      creditoCount++;
+
+      const monto = new Prisma.Decimal(
+        montos[Math.floor(Math.random() * montos.length)]!.toString(),
+      );
+      const interes = new Prisma.Decimal(
+        intereses[Math.floor(Math.random() * intereses.length)]!.toString(),
+      );
+      const frecuencia = frecuencias[Math.floor(Math.random() * frecuencias.length)]!;
+      const cuotas = Math.floor(Math.random() * 6) + 4; // 4-10 cuotas
+
+      const producto = await prisma.producto.findFirstOrThrow({
+        where: { adminId: kevinId },
+      });
+
+      const montoTotal = monto.add(monto.mul(interes).div(100)).toDecimalPlaces(2);
+      const cuotaDiaria = montoTotal.div(cuotas).toDecimalPlaces(2);
+      const dias = cuotas * DIAS_POR_FRECUENCIA[frecuencia];
+
+      const credito = await prisma.credito.create({
+        data: {
+          codigo,
+          clienteId: cliente.id,
+          productoId: producto.id,
+          adminId: kevinId,
+          monto,
+          interes,
+          frecuencia,
+          cuotas,
+          dias,
+          montoTotal,
+          cuotaDiaria,
+          saldoPendiente: montoTotal,
+          estado: "ACTIVO",
+        },
+      });
+
+      // Ocasionalmente agregar algún pago para que tenga algo que cobrar
+      if (Math.random() < 0.3) {
+        const cobrador = cobradores[Math.floor(Math.random() * cobradores.length)]!;
+        const montoPago = cuotaDiaria.mul(new Prisma.Decimal(0.5)).toDecimalPlaces(2);
+
+        await prisma.pago.create({
+          data: {
+            creditoId: credito.id,
+            monto: montoPago,
+            cobradorId: cobrador.id,
+          },
+        });
+      }
+    }
+  }
+
+  console.log(`✓ Créditos sembrados para Kevin: ~${clientes.length * 2} créditos creados`);
+}
+
 // Fase 5 — cierres diarios demo para "Ruta Centro" (la del Cobrador Demo,
 // 1000000002), que es la que usan las pantallas de #19c/#12c/#13c. Fechas
 // FIJAS (no relativas a "hoy"): el `@@unique([routeId, date])` es la clave del
@@ -552,15 +828,31 @@ async function alinearSecuenciaDeCodigos(): Promise<void> {
 async function main(): Promise<void> {
   // `seedUsuarios` devuelve el id del admin dueño; todo lo demás se siembra
   // dentro de ese tenant.
-  const adminId = await seedUsuarios();
-  await seedRutas(adminId);
-  await seedClientes(adminId);
-  await seedProductos(adminId);
-  await seedCreditos(adminId);
-  await seedCierres(adminId);
+  const { owner, kevin } = await seedUsuarios();
+
+  // Seed original para Admin Demo
+  console.log("\n=== Sembrando tenant: Admin Demo ===");
+  await seedRutas(owner);
+  await seedClientes(owner);
+  await seedProductos(owner);
+  await seedCreditos(owner);
+  await seedCierres(owner);
+
+  // Seed personalizado para Kevin
+  console.log("\n=== Sembrando tenant: Kevin ===");
+  await seedRutasKevin(kevin);
+  await seedClientesKevin(kevin);
+  await seedProductosKevin(kevin);
+  await seedCreditosKevin(kevin);
+
   // Después de los créditos: los códigos hardcodeados de arriba tienen que
   // quedar por debajo de la secuencia, o la app emitirá uno repetido.
   await alinearSecuenciaDeCodigos();
+
+  console.log("\n✓ Seed completado correctamente");
+  console.log("\n📋 Credenciales creadas:");
+  console.log("  Admin Demo: documento 1000000001, password admin123");
+  console.log("  Admin Kevin: documento 1144697697, password admin123");
 }
 
 main()

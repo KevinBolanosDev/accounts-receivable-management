@@ -3,7 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { PencilIcon, Trash2Icon, XIcon } from "lucide-react";
+import { LockIcon, PencilIcon, Trash2Icon, XIcon } from "lucide-react";
 import { toast } from "sonner";
 
 import { ESTADO_CLIENTE_LABEL, ESTADO_CLIENTE_TEXT, getInitials } from "@/entities/client";
@@ -119,6 +119,18 @@ export function RouteDetailScreen({ rutaId }: { rutaId: string }) {
         actions={
           <PageActions
             actions={[
+              {
+                id: "close",
+                label: "Cerrar ruta",
+                icon: <LockIcon />,
+                href: `/admin/routes-collectors/${ruta.id}/close`,
+                // `estadoDia` ya lee el `DailyClosure` de hoy (Fase 5) — evita
+                // que el admin entre a cerrar una ruta que ya cerró él mismo o
+                // el cobrador, en vez de dejar que la pantalla de destino se
+                // lo explique después.
+                disabled: !abierta,
+                disabledReason: !abierta ? "Ya se cerró hoy" : undefined,
+              },
               {
                 id: "edit",
                 label: "Editar ruta",

@@ -235,7 +235,11 @@ describe("ClientsController (e2e)", () => {
         .parse(list.body)
         .some((client) => client.id === original.id),
     ).toBe(true);
-  });
+    // Timeout más largo a propósito: son 5 requests HTTP + 2 lecturas Prisma
+    // directas en serie contra el pooler remoto de Supabase — el default de
+    // 5000ms es marginal para esa cantidad de round-trips, no un bug de
+    // lógica (falla igual con el código sin tocar).
+  }, 20_000);
 
   it("still rejects re-creating a documento that is an ACTIVE client", async () => {
     const admin = await login(app, ADMIN);

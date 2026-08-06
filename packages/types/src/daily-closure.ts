@@ -14,6 +14,17 @@ export const unpaidClientSchema = z.object({
 });
 export type UnpaidClient = z.infer<typeof unpaidClientSchema>;
 
+// Un cliente puede pagar más de una cuota el mismo día (poco común, pero
+// pasa) — una fila por PAGO, no por cliente, a diferencia de `unpaidClient`
+// (ahí "sin pagar" sí es un hecho por cliente).
+export const closurePaymentSchema = z.object({
+  clienteId: z.string(),
+  clienteNombre: z.string(),
+  numeroCuota: z.number().int(),
+  monto: z.number(),
+});
+export type ClosurePayment = z.infer<typeof closurePaymentSchema>;
+
 // Resumen en vivo ANTES de cerrar (#19c). Se calcula, no se persiste.
 export const closurePreviewSchema = z.object({
   routeId: z.string(),
@@ -42,14 +53,22 @@ export const dailyClosureSchema = z.object({
   productsSold: z.number().int(),
   unpaidClients: unpaidClientSchema.array(),
   unpaidCount: z.number().int(),
+  // `null` = cierre de antes de que este campo existiera (no se recalcula,
+  // es un snapshot inmutable) — el front lo distingue de "nadie pagó ese
+  // día". Nace `.nullable()` en vez de `.optional()` porque el backend
+  // siempre manda la llave (con `null` adentro), nunca la omite.
+  paidClients: closurePaymentSchema.array().nullable().default(null),
   status: closureStatusSchema,
   closedByNombre: z.string().nullable(),
   createdAt: z.string(),
 });
 export type DailyClosure = z.infer<typeof dailyClosureSchema>;
 
-// Fila del histórico (#12c) — sin la lista pesada de clientes.
-export const dailyClosureListItemSchema = dailyClosureSchema.omit({ unpaidClients: true });
+// Fila del histórico (#12c) — sin las listas pesadas de clientes.
+export const dailyClosureListItemSchema = dailyClosureSchema.omit({
+  unpaidClients: true,
+  paidClients: true,
+});
 export type DailyClosureListItem = z.infer<typeof dailyClosureListItemSchema>;
 
 export const dailyClosureListQuerySchema = z.object({

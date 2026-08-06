@@ -5,7 +5,7 @@ import { randomBytes } from "node:crypto";
 import request from "supertest";
 import { App } from "supertest/types";
 import { PrismaPg } from "@prisma/adapter-pg";
-import { PrismaClient } from "@prisma/client";
+import { Prisma, PrismaClient } from "@prisma/client";
 import bcrypt from "bcrypt";
 import {
   clientLoginResponseSchema,
@@ -126,6 +126,10 @@ describe("RutasController (e2e)", () => {
 
     it("responde 403 con un token de CLIENTE (portal)", async () => {
       const password = "clienteE2e123";
+      const adminId = await seedAdminId(prisma);
+      // El login exige al menos una relación `ClientAdmin` activa (ver
+      // `AuthClienteService.login`) — sin ella el login mismo devuelve 401
+      // antes de llegar a probar el 403 que este test verifica.
       const cliente = await prisma.cliente.create({
         data: {
           nombre: "Cliente Roles E2E",
@@ -135,6 +139,7 @@ describe("RutasController (e2e)", () => {
           passwordHash: await bcrypt.hash(password, 10),
           mustChangePassword: true,
           passwordExpiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
+          admins: { create: { adminId, activo: true } },
         },
       });
       const loginRes = await request(app.getHttpServer())
@@ -151,6 +156,7 @@ describe("RutasController (e2e)", () => {
         .set("Authorization", `Bearer ${clientToken}`)
         .expect(403);
 
+      await prisma.clientAdmin.deleteMany({ where: { clientId: cliente.id } });
       await prisma.cliente.delete({ where: { id: cliente.id } });
     });
   });
@@ -291,6 +297,114 @@ describe("RutasController (e2e)", () => {
         .delete("/routes/no-importa")
         .set("Authorization", `Bearer ${token}`)
         .expect(403);
+    });
+  });
+
+  // Fase 5.9 — cierra la deuda de `route.ts`: `estadoDia`/`cierres`/`enMora`
+  // dejan de ser stub y reflejan un cierre real hecho por `daily-closures`.
+  describe("GET /rutas/:id — estadoDia/cierres/enMora tras un cierre real", () => {
+    let ruta: { id: string };
+    let clienteId: string;
+
+    beforeAll(async () => {
+      const adminId = await seedAdminId(prisma);
+      const cobrador = await prisma.usuario.findUniqueOrThrow({
+        where: { documento: COBRADOR_A.documento },
+      });
+      ruta = await prisma.ruta.create({
+        data: { nombre: `Ruta E2E Cierre ${Date.now()}`, cobradorId: cobrador.id, adminId },
+      });
+      const cliente = await prisma.cliente.create({
+        data: {
+          nombre: "Cliente E2E Cierre",
+          telefono: "3000000000",
+          documento: `rutas-e2e-cierre-${Date.now()}`,
+          direccion: "Test",
+          admins: { create: { adminId, rutaId: ruta.id } },
+        },
+      });
+      clienteId = cliente.id;
+      const producto = await prisma.producto.upsert({
+        where: { adminId_nombre: { adminId, nombre: "Producto Rutas Cierre E2E" } },
+        update: {},
+        create: {
+          nombre: "Producto Rutas Cierre E2E",
+          precioBase: new Prisma.Decimal(50000),
+          adminId,
+        },
+      });
+      // Cuota vencida hace 8 días, sin pago: al cerrar, pasa a MORA — es lo
+      // que hace que `enMora` deje de ser 0 y `cierres` deje de ser `[]`.
+      const DIA_MS = 24 * 60 * 60 * 1000;
+      await prisma.credito.create({
+        data: {
+          codigo: `CR-RUTAS-CIERRE-${Date.now()}`,
+          clienteId: cliente.id,
+          productoId: producto.id,
+          adminId,
+          monto: new Prisma.Decimal(100000),
+          interes: new Prisma.Decimal(0),
+          cuotas: 10,
+          dias: 10,
+          montoTotal: new Prisma.Decimal(100000),
+          cuotaDiaria: new Prisma.Decimal(10000),
+          saldoPendiente: new Prisma.Decimal(100000),
+          estado: "ACTIVO",
+          fechaInicio: new Date(Date.now() - 9 * DIA_MS),
+        },
+      });
+    });
+
+    afterAll(async () => {
+      await prisma.dailyClosure.deleteMany({ where: { routeId: ruta.id } });
+      await prisma.pago.deleteMany({ where: { credito: { clienteId } } });
+      await prisma.credito.deleteMany({ where: { clienteId } });
+      await prisma.clientAdmin.deleteMany({ where: { clientId: clienteId } });
+      await prisma.cliente.delete({ where: { id: clienteId } });
+      await prisma.ruta.delete({ where: { id: ruta.id } });
+    });
+
+    it("antes de cerrar: estadoDia=abierta, cierres=[]", async () => {
+      const { token } = await login(app, ADMIN);
+      const res = await request(app.getHttpServer())
+        .get(`/routes/${ruta.id}`)
+        .set("Authorization", `Bearer ${token}`)
+        .expect(200);
+
+      const detail = rutaDetailSchema.parse(res.body);
+      expect(detail.estadoDia).toBe("abierta");
+      expect(detail.cierres).toHaveLength(0);
+    });
+
+    it("después de cerrar: estadoDia=cerrada, cierres no vacío, enMora real", async () => {
+      const { token } = await login(app, ADMIN);
+
+      await request(app.getHttpServer())
+        .post(`/daily-closures/${ruta.id}`)
+        .set("Authorization", `Bearer ${token}`)
+        .expect(201);
+
+      const res = await request(app.getHttpServer())
+        .get(`/routes/${ruta.id}`)
+        .set("Authorization", `Bearer ${token}`)
+        .expect(200);
+
+      const detail = rutaDetailSchema.parse(res.body);
+      expect(detail.estadoDia).toBe("cerrada");
+      expect(detail.cierres.length).toBeGreaterThanOrEqual(1);
+      expect(detail.cierres[0]!.estado).toBe("CLOSED");
+      expect(detail.enMora).toBeGreaterThanOrEqual(1);
+
+      // Y la lista de rutas (#6c) también refleja el estado real.
+      const listRes = await request(app.getHttpServer())
+        .get("/routes")
+        .set("Authorization", `Bearer ${token}`)
+        .expect(200);
+      const listItem = rutaListItemSchema
+        .array()
+        .parse(listRes.body)
+        .find((r) => r.id === ruta.id);
+      expect(listItem?.estadoDia).toBe("cerrada");
     });
   });
 });

@@ -108,3 +108,15 @@ export function rollupEstadoCliente(args: {
 
   return "activo";
 }
+
+// Compartido entre `rutas` (detalle/lista de ruta) y `dashboard` (Fase 5,
+// "Rutas del día"): mismo % o los dos lados de la app cuentan la misma
+// jornada distinto. "Elegible" = tiene crédito activo para cobrar hoy, o ya
+// se le cobró hoy (cierra el caso "pagó su última cuota justo hoy"); del
+// subconjunto elegible, cuántos ya pagaron.
+export function computeAvanceDelDia(clientes: { elegible: boolean; cobrado: boolean }[]): number {
+  const elegibles = clientes.filter((c) => c.elegible).length;
+  if (elegibles === 0) return 0;
+  const cobrados = clientes.filter((c) => c.elegible && c.cobrado).length;
+  return Math.round((cobrados / elegibles) * 100);
+}

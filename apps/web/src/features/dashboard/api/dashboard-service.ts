@@ -58,6 +58,6 @@ export const httpDashboardService: DashboardService = {
   },
 };
 
-// Backend en 5.9 (agregaciones Prisma); el swap a `httpDashboardService` llega
-// en 5.10, junto con `closuresService`.
-export const dashboardService: DashboardService = mockDashboardService;
+// Backend real desde Fase 5.10 (5.9 lo construyó). El mock queda implementado
+// por si hace falta volver atrás en un click.
+export const dashboardService: DashboardService = httpDashboardService;

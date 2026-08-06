@@ -3,10 +3,12 @@
 import { useState } from "react";
 import Link from "next/link";
 import { DownloadIcon } from "lucide-react";
+import { toast } from "sonner";
 import type { DailyClosureListItem } from "@repo/types";
 
 import { parseFechaInicio } from "@/entities/credit";
 import { useRutas } from "@/features/routes-collectors/api/use-rutas";
+import { ApiError } from "@/shared/api/client";
 import { formatCurrency } from "@/shared/lib/format-currency";
 import { formatDate } from "@/shared/lib/format-date";
 import { cn } from "@/shared/lib/utils";
@@ -20,7 +22,8 @@ import { Skeleton } from "@/shared/ui/skeleton";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/shared/ui/tooltip";
 import { AdminPageHeader } from "@/widgets/admin-shell/AdminPageHeader";
 
-import { useClosureDetail, useClosuresList } from "../api/use-closures";
+import { useClosureDetail, useClosuresList, useDownloadClosurePdf } from "../api/use-closures";
+import { closurePdfFilename } from "../lib/pdf-filename";
 
 // `DailyClosure.date`/`DailyClosureListItem.date` viajan como "YYYY-MM-DD"
 // (un día calendario, no un instante) — `new Date(string)` los lee como
@@ -31,7 +34,19 @@ function fmtClosureDate(date: string): string {
   return formatDate(parseFechaInicio(date));
 }
 
-function DownloadPdfButton({ className }: { className?: string }) {
+function downloadClosureError(error: unknown): string {
+  return error instanceof ApiError ? error.message : "No se pudo descargar el PDF.";
+}
+
+function DownloadPdfButton({
+  closure,
+  className,
+}: {
+  closure: { id: string; rutaNombre: string; date: string };
+  className?: string;
+}) {
+  const download = useDownloadClosurePdf();
+
   return (
     <Tooltip>
       <TooltipTrigger asChild>
@@ -39,15 +54,22 @@ function DownloadPdfButton({ className }: { className?: string }) {
           <Button
             variant="ghost"
             size="icon"
-            disabled
+            loading={download.isPending}
             aria-label="Descargar PDF"
-            onClick={(e) => e.stopPropagation()}
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              download.mutate(
+                { id: closure.id, filename: closurePdfFilename(closure.rutaNombre, closure.date) },
+                { onError: (error) => toast.error(downloadClosureError(error)) },
+              );
+            }}
           >
             <DownloadIcon />
           </Button>
         </span>
       </TooltipTrigger>
-      <TooltipContent>El PDF se genera con el backend del cierre (Fase 5.8)</TooltipContent>
+      <TooltipContent>Descargar PDF</TooltipContent>
     </Tooltip>
   );
 }
@@ -76,7 +98,7 @@ function ClosureRow({
         type="button"
         onClick={onSelect}
         className={cn(
-          "flex w-full items-center gap-3 border-l-2 px-4 py-3 text-left transition-colors",
+          "flex w-full items-center gap-3 border-l-2 px-4 py-3 text-left transition-colors sm:pr-14",
           selected
             ? "border-primary bg-primary/10 lg:border-primary"
             : "border-transparent hover:bg-muted",
@@ -96,14 +118,25 @@ function ClosureRow({
         <Badge status={closure.status === "OPEN" ? "ruta-abierta" : "ruta-cerrada"}>
           {closure.status === "OPEN" ? "Abierta" : "Cerrada"}
         </Badge>
-        <DownloadPdfButton className="hidden sm:inline-flex" />
       </button>
+
+      {/* Fuera del `<button>` de selección a propósito: un `<button>` no puede
+          contener otro `<button>` (HTML inválido, error de hidratación en
+          React). Se posiciona flotando sobre la fila en vez de en el flujo —
+          mismo espíritu que el stretched link de arriba, con `z-20` para
+          quedar por encima. `sm:pr-14` en el botón de selección le deja el
+          espacio para no superponerse con el texto. */}
+      <DownloadPdfButton
+        closure={closure}
+        className="absolute top-1/2 right-3 z-20 hidden -translate-y-1/2 sm:inline-flex"
+      />
     </div>
   );
 }
 
 function ClosurePreviewPanel({ id }: { id: string }) {
   const { data: closure, isLoading } = useClosureDetail(id);
+  const download = useDownloadClosurePdf();
 
   if (isLoading || !closure) {
     return (
@@ -128,17 +161,19 @@ function ClosurePreviewPanel({ id }: { id: string }) {
             {closure.status === "OPEN" ? "Abierta" : "Cerrada"}
           </Badge>
         </div>
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <span className="inline-flex">
-              <Button variant="secondary" disabled>
-                <DownloadIcon />
-                Descargar PDF
-              </Button>
-            </span>
-          </TooltipTrigger>
-          <TooltipContent>El PDF se genera con el backend del cierre (Fase 5.8)</TooltipContent>
-        </Tooltip>
+        <Button
+          variant="secondary"
+          loading={download.isPending}
+          onClick={() =>
+            download.mutate(
+              { id: closure.id, filename: closurePdfFilename(closure.rutaNombre, closure.date) },
+              { onError: (error) => toast.error(downloadClosureError(error)) },
+            )
+          }
+        >
+          <DownloadIcon />
+          Descargar PDF
+        </Button>
       </div>
 
       <MetricTileGroup columns={4} divided>

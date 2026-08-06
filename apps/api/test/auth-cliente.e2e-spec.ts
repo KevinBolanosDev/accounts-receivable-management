@@ -8,6 +8,7 @@ import { PrismaClient } from "@prisma/client";
 import bcrypt from "bcrypt";
 import { clientAuthUserSchema, clientLoginResponseSchema, loginResponseSchema } from "@repo/types";
 import { AppModule } from "../src/app.module";
+import { seedAdminId } from "./helpers/tenant";
 
 const ADMIN = { documento: "1000000001", password: "admin123" };
 const PLAIN_PASSWORD = "clienteE2e123";
@@ -23,23 +24,35 @@ function uniqueDocumento(): string {
   return `${DOCUMENTO_PREFIX}${Date.now()}-${counter}`;
 }
 
-async function createTestCliente(overrides: Record<string, unknown> = {}) {
-  return prisma.cliente.create({
-    data: {
-      nombre: "Cliente E2E",
-      telefono: "3000000000",
-      documento: uniqueDocumento(),
-      direccion: "Test",
-      passwordHash: await bcrypt.hash(PLAIN_PASSWORD, 10),
-      mustChangePassword: true,
-      passwordExpiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
-      ...overrides,
-    },
-  });
-}
-
 describe("AuthClienteController (e2e)", () => {
   let app: INestApplication<App>;
+  let adminId: string;
+
+  // El login exige al menos una relación `ClientAdmin` ACTIVA (ver
+  // `AuthClienteService.login` — "ningún admin le da cartera" es uno de los
+  // tres motivos del 401 genérico). Sin `admins: { create: ... }` acá, todo
+  // este archivo loguea contra un cliente sin cartera y el login siempre
+  // devuelve 401 "Documento o contraseña incorrectos", sin importar la
+  // contraseña — el bug real era la fixture, no el login.
+  async function createTestCliente(overrides: Record<string, unknown> = {}) {
+    return prisma.cliente.create({
+      data: {
+        nombre: "Cliente E2E",
+        telefono: "3000000000",
+        documento: uniqueDocumento(),
+        direccion: "Test",
+        passwordHash: await bcrypt.hash(PLAIN_PASSWORD, 10),
+        mustChangePassword: true,
+        passwordExpiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
+        admins: { create: { adminId, activo: true } },
+        ...overrides,
+      },
+    });
+  }
+
+  beforeAll(async () => {
+    adminId = await seedAdminId(prisma);
+  });
 
   beforeEach(async () => {
     const moduleFixture: TestingModule = await Test.createTestingModule({
@@ -52,7 +65,13 @@ describe("AuthClienteController (e2e)", () => {
   afterEach(() => app.close());
 
   afterAll(async () => {
-    await prisma.cliente.deleteMany({ where: { documento: { startsWith: DOCUMENTO_PREFIX } } });
+    const clientes = await prisma.cliente.findMany({
+      where: { documento: { startsWith: DOCUMENTO_PREFIX } },
+      select: { id: true },
+    });
+    const clienteIds = clientes.map((c) => c.id);
+    await prisma.clientAdmin.deleteMany({ where: { clientId: { in: clienteIds } } });
+    await prisma.cliente.deleteMany({ where: { id: { in: clienteIds } } });
     await prisma.$disconnect();
   });
 

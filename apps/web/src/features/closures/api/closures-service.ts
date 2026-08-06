@@ -9,7 +9,7 @@ import {
 } from "@repo/types";
 
 import { useSessionStore } from "@/entities/session";
-import { apiFetch } from "@/shared/api/client";
+import { apiFetch, apiFetchBlob } from "@/shared/api/client";
 
 export interface ClosuresService {
   getPreview(routeId: string): Promise<ClosurePreview>;
@@ -17,6 +17,8 @@ export interface ClosuresService {
   close(routeId: string): Promise<DailyClosure>;
   list(query?: DailyClosureListQuery): Promise<DailyClosureListItem[]>;
   getById(id: string): Promise<DailyClosure>;
+  /** PDF generado on-demand por el backend (Fase 5.8) — sin schema, son bytes. */
+  getPdfBlob(id: string): Promise<Blob>;
 }
 
 const delay = (ms = 400) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -139,6 +141,13 @@ export const mockClosuresService: ClosuresService = {
     const closure = MOCK_CLOSURES.find((c) => c.id === id) ?? MOCK_CLOSURES[0]!;
     return dailyClosureSchema.parse(closure);
   },
+  async getPdfBlob() {
+    await delay();
+    // `pdfkit` corre en el server (Node), no tiene sentido en el navegador —
+    // mismo criterio que `mockCobrosService.registrarCobro`: este mock no
+    // implementa un backend fake para lo que solo puede vivir en el backend real.
+    throw new Error("mockClosuresService no genera PDF — usa httpClosuresService.");
+  },
 };
 
 export const httpClosuresService: ClosuresService = {
@@ -168,7 +177,13 @@ export const httpClosuresService: ClosuresService = {
       token: useSessionStore.getState().token,
     });
   },
+  getPdfBlob(id) {
+    return apiFetchBlob(`/daily-closures/${id}/pdf`, {
+      token: useSessionStore.getState().token,
+    });
+  },
 };
 
-// Backend en 5.7/5.8 (bloque B); el swap a `httpClosuresService` llega en 5.10.
-export const closuresService: ClosuresService = mockClosuresService;
+// Backend real desde Fase 5.10 (5.7/5.8 lo construyeron). Los mocks quedan
+// implementados por si hace falta volver atrás en un click.
+export const closuresService: ClosuresService = httpClosuresService;

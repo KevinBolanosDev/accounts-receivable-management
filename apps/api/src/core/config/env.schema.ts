@@ -20,7 +20,16 @@ export const envSchema = z.object({
   // `core/reports/closure-policy.ts`). Apagado por default: el cierre manual
   // con `closedById` es el camino auditable; el cron es conveniencia, no debe
   // arrancar solo en un ambiente que no lo pidió explícitamente.
-  DAILY_CLOSURE_CRON_ENABLED: z.coerce.boolean().default(false),
+  //
+  // NUNCA `z.coerce.boolean()` para un booleano leído de `.env`: coerciona
+  // con `Boolean(valor)`, así que el STRING `"false"` (lo que hay en
+  // `.env`) da `true` — cualquier variable no vacía es truthy. Encontrado en
+  // producción: el cron corrió igual con `DAILY_CLOSURE_CRON_ENABLED=false`
+  // en el archivo y cerró rutas solo sin que nadie lo pidiera.
+  DAILY_CLOSURE_CRON_ENABLED: z
+    .enum(["true", "false"])
+    .default("false")
+    .transform((value) => value === "true"),
 });
 
 export type Env = z.infer<typeof envSchema>;

@@ -1,117 +1,28 @@
 "use client";
 
-import { DownloadIcon, PhoneIcon } from "lucide-react";
-import type { UnpaidClient } from "@repo/types";
+import { DownloadIcon } from "lucide-react";
+import { toast } from "sonner";
 
 import { parseFechaInicio } from "@/entities/credit";
-import { buildWhatsAppUrl } from "@/entities/receipt";
+import { ApiError } from "@/shared/api/client";
 import { getInitials } from "@/shared/lib/initials";
 import { formatCurrency } from "@/shared/lib/format-currency";
 import { formatDate } from "@/shared/lib/format-date";
-import { formatPhone, toDialableE164 } from "@/shared/lib/phone";
 import { Badge } from "@/shared/ui/badge";
-import { Button } from "@/shared/ui/button";
 import { Skeleton } from "@/shared/ui/skeleton";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/shared/ui/table";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/shared/ui/tooltip";
-import { WhatsAppIcon } from "@/shared/ui/icons/whatsapp-icon";
 import { AdminPageHeader } from "@/widgets/admin-shell/AdminPageHeader";
 import { PageActions } from "@/widgets/admin-shell/PageActions";
 
-import { useClosureDetail } from "../api/use-closures";
-import { buildPaymentReminderText } from "../lib/build-reminder-text";
+import { useClosureDetail, useDownloadClosurePdf } from "../api/use-closures";
+import { closurePdfFilename } from "../lib/pdf-filename";
+import { PaidClientsList } from "./PaidClientsList";
+import { UnpaidClientsList } from "./UnpaidClientsList";
 
 // Ver el comentario del mismo helper en `ClosuresHistoryScreen.tsx`: `date`
 // viaja como "YYYY-MM-DD" y necesita anclarse a mediodía UTC antes de
 // formatear en `America/Bogota`, si no se ve un día atrás.
 function fmtClosureDate(date: string): string {
   return formatDate(parseFechaInicio(date));
-}
-
-function ClientActions({ cliente }: { cliente: UnpaidClient }) {
-  const disabled = !cliente.telefono;
-  const dialable = cliente.telefono ? toDialableE164(cliente.telefono) : null;
-  const reminderUrl = cliente.telefono
-    ? buildWhatsAppUrl({
-        text: buildPaymentReminderText(cliente.nombre, cliente.saldoPendiente),
-        phone: cliente.telefono,
-      })
-    : null;
-
-  const callButton = (
-    <Button variant="secondary" size="sm" disabled={disabled} asChild={!disabled}>
-      {disabled ? (
-        <>
-          <PhoneIcon />
-          Llamar
-        </>
-      ) : (
-        <a href={`tel:${dialable}`}>
-          <PhoneIcon />
-          Llamar
-        </a>
-      )}
-    </Button>
-  );
-
-  const remindButton = (
-    <Button variant="secondary" size="sm" disabled={disabled} asChild={!disabled}>
-      {disabled ? (
-        <>
-          <WhatsAppIcon className="size-4" />
-          Recordar
-        </>
-      ) : (
-        <a href={reminderUrl!} target="_blank" rel="noopener noreferrer">
-          <WhatsAppIcon className="size-4" />
-          Recordar
-        </a>
-      )}
-    </Button>
-  );
-
-  if (!disabled) {
-    return (
-      <div className="flex items-center gap-2">
-        {callButton}
-        {remindButton}
-      </div>
-    );
-  }
-
-  return (
-    <Tooltip>
-      <TooltipTrigger asChild>
-        <div className="inline-flex items-center gap-2">
-          {callButton}
-          {remindButton}
-        </div>
-      </TooltipTrigger>
-      <TooltipContent>Sin teléfono registrado</TooltipContent>
-    </Tooltip>
-  );
-}
-
-function UnpaidClientCard({ cliente }: { cliente: UnpaidClient }) {
-  return (
-    <div className="flex flex-col gap-3 rounded-lg border border-border bg-background p-4">
-      <div className="flex items-center gap-3">
-        <span className="flex size-9 shrink-0 items-center justify-center rounded-full bg-secondary text-xs font-semibold">
-          {getInitials(cliente.nombre)}
-        </span>
-        <div className="flex min-w-0 flex-1 flex-col">
-          <span className="truncate text-sm font-medium">{cliente.nombre}</span>
-          <span className="truncate text-caption text-muted-foreground">
-            {formatPhone(cliente.telefono) || "Sin teléfono"}
-          </span>
-        </div>
-        <span className="shrink-0 text-sm font-semibold tabular-nums text-destructive">
-          {formatCurrency(cliente.saldoPendiente)}
-        </span>
-      </div>
-      <ClientActions cliente={cliente} />
-    </div>
-  );
 }
 
 // DESIGN_SYSTEM.md §3.13 — Detalle del cierre (#13c). Snapshot congelado: lee
@@ -121,6 +32,7 @@ function UnpaidClientCard({ cliente }: { cliente: UnpaidClient }) {
 // `RoutesListScreen`).
 export function ClosureDetailScreen({ id }: { id: string }) {
   const { data: closure, isLoading, isError } = useClosureDetail(id);
+  const download = useDownloadClosurePdf();
 
   if (isLoading) {
     return (
@@ -158,10 +70,19 @@ export function ClosureDetailScreen({ id }: { id: string }) {
             actions={[
               {
                 id: "pdf",
-                label: "Descargar PDF",
+                label: download.isPending ? "Descargando…" : "Descargar PDF",
                 icon: <DownloadIcon />,
-                disabled: true,
-                disabledReason: "El PDF se genera con el backend del cierre (Fase 5.8)",
+                disabled: download.isPending,
+                onSelect: () =>
+                  download.mutate(
+                    { id: closure.id, filename: closurePdfFilename(closure.rutaNombre, closure.date) },
+                    {
+                      onError: (error) =>
+                        toast.error(
+                          error instanceof ApiError ? error.message : "No se pudo descargar el PDF.",
+                        ),
+                    },
+                  ),
               },
             ]}
           />
@@ -215,58 +136,43 @@ export function ClosureDetailScreen({ id }: { id: string }) {
           </dl>
         </div>
 
-        {/* Clientes sin pagar: del snapshot congelado, nunca recalculado. */}
-        <div className="flex min-w-0 flex-col gap-3 rounded-lg border border-border bg-card p-6">
-          <h2 className="text-caption font-semibold tracking-wide text-muted-foreground uppercase">
-            Clientes sin pagar ({closure.unpaidCount})
-          </h2>
+        <div className="flex min-w-0 flex-col gap-6">
+          {/* Clientes que pagaron: del snapshot congelado, nunca recalculado.
+              `paidClients === null` = cierre de antes de que este campo
+              existiera (no se recalcula), distinto de "nadie pagó" (array
+              vacío). */}
+          <div className="flex min-w-0 flex-col gap-3 rounded-lg border border-border bg-card p-6">
+            <h2 className="text-caption font-semibold tracking-wide text-muted-foreground uppercase">
+              Clientes que pagaron{closure.paidClients ? ` (${closure.paidClients.length})` : ""}
+            </h2>
 
-          {closure.unpaidClients.length === 0 ? (
-            <p className="rounded-lg border border-dashed border-border bg-background p-8 text-center text-body-sm text-muted-foreground">
-              Todos los clientes pagaron ese día.
-            </p>
-          ) : (
-            <>
-              {/* Tarjetas en móvil */}
-              <div className="flex flex-col gap-3 md:hidden">
-                {closure.unpaidClients.map((cliente) => (
-                  <UnpaidClientCard key={cliente.clienteId} cliente={cliente} />
-                ))}
-              </div>
+            {closure.paidClients === null ? (
+              <p className="rounded-lg border border-dashed border-border bg-background p-8 text-center text-body-sm text-muted-foreground">
+                No disponible para cierres anteriores a esta función.
+              </p>
+            ) : closure.paidClients.length === 0 ? (
+              <p className="rounded-lg border border-dashed border-border bg-background p-8 text-center text-body-sm text-muted-foreground">
+                Nadie pagó este día.
+              </p>
+            ) : (
+              <PaidClientsList payments={closure.paidClients} />
+            )}
+          </div>
 
-              {/* Tabla desde md */}
-              <div className="hidden overflow-hidden rounded-lg border border-border md:block">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Cliente</TableHead>
-                      <TableHead>Teléfono</TableHead>
-                      <TableHead>Cuota pendiente</TableHead>
-                      <TableHead className="text-right">Acciones</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {closure.unpaidClients.map((cliente) => (
-                      <TableRow key={cliente.clienteId}>
-                        <TableCell className="font-medium">{cliente.nombre}</TableCell>
-                        <TableCell className="text-muted-foreground">
-                          {formatPhone(cliente.telefono) || "—"}
-                        </TableCell>
-                        <TableCell className="font-semibold tabular-nums text-destructive">
-                          {formatCurrency(cliente.saldoPendiente)}
-                        </TableCell>
-                        <TableCell className="text-right">
-                          <div className="flex justify-end">
-                            <ClientActions cliente={cliente} />
-                          </div>
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </div>
-            </>
-          )}
+          {/* Clientes sin pagar: del snapshot congelado, nunca recalculado. */}
+          <div className="flex min-w-0 flex-col gap-3 rounded-lg border border-border bg-card p-6">
+            <h2 className="text-caption font-semibold tracking-wide text-muted-foreground uppercase">
+              Clientes sin pagar ({closure.unpaidCount})
+            </h2>
+
+            {closure.unpaidClients.length === 0 ? (
+              <p className="rounded-lg border border-dashed border-border bg-background p-8 text-center text-body-sm text-muted-foreground">
+                Todos los clientes pagaron ese día.
+              </p>
+            ) : (
+              <UnpaidClientsList clients={closure.unpaidClients} />
+            )}
+          </div>
         </div>
       </div>
     </>

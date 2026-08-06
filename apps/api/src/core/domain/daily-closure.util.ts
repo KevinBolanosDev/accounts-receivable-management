@@ -35,6 +35,13 @@ export interface ClosureUnpaidClient {
   telefono: string | null;
 }
 
+export interface ClosurePayment {
+  clienteId: string;
+  clienteNombre: string;
+  numeroCuota: number;
+  monto: number;
+}
+
 export interface ClosureSummary {
   totalCollected: number;
   collectedCount: number;
@@ -42,6 +49,7 @@ export interface ClosureSummary {
   newCreditsAmount: number;
   productsSold: number;
   unpaidClients: ClosureUnpaidClient[];
+  paidClients: ClosurePayment[];
   /** Ids de créditos que pasan a MORA al cerrar (ver el comentario más abajo). */
   creditosEnMora: string[];
 }
@@ -53,44 +61,81 @@ function round2(value: number): number {
 export function computeClosureSummary(input: {
   creditos: ClosureCreditRow[];
   date: Date;
+  /**
+   * Desde cuándo cuenta este cierre. Por default, medianoche local de
+   * `date` — el comportamiento de siempre ("todo lo de hoy"). El caller
+   * (`daily-closures.service.ts`) pasa el `createdAt` del último cierre de
+   * la ruta cuando existe, así un pago cobrado DESPUÉS de cerrar pero
+   * dentro del MISMO día calendario no se pierde: antes no quedaba en el
+   * cierre de hoy (ya congelado) ni en el de mañana (que solo miraba
+   * pagos de mañana) — se perdía de cualquier reporte aunque el crédito
+   * sí quedaba bien actualizado. Ahora entra en el PRÓXIMO cierre que se
+   * haga, sea el mismo día siguiente o varios días después si la ruta
+   * queda sin cerrar un tiempo.
+   */
+  periodStart?: Date;
 }): ClosureSummary {
   const { creditos, date } = input;
-  const { start, end } = dayRange(date, CLOSURE_TIMEZONE);
-  const enElDia = (fecha: Date) => fecha >= start && fecha < end;
+  const { start: startOfDay, end } = dayRange(date, CLOSURE_TIMEZONE);
+  const start = input.periodStart ?? startOfDay;
+  const enElPeriodo = (fecha: Date) => fecha >= start && fecha < end;
 
   let totalCollected = 0;
   let collectedCount = 0;
   let newCredits = 0;
   let newCreditsAmount = 0;
   const creditosEnMora: string[] = [];
+  const paidClients: ClosurePayment[] = [];
 
   // Un cliente puede tener más de un crédito activo en la ruta: el saldo sin
   // pagar se acumula por cliente, y "sin pagar hoy" es que NINGUNO de sus
-  // créditos activos haya recibido un pago en el rango del día.
+  // créditos activos haya recibido un pago en el rango del período.
   const porCliente = new Map<
     string,
     { nombre: string; telefono: string | null; saldoPendiente: number; pagoHoy: boolean }
   >();
 
   for (const credito of creditos) {
-    // Totales del día: pagos vigentes (no anulados) dentro del rango, sin
-    // importar en qué estado haya quedado el crédito después (un pago que
-    // hoy saldó el crédito sigue siendo plata cobrada hoy).
+    // Totales del período: pagos vigentes (no anulados) dentro del rango,
+    // sin importar en qué estado haya quedado el crédito después (un pago
+    // que hoy saldó el crédito sigue siendo plata cobrada hoy).
     let pagoHoyEnEsteCredito = false;
     for (const pago of credito.pagos) {
       if (pago.anulado) continue;
-      if (!enElDia(pago.fecha)) continue;
+      if (!enElPeriodo(pago.fecha)) continue;
       totalCollected += pago.monto;
       collectedCount += 1;
       pagoHoyEnEsteCredito = true;
     }
 
-    // Créditos nuevos: otorgados (fechaInicio) dentro del rango del día. Es
-    // `fechaInicio`, no `createdAt` — el "día" de un crédito es el día de
+    // Créditos nuevos: otorgados (fechaInicio) dentro del rango del período.
+    // Es `fechaInicio`, no `createdAt` — el "día" de un crédito es el día de
     // desembolso que eligió el admin, no el timestamp técnico de la fila.
-    if (enElDia(credito.fechaInicio)) {
+    if (enElPeriodo(credito.fechaInicio)) {
       newCredits += 1;
       newCreditsAmount = round2(newCreditsAmount + credito.montoTotal);
+    }
+
+    // Historial UNA vez por crédito, sin importar el estado — antes vivía
+    // gateado detrás de `estado === "ACTIVO"` (solo hacía falta para MORA),
+    // así que un crédito que HOY quedó PAGADO nunca llegaba a calcular su
+    // `numeroCuota` y no podía figurar en `paidClients`.
+    const historial = buildPaymentHistory(credito, credito.pagos, date);
+    for (const cuota of historial) {
+      // `numeroCuota === 0` son las filas de auditoría de un pago anulado
+      // (agrupadas aparte, nunca "una cuota real" — ver el comentario
+      // grande en `payment-schedule.util.ts`). `fechaPago === null` son
+      // las filas SINTÉTICAS de cuotas vencidas SIN pagar (PENDING/
+      // OVERDUE/DEFAULTED) — sin este filtro, una cuota vencida hoy sin
+      // pagar entraba en "clientes que pagaron" con `monto: 0`.
+      if (cuota.anulado || cuota.numeroCuota === 0 || cuota.fechaPago === null) continue;
+      if (!enElPeriodo(new Date(cuota.fecha))) continue;
+      paidClients.push({
+        clienteId: credito.clienteId,
+        clienteNombre: credito.clienteNombre,
+        numeroCuota: cuota.numeroCuota,
+        monto: cuota.monto,
+      });
     }
 
     if (credito.estado !== "ACTIVO") continue;
@@ -103,7 +148,6 @@ export function computeClosureSummary(input: {
     // PENDING/OVERDUE/DEFAULTED antes de Fase 5 (ver el comentario de
     // `cuotaEstadoSchema` en `@repo/types`) y DEFAULTED es su heredero
     // directo — OVERDUE ("Vencida", <7 días) todavía no es mora.
-    const historial = buildPaymentHistory(credito, credito.pagos, date);
     if (historial.some((cuota) => cuota.estado === "DEFAULTED")) {
       creditosEnMora.push(credito.id);
     }
@@ -138,6 +182,7 @@ export function computeClosureSummary(input: {
     // (`@repo/types`) la expone como campo propio, no derivado en el front.
     productsSold: newCredits,
     unpaidClients,
+    paidClients,
     creditosEnMora,
   };
 }

@@ -215,6 +215,122 @@ describe("computeClosureSummary", () => {
     ]);
   });
 
+  it("paidClients trae el numeroCuota de cada pago vigente del período, uno por pago", () => {
+    // fechaInicio = dia(-2) ⇒ cuota 1 vence dia(-1), cuota 2 vence dia(0).
+    const c = credito({
+      id: "cr-pc",
+      clienteId: "cl-pc",
+      clienteNombre: "Diana",
+      fechaInicio: dia(-2),
+      pagos: [
+        pago({ id: "pg-1", creditoId: "cr-pc", fecha: dia(-1), monto: 20_000 }),
+        pago({ id: "pg-2", creditoId: "cr-pc", fecha: dia(0), monto: 20_000 }),
+      ],
+    });
+
+    const resumen = computeClosureSummary({ creditos: [c], date: dia(0) });
+
+    expect(resumen.paidClients).toEqual([
+      { clienteId: "cl-pc", clienteNombre: "Diana", numeroCuota: 2, monto: 20_000 },
+    ]);
+  });
+
+  it("un crédito que HOY quedó PAGADO igual aparece en paidClients (antes se perdía)", () => {
+    // Antes, `buildPaymentHistory` (y por lo tanto numeroCuota) solo se
+    // calculaba para créditos ACTIVO — un crédito que el pago de hoy dejó
+    // PAGADO nunca llegaba a esa rama, así que su pago de hoy no tenía
+    // numeroCuota y no podía figurar en `paidClients`.
+    const c = credito({
+      id: "cr-ultimo-pago",
+      clienteId: "cl-ultimo-pago",
+      clienteNombre: "Eduardo",
+      estado: "PAGADO",
+      cuotas: 1,
+      fechaInicio: dia(-1),
+      saldoPendiente: 0,
+      pagos: [pago({ id: "pg-final", creditoId: "cr-ultimo-pago", fecha: dia(0), monto: 20_000 })],
+    });
+
+    const resumen = computeClosureSummary({ creditos: [c], date: dia(0) });
+
+    expect(resumen.paidClients).toEqual([
+      { clienteId: "cl-ultimo-pago", clienteNombre: "Eduardo", numeroCuota: 1, monto: 20_000 },
+    ]);
+  });
+
+  it("un pago anulado no aparece en paidClients", () => {
+    const c = credito({
+      id: "cr-pc-anulado",
+      fechaInicio: dia(-1),
+      pagos: [
+        pago({ id: "pg-anulado-pc", creditoId: "cr-pc-anulado", fecha: dia(0), anulado: true }),
+      ],
+    });
+
+    const resumen = computeClosureSummary({ creditos: [c], date: dia(0) });
+
+    expect(resumen.paidClients).toHaveLength(0);
+  });
+
+  it("sin periodStart, un pago de ayer no cuenta como del período (comportamiento de siempre)", () => {
+    const c = credito({
+      id: "cr-pc-ayer",
+      fechaInicio: dia(-5),
+      pagos: [pago({ id: "pg-ayer-pc", creditoId: "cr-pc-ayer", fecha: dia(-1), monto: 20_000 })],
+    });
+
+    const resumen = computeClosureSummary({ creditos: [c], date: dia(0) });
+
+    expect(resumen.paidClients).toHaveLength(0);
+    expect(resumen.totalCollected).toBe(0);
+  });
+
+  it("con periodStart de un cierre anterior, un pago cobrado DESPUÉS de cerrar hoy se recupera en el cierre siguiente", () => {
+    const creditoSinElPagoTardio = credito({
+      id: "cr-tardio",
+      clienteId: "cl-tardio",
+      clienteNombre: "Fernanda",
+      fechaInicio: dia(-5),
+      pagos: [],
+    });
+
+    // Cierre de HOY: en el instante de cerrar, el pago tardío TODAVÍA no
+    // existía en la base — el service lo hace con lo que hay hasta ese
+    // momento (`findCreditsForRoute` es un snapshot de lectura, no se entera
+    // de escrituras posteriores).
+    const cierreDeHoy = computeClosureSummary({ creditos: [creditoSinElPagoTardio], date: dia(0) });
+    expect(cierreDeHoy.totalCollected).toBe(0);
+    const cierreDeHoyCreatedAt = dia(0); // el `createdAt` que quedaría persistido
+
+    // El cliente paga esa misma noche, después de cerrar. Al otro día se
+    // cierra de nuevo (`date: dia(1)`) con ese pago ya en la base.
+    const creditoConElPagoTardio = {
+      ...creditoSinElPagoTardio,
+      pagos: [pago({ id: "pg-tardio", creditoId: "cr-tardio", fecha: dia(0), monto: 30_000 })],
+    };
+
+    // SIN periodStart (el bug original): el cierre de mañana solo mira
+    // pagos de MAÑANA — el pago de hoy a la noche se pierde para siempre,
+    // ni en el cierre de hoy (ya congelado) ni en el de mañana.
+    const cierreDeManianaConElBug = computeClosureSummary({
+      creditos: [creditoConElPagoTardio],
+      date: dia(1),
+    });
+    expect(cierreDeManianaConElBug.totalCollected).toBe(0);
+
+    // CON periodStart = el createdAt del cierre de hoy, el cierre de mañana
+    // sí lo recupera — con su numeroCuota correcto.
+    const cierreDeManianaArreglado = computeClosureSummary({
+      creditos: [creditoConElPagoTardio],
+      date: dia(1),
+      periodStart: cierreDeHoyCreatedAt,
+    });
+    expect(cierreDeManianaArreglado.totalCollected).toBe(30_000);
+    expect(cierreDeManianaArreglado.paidClients).toEqual([
+      { clienteId: "cl-tardio", clienteNombre: "Fernanda", numeroCuota: 1, monto: 30_000 },
+    ]);
+  });
+
   it("un cliente con dos créditos activos que pagó en UNO de ellos no aparece como sin pagar", () => {
     const credito1 = credito({
       id: "cr-pago-parcial-1",

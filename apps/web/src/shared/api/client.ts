@@ -99,6 +99,14 @@ export async function apiFetchVoid(path: string, options: ApiFetchOptions = {}):
   await performRequest(path, options);
 }
 
+// Variante binaria (Fase 5.8 — el PDF del cierre diario). Reusa
+// `performRequest` para headers/manejo de error; el cuerpo se lee como
+// `Blob`, no hay schema de Zod que validar sobre bytes.
+export async function apiFetchBlob(path: string, options: ApiFetchOptions = {}): Promise<Blob> {
+  const res = await performRequest(path, options);
+  return res.blob();
+}
+
 interface UploadFileOptions {
   token?: string | null;
   file: File | Blob;

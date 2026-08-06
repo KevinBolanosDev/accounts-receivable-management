@@ -3,9 +3,16 @@ import { Prisma } from "@prisma/client";
 
 import { PrismaService } from "../../core/prisma/prisma.service";
 
+// Fase 5 — últimos N cierres, para `estadoDia` (¿hay uno de HOY?) y para
+// `cierres` en el detalle (#8c). 14 alcanza para "hoy cerrada o no" y un par
+// de semanas de contexto sin traer el histórico completo — ese vive en
+// `/admin/closures` (#12c), que sí pagina/filtra por rango.
+const RECENT_CLOSURES_TAKE = 14;
+
 const rutaWriteInclude = {
   cobrador: { select: { id: true, nombre: true, telefono: true } },
   _count: { select: { clientAdmins: { where: { activo: true } } } },
+  dailyClosures: { orderBy: { date: "desc" }, take: RECENT_CLOSURES_TAKE },
 } satisfies Prisma.RutaInclude;
 
 export type RutaWithCount = Prisma.RutaGetPayload<{ include: typeof rutaWriteInclude }>;
@@ -25,6 +32,7 @@ export type RutaWithCount = Prisma.RutaGetPayload<{ include: typeof rutaWriteInc
 function buildRutaReadInclude(adminId: string, desde: Date, hasta: Date) {
   return {
     cobrador: { select: { id: true, nombre: true, telefono: true } },
+    dailyClosures: { orderBy: { date: "desc" }, take: RECENT_CLOSURES_TAKE },
     clientAdmins: {
       where: { activo: true },
       include: {

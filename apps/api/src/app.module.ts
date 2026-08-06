@@ -1,6 +1,7 @@
 import { Module } from "@nestjs/common";
 import { ConfigModule } from "@nestjs/config";
 import { APP_GUARD } from "@nestjs/core";
+import { ScheduleModule } from "@nestjs/schedule";
 import { ThrottlerGuard, ThrottlerModule } from "@nestjs/throttler";
 import { validateEnv } from "./core/config/env.schema";
 import { PrismaModule } from "./core/prisma/prisma.module";
@@ -19,6 +20,8 @@ import { CobrosModule } from "./modules/cobros/cobros.module";
 import { AuthClienteModule } from "./modules/auth-cliente/auth-cliente.module";
 import { ReceiptsModule } from "./modules/receipts/receipts.module";
 import { ClientPortalModule } from "./modules/client-portal/client-portal.module";
+import { DailyClosuresModule } from "./modules/daily-closures/daily-closures.module";
+import { DashboardModule } from "./modules/dashboard/dashboard.module";
 
 @Module({
   imports: [
@@ -36,6 +39,11 @@ import { ClientPortalModule } from "./modules/client-portal/client-portal.module
     // porque el `documento` es enumerable y esa es su única defensa contra
     // fuerza bruta.
     ThrottlerModule.forRoot([{ ttl: 60_000, limit: 200 }]),
+    // Fase 5 — habilita `@Cron(...)` (el cierre automático de rutas,
+    // `daily-closures.cron.ts`). El registro es incondicional; lo que decide
+    // si el cron corre de verdad es `DAILY_CLOSURE_CRON_ENABLED` (apagado por
+    // default), chequeado dentro del handler, no acá.
+    ScheduleModule.forRoot(),
     HealthModule,
     AuthModule,
     RutasModule,
@@ -48,6 +56,8 @@ import { ClientPortalModule } from "./modules/client-portal/client-portal.module
     AuthClienteModule,
     ReceiptsModule,
     ClientPortalModule,
+    DailyClosuresModule,
+    DashboardModule,
   ],
   providers: [
     // Orden de ejecución = orden de registro. El throttler corre primero
