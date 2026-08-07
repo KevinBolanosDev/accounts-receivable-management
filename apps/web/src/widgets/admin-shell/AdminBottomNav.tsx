@@ -54,7 +54,7 @@ export function AdminBottomNav() {
             key={item.href}
             href={item.href}
             aria-current={active ? "page" : undefined}
-            className={cn(TAB_CLASS, active ? "text-primary" : "text-muted-foreground")}
+            className={cn(TAB_CLASS, active ? "text-primary-strong" : "text-muted-foreground")}
           >
             {active ? <ActiveMark /> : null}
             <Icon className="size-6 shrink-0" />
@@ -67,7 +67,7 @@ export function AdminBottomNav() {
         type="button"
         onClick={openMoreNav}
         aria-haspopup="dialog"
-        className={cn(TAB_CLASS, moreActive ? "text-primary" : "text-muted-foreground")}
+        className={cn(TAB_CLASS, moreActive ? "text-primary-strong" : "text-muted-foreground")}
       >
         {moreActive ? <ActiveMark /> : null}
         <MoreHorizontalIcon className="size-6 shrink-0" />

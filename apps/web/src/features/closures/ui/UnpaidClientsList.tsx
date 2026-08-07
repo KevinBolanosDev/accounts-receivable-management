@@ -95,7 +95,7 @@ function UnpaidClientCard({ cliente }: { cliente: UnpaidClient }) {
             {formatPhone(cliente.telefono) || "Sin teléfono"}
           </span>
         </div>
-        <span className="shrink-0 text-sm font-semibold tabular-nums text-destructive">
+        <span className="shrink-0 text-sm font-semibold tabular-nums text-destructive-strong">
           {formatCurrency(cliente.saldoPendiente)}
         </span>
       </div>
@@ -132,7 +132,7 @@ export function UnpaidClientsList({ clients }: { clients: UnpaidClient[] }) {
                 <TableCell className="text-muted-foreground">
                   {formatPhone(cliente.telefono) || "—"}
                 </TableCell>
-                <TableCell className="font-semibold tabular-nums text-destructive">
+                <TableCell className="font-semibold tabular-nums text-destructive-strong">
                   {formatCurrency(cliente.saldoPendiente)}
                 </TableCell>
                 <TableCell className="text-right">

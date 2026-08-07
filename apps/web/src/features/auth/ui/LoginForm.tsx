@@ -96,7 +96,7 @@ export function LoginForm({ allowedRoles, redirectTo }: LoginFormProps) {
           {...register("documento")}
         />
         {errors.documento && (
-          <p id="documento-error" className="text-xs text-destructive">
+          <p id="documento-error" className="text-xs text-destructive-strong">
             {errors.documento.message}
           </p>
         )}
@@ -117,14 +117,14 @@ export function LoginForm({ allowedRoles, redirectTo }: LoginFormProps) {
           {...register("password")}
         />
         {errors.password && (
-          <p id="password-error" className="text-xs text-destructive">
+          <p id="password-error" className="text-xs text-destructive-strong">
             {errors.password.message}
           </p>
         )}
       </div>
 
       {authError && (
-        <p role="alert" className="text-sm text-destructive">
+        <p role="alert" className="text-sm text-destructive-strong">
           {authError}
         </p>
       )}
@@ -136,7 +136,7 @@ export function LoginForm({ allowedRoles, redirectTo }: LoginFormProps) {
       <button
         type="button"
         onClick={() => toast("Pronto podrás restablecer tu contraseña.")}
-        className="text-center text-[13px] font-medium text-accent hover:underline"
+        className="text-center text-[13px] font-medium text-accent-strong hover:underline"
       >
         ¿Olvidaste tu contraseña?
       </button>

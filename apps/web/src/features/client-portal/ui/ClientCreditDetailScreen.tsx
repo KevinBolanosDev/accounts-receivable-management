@@ -10,6 +10,8 @@ import { PaymentHistory, esCuotaSinPagar } from "@/entities/payment";
 import { ReceiptActions, useReceiptActions } from "@/entities/receipt";
 import { formatCurrency } from "@/shared/lib/format-currency";
 import { formatDateShort } from "@/shared/lib/format-date";
+import { useProgressRing } from "@/shared/lib/motion";
+import { CountUpValue } from "@/shared/ui/count-up-value";
 import { Card, CardContent } from "@/shared/ui/card";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/shared/ui/dialog";
 import { MetricTile, MetricTileGroup } from "@/shared/ui/metric-tile";
@@ -28,6 +30,7 @@ export function ClientCreditDetailScreen({ creditoId }: { creditoId: string }) {
   const { data: credito, isLoading } = useMyCreditDetail(creditoId);
   const token = useClientSessionStore((state) => state.token);
   const [reciboHtml, setReciboHtml] = useState<string | null>(null);
+  const ringRef = useProgressRing<HTMLDivElement>(Math.round(credito?.porcentajePagado ?? 0));
 
   const recibos = useReceiptActions({
     scope: "client",
@@ -60,14 +63,23 @@ export function ClientCreditDetailScreen({ creditoId }: { creditoId: string }) {
       </header>
 
       <Card>
-        <CardContent className="flex flex-col items-center gap-4 p-6 sm:flex-row sm:items-stretch sm:justify-around">
+        <CardContent
+          ref={ringRef}
+          className="flex flex-col items-center gap-4 p-6 sm:flex-row sm:items-stretch sm:justify-around"
+        >
           <ProgressRing size="hero" value={Math.round(credito.porcentajePagado)} showLabel />
           <div className="flex flex-col justify-center gap-2 text-center sm:text-left">
             <div>
               <p className="text-caption uppercase tracking-wider text-muted-foreground">
                 Saldo pendiente
               </p>
-              <p className="text-display tabular-nums">{formatCurrency(credito.saldoPendiente)}</p>
+              <p className="text-display tabular-nums">
+                <CountUpValue
+                  value={credito.saldoPendiente}
+                  format={formatCurrency}
+                  token="hero"
+                />
+              </p>
             </div>
             {credito.proximaFechaCuota ? (
               <div>

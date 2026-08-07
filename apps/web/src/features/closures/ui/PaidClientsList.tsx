@@ -19,7 +19,7 @@ function PaidClientRow({ pago }: { pago: ClosurePayment }) {
         <span className="truncate text-sm font-medium">{pago.clienteNombre}</span>
         <span className="truncate text-caption text-muted-foreground">Cuota #{pago.numeroCuota}</span>
       </div>
-      <span className="shrink-0 text-sm font-semibold tabular-nums text-success">
+      <span className="shrink-0 text-sm font-semibold tabular-nums text-success-strong">
         {formatCurrency(pago.monto)}
       </span>
     </div>
@@ -53,7 +53,7 @@ export function PaidClientsList({ payments }: { payments: ClosurePayment[] }) {
               <TableRow key={`${pago.clienteId}-${pago.numeroCuota}-${i}`}>
                 <TableCell className="font-medium">{pago.clienteNombre}</TableCell>
                 <TableCell className="text-muted-foreground">Cuota #{pago.numeroCuota}</TableCell>
-                <TableCell className="text-right font-semibold tabular-nums text-success">
+                <TableCell className="text-right font-semibold tabular-nums text-success-strong">
                   {formatCurrency(pago.monto)}
                 </TableCell>
               </TableRow>

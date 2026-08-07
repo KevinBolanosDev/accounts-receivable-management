@@ -93,7 +93,7 @@ function CobradorPicker({
         </>
       ) : (
         <>
-          <span className="flex size-9 shrink-0 items-center justify-center rounded-full bg-primary/15 text-xs font-semibold text-primary">
+          <span className="flex size-9 shrink-0 items-center justify-center rounded-full bg-primary/15 text-xs font-semibold text-primary-strong">
             {getInitials(yo?.nombre ?? "Tú")}
           </span>
           <div className="flex min-w-0 flex-1 flex-col">
@@ -106,7 +106,7 @@ function CobradorPicker({
       )}
       <Popover open={open} onOpenChange={setOpen}>
         <PopoverTrigger asChild>
-          <Button type="button" variant="ghost" size="sm" className="text-primary">
+          <Button type="button" variant="ghost" size="sm" className="text-primary-strong">
             Cambiar
           </Button>
         </PopoverTrigger>
@@ -124,7 +124,7 @@ function CobradorPicker({
                   }}
                 >
                   <CheckIcon className={esYo ? "opacity-100" : "opacity-0"} />
-                  <StarIcon className="size-3.5 text-primary" />
+                  <StarIcon className="size-3.5 text-primary-strong" />
                   Tú{yo ? ` (${yo.nombre})` : ""}
                 </CommandItem>
                 {collectors.map((collector) => (
@@ -178,7 +178,7 @@ function ClientesRutaSection({
         <SectionLabel>Clientes de la ruta</SectionLabel>
         <Popover open={open} onOpenChange={setOpen}>
           <PopoverTrigger asChild>
-            <Button type="button" variant="ghost" size="sm" className="text-primary" loading={adding}>
+            <Button type="button" variant="ghost" size="sm" className="text-primary-strong" loading={adding}>
               Agregar cliente
             </Button>
           </PopoverTrigger>
@@ -470,7 +470,7 @@ export function RouteFormScreen({ rutaId }: { rutaId?: string }) {
                   <span className="text-amount font-semibold tabular-nums">
                     {formatCurrency(cobradoHoy)}
                   </span>
-                  <span className={cn("text-sm font-medium tabular-nums", avance >= 100 ? "text-success" : "text-accent")}>
+                  <span className={cn("text-sm font-medium tabular-nums", avance >= 100 ? "text-success-strong" : "text-accent-strong")}>
                     {avance}%
                   </span>
                 </div>

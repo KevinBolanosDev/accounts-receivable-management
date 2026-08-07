@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { PencilIcon, Trash2Icon, UserIcon } from "lucide-react";
+import { PencilIcon, ReceiptIcon, Trash2Icon, UserIcon } from "lucide-react";
 import { toast } from "sonner";
 import type { CreditoDetail, CreditoListItem } from "@repo/types";
 
@@ -14,6 +14,8 @@ import { Badge } from "@/shared/ui/badge";
 import { ApiError } from "@/shared/api/client";
 import { ConfirmDialog } from "@/shared/ui/confirm-dialog";
 import { ProgressRing } from "@/shared/ui/progress-ring";
+import { useProgressRing } from "@/shared/lib/motion";
+import { EmptyState } from "@/shared/ui/empty-state";
 import { Skeleton } from "@/shared/ui/skeleton";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/shared/ui/table";
 import { AdminPageHeader } from "@/widgets/admin-shell/AdminPageHeader";
@@ -131,11 +133,12 @@ export function CreditoDetailScreen({ creditoId }: { creditoId: string }) {
 // el bloque azul realmente aportaba.
 function CreditoHero({ credito }: { credito: CreditoDetail }) {
   const porcentaje = Math.min(100, Math.max(0, Math.round(credito.porcentajePagado)));
+  const ringRef = useProgressRing<HTMLDivElement>(porcentaje);
   const rutaNombre = credito.cliente.ruta?.nombre ?? null;
 
   return (
     <div className="flex items-center gap-4 sm:gap-6">
-      <div className="relative inline-flex shrink-0 items-center justify-center">
+      <div ref={ringRef} className="relative inline-flex shrink-0 items-center justify-center">
         <ProgressRing value={porcentaje} size="hero" showLabel={false} />
         <div className="absolute flex flex-col items-center">
           <span className="text-2xl font-bold tabular-nums">{porcentaje}%</span>
@@ -179,7 +182,7 @@ function CreditoStats({ credito }: { credito: CreditoDetail }) {
       <StatTile
         label="Pagado"
         value={formatCurrency(credito.totalPagado)}
-        valueClassName="text-success"
+        valueClassName="text-success-strong"
       />
       <StatTile label="Saldo" value={formatCurrency(credito.saldoPendiente)} />
       <StatTile
@@ -284,9 +287,12 @@ function PagosCard({ credito }: { credito: CreditoDetail }) {
       </div>
 
       {total === 0 ? (
-        <p className="rounded-lg border border-dashed border-border bg-card p-6 text-center text-body-sm text-muted-foreground">
-          Este crédito aún no tiene pagos.
-        </p>
+        <EmptyState
+          size="inline"
+          icon={<ReceiptIcon />}
+          title="Este crédito aún no tiene pagos"
+          description="Cuando se registre el primer cobro vas a ver acá el cronograma de cuotas."
+        />
       ) : (
         <>
           <div className="flex flex-col overflow-hidden rounded-lg border border-border bg-card md:hidden">

@@ -1,8 +1,7 @@
 "use client";
 
 import { useMemo } from "react";
-import Link from "next/link";
-import { CheckIcon, UserIcon } from "lucide-react";
+import { CheckIcon, CreditCardIcon, UserIcon } from "lucide-react";
 import type { ClienteDetail, CreditoListItem } from "@repo/types";
 
 import { ESTADO_CLIENTE_LABEL } from "@/entities/client";
@@ -26,6 +25,8 @@ import { formatRelativeDateTime } from "@/shared/lib/format-date";
 import { cn } from "@/shared/lib/utils";
 import { Badge } from "@/shared/ui/badge";
 import { Button } from "@/shared/ui/button";
+import { EmptyState } from "@/shared/ui/empty-state";
+import { ErrorState, NotFoundState } from "@/shared/ui/error-state";
 import { MetricTile, MetricTileGroup } from "@/shared/ui/metric-tile";
 import { Skeleton } from "@/shared/ui/skeleton";
 import { TabsContent, TabsList, TabsRoot, TabsTrigger } from "@/shared/ui/tabs";
@@ -61,7 +62,7 @@ export function AdminClientCreditsScreen({
   clienteId,
   initialTab = "activos",
 }: AdminClientCreditsScreenProps) {
-  const { data: cliente, isLoading, isError } = useCliente(clienteId);
+  const { data: cliente, isLoading, isError, refetch } = useCliente(clienteId);
 
   // Un crédito por producto para la pestaña Historial — SOLO terminados
   // (`cliente.creditosHistorial`: PAGADO o ANULADO, ya separados así por el
@@ -95,7 +96,8 @@ export function AdminClientCreditsScreen({
   }
 
   // Mismo criterio que el detalle de ruta y de cliente: un 404 no deja la
-  // pantalla en Skeleton para siempre.
+  // pantalla en Skeleton para siempre — y "falló la red" no se disfraza de
+  // "no existe" (ver el comentario de `ErrorState`).
   if (isError || !cliente) {
     return (
       <>
@@ -104,16 +106,22 @@ export function AdminClientCreditsScreen({
           eyebrow="Rutas"
           title="Créditos del cliente"
         />
-        <div className="flex flex-col items-center gap-4 p-4 sm:p-6">
-          <div className="flex flex-col items-center gap-2 rounded-lg border border-dashed border-border bg-card p-8 text-center">
-            <p className="text-sm font-medium">Este cliente no existe o fue eliminado</p>
-            <p className="text-caption text-muted-foreground">
-              Puede que lo hayas eliminado desde otra pestaña.
-            </p>
-          </div>
-          <Button asChild variant="secondary">
-            <Link href={`/admin/routes-collectors/${rutaId}`}>Volver a la ruta</Link>
-          </Button>
+        <div className="flex flex-col items-center p-4 sm:p-6">
+          {isError ? (
+            <ErrorState
+              title="No se pudieron cargar los créditos"
+              onRetry={() => void refetch()}
+              className="w-full max-w-md"
+            />
+          ) : (
+            <NotFoundState
+              entity="este cliente"
+              description="Puede que lo hayas eliminado desde otra pestaña."
+              backHref={`/admin/routes-collectors/${rutaId}`}
+              backLabel="Volver a la ruta"
+              className="w-full max-w-md"
+            />
+          )}
         </div>
       </>
     );
@@ -174,7 +182,12 @@ export function AdminClientCreditsScreen({
           <TabsContent value="activos">
             <div className="flex flex-col gap-3">
               {creditosActivos.length === 0 ? (
-                <EmptyState text="Este cliente no tiene créditos activos." />
+                <EmptyState
+                  size="inline"
+                  icon={<CreditCardIcon />}
+                  title="Este cliente no tiene créditos activos"
+                  description="No hay nada que cobrarle hoy."
+                />
               ) : (
                 creditosActivos.map((credito) => (
                   <CreditoActivoCard
@@ -192,7 +205,12 @@ export function AdminClientCreditsScreen({
           <TabsContent value="historial">
             <div className="flex flex-col gap-3">
               {creditosTerminados.length === 0 ? (
-                <EmptyState text="Este cliente todavía no tiene créditos terminados." />
+                <EmptyState
+                  size="inline"
+                  icon={<CreditCardIcon />}
+                  title="Todavía no tiene créditos terminados"
+                  description="Acá van a aparecer los créditos pagados y los anulados."
+                />
               ) : (
                 creditosTerminados.map(({ credito, resumen }) => (
                   <CreditSummaryCard
@@ -223,13 +241,6 @@ export function AdminClientCreditsScreen({
   );
 }
 
-function EmptyState({ text }: { text: string }) {
-  return (
-    <div className="rounded-lg border border-dashed border-border bg-card p-6 text-center">
-      <p className="text-body-sm text-muted-foreground">{text}</p>
-    </div>
-  );
-}
 
 function CreditoActivoCard({
   credito,

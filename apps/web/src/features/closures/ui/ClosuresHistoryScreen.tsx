@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { DownloadIcon } from "lucide-react";
+import { DownloadIcon, SquareCheckBigIcon } from "lucide-react";
 import { toast } from "sonner";
 import type { DailyClosureListItem } from "@repo/types";
 
@@ -18,7 +18,9 @@ import { Input } from "@/shared/ui/input";
 import { Label } from "@/shared/ui/label";
 import { MetricTile, MetricTileGroup } from "@/shared/ui/metric-tile";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/shared/ui/select";
+import { EmptyState } from "@/shared/ui/empty-state";
 import { Skeleton } from "@/shared/ui/skeleton";
+import { SkeletonList } from "@/shared/ui/skeletons";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/shared/ui/tooltip";
 import { AdminPageHeader } from "@/widgets/admin-shell/AdminPageHeader";
 
@@ -281,9 +283,7 @@ export function ClosuresHistoryScreen() {
           <div className="overflow-hidden rounded-lg border border-border bg-card">
             {isLoading ? (
               <div className="flex flex-col gap-3 p-4">
-                {Array.from({ length: 5 }).map((_, i) => (
-                  <Skeleton key={i} className="h-12 w-full" />
-                ))}
+                <SkeletonList rows={5} />
               </div>
             ) : closures && closures.length > 0 ? (
               <div className="flex flex-col divide-y divide-border">
@@ -298,9 +298,13 @@ export function ClosuresHistoryScreen() {
                 ))}
               </div>
             ) : (
-              <p className="p-8 text-center text-body-sm text-muted-foreground">
-                Ningún cierre con estos filtros.
-              </p>
+              <EmptyState
+                size="inline"
+                icon={<SquareCheckBigIcon />}
+                title="Ningún cierre con estos filtros"
+                description="Probá ampliando el rango de fechas o eligiendo otra ruta."
+                className="m-4 border-0 bg-transparent"
+              />
             )}
           </div>
         </div>

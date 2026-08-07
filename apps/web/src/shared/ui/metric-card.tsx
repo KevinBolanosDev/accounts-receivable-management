@@ -5,10 +5,10 @@ import { cn } from "@/shared/lib/utils";
 type MetricTone = "primary" | "success" | "accent" | "destructive";
 
 const CHIP_CLASS: Record<MetricTone, string> = {
-  primary: "bg-primary/10 text-primary",
-  success: "bg-success/10 text-success",
-  accent: "bg-accent/10 text-accent",
-  destructive: "bg-destructive/10 text-destructive",
+  primary: "bg-primary/10 text-primary-strong",
+  success: "bg-success/10 text-success-strong",
+  accent: "bg-accent/10 text-accent-strong",
+  destructive: "bg-destructive/10 text-destructive-strong",
 };
 
 interface MetricCardProps extends React.ComponentProps<"div"> {

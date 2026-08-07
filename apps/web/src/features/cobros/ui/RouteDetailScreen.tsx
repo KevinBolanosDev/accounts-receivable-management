@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import { CheckIcon } from "lucide-react";
+import { CheckIcon, UsersIcon } from "lucide-react";
 import type { RutaDetail } from "@repo/types";
 
 import { ClientCard, ESTADO_CLIENTE_LABEL } from "@/entities/client";
@@ -12,6 +12,7 @@ import { formatDateShort } from "@/shared/lib/format-date";
 import { cn } from "@/shared/lib/utils";
 import { Badge } from "@/shared/ui/badge";
 import { MetricTile, MetricTileGroup } from "@/shared/ui/metric-tile";
+import { EmptyState } from "@/shared/ui/empty-state";
 import { Skeleton } from "@/shared/ui/skeleton";
 import { CollectorHero } from "@/widgets/collector-shell/CollectorHero";
 
@@ -75,12 +76,11 @@ export function RouteDetailScreen() {
 
       <div className="flex flex-col gap-3 px-4 pt-4">
         {ruta.clientes.length === 0 ? (
-          <div className="flex flex-col items-center gap-1 rounded-xl border border-dashed border-border bg-card p-8 text-center">
-            <p className="text-sm font-medium">No tienes clientes asignados a esta ruta todavía</p>
-            <p className="text-caption text-muted-foreground">
-              Cuando tu admin te asigne clientes aparecerán aquí automáticamente.
-            </p>
-          </div>
+          <EmptyState
+            icon={<UsersIcon />}
+            title="Esta ruta todavía no tiene clientes"
+            description="Cuando tu admin te asigne clientes aparecerán acá automáticamente."
+          />
         ) : null}
 
         {pendientes.map((cliente) => (

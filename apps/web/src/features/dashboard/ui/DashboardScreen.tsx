@@ -6,8 +6,10 @@ import type { DashboardRoute } from "@repo/types";
 
 import { formatCurrency } from "@/shared/lib/format-currency";
 import { formatDate } from "@/shared/lib/format-date";
-import { useCountUp } from "@/shared/lib/motion";
 import { Badge } from "@/shared/ui/badge";
+import { Button } from "@/shared/ui/button";
+import { CountUpValue } from "@/shared/ui/count-up-value";
+import { EmptyState } from "@/shared/ui/empty-state";
 import { MetricCard } from "@/shared/ui/metric-card";
 import { MetricTile, MetricTileGroup } from "@/shared/ui/metric-tile";
 import { ProgressRing } from "@/shared/ui/progress-ring";
@@ -16,14 +18,6 @@ import { AdminPageHeader } from "@/widgets/admin-shell/AdminPageHeader";
 
 import { useDashboardSummary } from "../api/use-dashboard";
 import { WeeklyChart } from "./WeeklyChart";
-
-// DESIGN_SYSTEM.md §1.8 — número que cuenta hasta el valor real al montar.
-// `useCountUp` escribe el texto imperativamente (GSAP), así que el `<span>`
-// nace vacío y no hay contenido que hidratar de más.
-function CountUpValue({ value, format }: { value: number; format?: (v: number) => string }) {
-  const ref = useCountUp(value, { token: "base", format });
-  return <span ref={ref} />;
-}
 
 function RouteMiniCard({ ruta }: { ruta: DashboardRoute }) {
   return (
@@ -83,12 +77,16 @@ export function DashboardScreen() {
 
       <div className="flex flex-col gap-6 p-4 sm:p-6">
         {!hasActivity ? (
-          <div className="flex flex-col items-center gap-1 rounded-xl border border-dashed border-border bg-card p-10 text-center">
-            <p className="text-sm font-medium">Aún no hay actividad registrada</p>
-            <p className="text-caption text-muted-foreground">
-              Cuando se registren cobros y cierres, las métricas aparecen acá.
-            </p>
-          </div>
+          <EmptyState
+            icon={<BanknoteIcon />}
+            title="Aún no hay actividad registrada"
+            description="Cuando se registren cobros y cierres, las métricas aparecen acá."
+            action={
+              <Button asChild size="sm" variant="secondary">
+                <Link href="/admin/routes-collectors">Ver rutas</Link>
+              </Button>
+            }
+          />
         ) : (
           <>
             {/* Resumen compacto en móvil, 4 tiles */}
@@ -146,14 +144,17 @@ export function DashboardScreen() {
             <section className="flex flex-col gap-3">
               <div className="flex items-center justify-between">
                 <h2 className="text-h3 font-semibold">Rutas del día</h2>
-                <Link href="/admin/routes-collectors" className="text-body-sm font-medium text-accent hover:underline">
+                <Link href="/admin/routes-collectors" className="text-body-sm font-medium text-accent-strong hover:underline">
                   Ver todas
                 </Link>
               </div>
               {totalRoutesToday === 0 ? (
-                <p className="rounded-lg border border-dashed border-border bg-card p-6 text-center text-body-sm text-muted-foreground">
-                  Ninguna ruta tiene actividad hoy.
-                </p>
+                <EmptyState
+                  size="inline"
+                  icon={<MapPinIcon />}
+                  title="Ninguna ruta tiene actividad hoy"
+                  description="Los cobros del día aparecen acá apenas se registren."
+                />
               ) : (
                 <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
                   {summary.routesToday.map((ruta) => (

@@ -188,7 +188,7 @@ export function RegistrarCobroSheet({
                 </SelectContent>
               </Select>
               {form.formState.errors.creditoId ? (
-                <p className="text-body-sm text-destructive" role="alert">
+                <p className="text-body-sm text-destructive-strong" role="alert">
                   {form.formState.errors.creditoId.message}
                 </p>
               ) : null}
@@ -241,14 +241,14 @@ export function RegistrarCobroSheet({
                 <button
                   type="button"
                   onClick={() => setEditandoMonto(true)}
-                  className="text-sm font-medium text-primary hover:underline"
+                  className="text-sm font-medium text-primary-strong hover:underline"
                 >
                   Editar
                 </button>
               </div>
             )}
             {form.formState.errors.monto ? (
-              <p className="text-body-sm text-destructive" role="alert">
+              <p className="text-body-sm text-destructive-strong" role="alert">
                 {form.formState.errors.monto.message}
               </p>
             ) : null}

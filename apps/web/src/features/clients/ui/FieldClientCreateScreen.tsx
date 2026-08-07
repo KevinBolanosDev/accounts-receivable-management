@@ -283,13 +283,13 @@ export function FieldClientCreateScreen() {
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="f-nombre">Nombre completo</Label>
             <Input id="f-nombre" className="h-12 bg-muted" placeholder="Ej. María Fernández" {...register("nombre")} />
-            {errors.nombre ? <p className="text-body-sm text-destructive" role="alert">{errors.nombre.message}</p> : null}
+            {errors.nombre ? <p className="text-body-sm text-destructive-strong" role="alert">{errors.nombre.message}</p> : null}
           </div>
 
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="f-documento">Documento</Label>
             <Input id="f-documento" className="h-12 bg-muted" placeholder="Ej. 1.020.456.789" {...register("documento")} />
-            {errors.documento ? <p className="text-body-sm text-destructive" role="alert">{errors.documento.message}</p> : null}
+            {errors.documento ? <p className="text-body-sm text-destructive-strong" role="alert">{errors.documento.message}</p> : null}
           </div>
 
           <div className="flex flex-col gap-1.5">
@@ -308,13 +308,13 @@ export function FieldClientCreateScreen() {
                 />
               )}
             />
-            {errors.telefono ? <p className="text-body-sm text-destructive" role="alert">{errors.telefono.message}</p> : null}
+            {errors.telefono ? <p className="text-body-sm text-destructive-strong" role="alert">{errors.telefono.message}</p> : null}
           </div>
 
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="f-direccion">Dirección</Label>
             <Input id="f-direccion" className="h-12 bg-muted" placeholder="Ej. Cra 12 #34-56, Centro" {...register("direccion")} />
-            {errors.direccion ? <p className="text-body-sm text-destructive" role="alert">{errors.direccion.message}</p> : null}
+            {errors.direccion ? <p className="text-body-sm text-destructive-strong" role="alert">{errors.direccion.message}</p> : null}
           </div>
 
           {/* El cobrador en campo es justamente quien recoge el contacto de
@@ -369,7 +369,7 @@ export function FieldClientCreateScreen() {
                 )}
               />
               {errors.rutaId ? (
-                <p className="text-body-sm text-destructive" role="alert">
+                <p className="text-body-sm text-destructive-strong" role="alert">
                   {errors.rutaId.message}
                 </p>
               ) : null}
@@ -429,7 +429,7 @@ export function FieldClientCreateScreen() {
                   {...register("monto", { valueAsNumber: true })}
                 />
                 {errors.monto ? (
-                  <p className="text-body-sm text-destructive" role="alert">
+                  <p className="text-body-sm text-destructive-strong" role="alert">
                     {errors.monto.message}
                   </p>
                 ) : null}
@@ -449,7 +449,7 @@ export function FieldClientCreateScreen() {
                     {...register("interes", { valueAsNumber: true })}
                   />
                   {errors.interes ? (
-                    <p className="text-body-sm text-destructive" role="alert">
+                    <p className="text-body-sm text-destructive-strong" role="alert">
                       {errors.interes.message}
                     </p>
                   ) : null}
@@ -466,7 +466,7 @@ export function FieldClientCreateScreen() {
                     {...register("cuotas", { valueAsNumber: true })}
                   />
                   {errors.cuotas ? (
-                    <p className="text-body-sm text-destructive" role="alert">
+                    <p className="text-body-sm text-destructive-strong" role="alert">
                       {errors.cuotas.message}
                     </p>
                   ) : null}
@@ -510,7 +510,7 @@ export function FieldClientCreateScreen() {
                   {...register("fechaInicio")}
                 />
                 {errors.fechaInicio ? (
-                  <p className="text-body-sm text-destructive" role="alert">
+                  <p className="text-body-sm text-destructive-strong" role="alert">
                     {errors.fechaInicio.message}
                   </p>
                 ) : null}

@@ -4,6 +4,7 @@ import { ChevronRightIcon } from "lucide-react";
 import type { CreditoListItem } from "@repo/types";
 
 import { formatCurrency } from "@/shared/lib/format-currency";
+import { PRESS_SCALE } from "@/shared/lib/motion";
 import { cn } from "@/shared/lib/utils";
 import { ProgressRing } from "@/shared/ui/progress-ring";
 
@@ -68,7 +69,7 @@ export function CreditSummaryCard({
       data-estado={credito.estado}
       className={cn(
         "relative flex flex-col gap-3 rounded-xl border border-border bg-card p-4",
-        href && "transition-colors hover:bg-muted",
+        href && cn("transition-colors hover:bg-muted", PRESS_SCALE),
         className,
       )}
       {...props}

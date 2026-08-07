@@ -4,6 +4,7 @@ import { ChevronRightIcon } from "lucide-react";
 import type { ClienteListItem } from "@repo/types";
 
 import { formatCurrency } from "@/shared/lib/format-currency";
+import { PRESS_SCALE } from "@/shared/lib/motion";
 import { cn } from "@/shared/lib/utils";
 import { Avatar, AvatarFallback } from "@/shared/ui/avatar";
 import { Badge } from "@/shared/ui/badge";
@@ -78,7 +79,10 @@ function ClientCard({
       data-slot="client-card"
       className={cn(
         "relative flex items-center gap-3 rounded-lg border border-border bg-card p-4",
-        (interactive || href) && "transition-colors hover:bg-muted",
+        // El hundido al pulsar solo tiene sentido si la tarjeta hace algo.
+        // En el móvil del cobrador no hay hover: es la única confirmación
+        // táctil de que el toque entró (§2.1).
+        (interactive || href) && cn("transition-colors hover:bg-muted", PRESS_SCALE),
         muted && "opacity-60",
         className,
       )}

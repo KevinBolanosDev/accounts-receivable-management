@@ -145,7 +145,7 @@ function CreditCard({
         <Figure
           label="Pagado"
           value={formatCurrency(credito.totalPagado)}
-          valueClassName="text-success"
+          valueClassName="text-success-strong"
         />
         <Figure label="Cuotas restantes" value={String(cuotasRestantes)} />
       </div>

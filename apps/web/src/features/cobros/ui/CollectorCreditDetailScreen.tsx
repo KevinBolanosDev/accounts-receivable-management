@@ -17,6 +17,7 @@ import { formatCurrency } from "@/shared/lib/format-currency";
 import { cn } from "@/shared/lib/utils";
 import { Button } from "@/shared/ui/button";
 import { MetricTile, MetricTileGroup } from "@/shared/ui/metric-tile";
+import { ErrorState, NotFoundState } from "@/shared/ui/error-state";
 import { Skeleton } from "@/shared/ui/skeleton";
 import { CollectorHero } from "@/widgets/collector-shell/CollectorHero";
 
@@ -41,7 +42,7 @@ export function CollectorCreditDetailScreen({
   clienteId,
   creditoId,
 }: CollectorCreditDetailScreenProps) {
-  const { data: cliente, isLoading } = useCliente(clienteId);
+  const { data: cliente, isLoading, isError, refetch } = useCliente(clienteId);
   const token = useSessionStore((state) => state.token);
   const recibos = useReceiptActions({ scope: "staff", token });
 
@@ -62,7 +63,7 @@ export function CollectorCreditDetailScreen({
 
   const volverAlCliente = `/collector/routes/payments/${clienteId}?tab=historial`;
 
-  if (isLoading || !cliente) {
+  if (isLoading) {
     return (
       <div className="flex flex-col pb-6">
         <CollectorHero title="Crédito" backHref={volverAlCliente} />
@@ -74,16 +75,43 @@ export function CollectorCreditDetailScreen({
     );
   }
 
+  // `isLoading || !cliente` estaba en la misma rama: sin cliente (404 o red
+  // caída) el Skeleton no terminaba nunca.
+  if (isError || !cliente) {
+    return (
+      <div className="flex flex-col pb-6">
+        <CollectorHero title="Crédito" backHref={volverAlCliente} />
+        <div className="px-4 pt-6">
+          {isError ? (
+            <ErrorState
+              title="No se pudo cargar el crédito"
+              description="Revisá tu conexión y volvé a intentar."
+              onRetry={() => void refetch()}
+            />
+          ) : (
+            <NotFoundState
+              entity="este cliente"
+              description="Puede que ya no esté asignado a tu ruta."
+              backHref="/collector"
+              backLabel="Ir a mis rutas"
+            />
+          )}
+        </div>
+      </div>
+    );
+  }
+
   if (!credito) {
     return (
       <div className="flex flex-col pb-6">
         <CollectorHero title="Crédito" backHref={volverAlCliente} />
         <div className="px-4 pt-6">
-          <div className="rounded-xl border border-dashed border-border bg-card p-6 text-center">
-            <p className="text-body-sm text-muted-foreground">
-              No encontramos este crédito entre los de {cliente.nombre}.
-            </p>
-          </div>
+          <NotFoundState
+            entity="este crédito"
+            description={`${cliente.nombre} no tiene un crédito con ese identificador.`}
+            backHref={volverAlCliente}
+            backLabel="Volver a sus créditos"
+          />
         </div>
       </div>
     );
@@ -114,7 +142,7 @@ export function CollectorCreditDetailScreen({
       {activo ? (
         <div className="flex flex-col gap-2 px-4">
           {cobradoHoy ? (
-            <div className="flex items-center gap-2 rounded-lg bg-success/10 px-3 py-2 text-body-sm text-success">
+            <div className="flex items-center gap-2 rounded-lg bg-success/10 px-3 py-2 text-body-sm text-success-strong">
               <CheckIcon className="size-4 shrink-0" />
               <span>
                 Cobrado hoy: {formatCurrency(cobradoHoy.total)} en {cobradoHoy.pagos}{" "}

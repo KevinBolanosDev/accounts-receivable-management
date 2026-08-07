@@ -44,7 +44,7 @@ export function AnularPagoButton({ pago }: AnularPagoButtonProps) {
             type="button"
             aria-label="Anular pago"
             onClick={() => setOpen(true)}
-            className="inline-flex size-8 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+            className="inline-flex size-8 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive-strong focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
           >
             <Undo2Icon className="size-4" />
           </button>

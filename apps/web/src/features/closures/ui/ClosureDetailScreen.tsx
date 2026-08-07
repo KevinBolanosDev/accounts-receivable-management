@@ -1,6 +1,6 @@
 "use client";
 
-import { DownloadIcon } from "lucide-react";
+import { BanknoteIcon, CircleCheckIcon, DownloadIcon } from "lucide-react";
 import { toast } from "sonner";
 
 import { parseFechaInicio } from "@/entities/credit";
@@ -9,6 +9,9 @@ import { getInitials } from "@/shared/lib/initials";
 import { formatCurrency } from "@/shared/lib/format-currency";
 import { formatDate } from "@/shared/lib/format-date";
 import { Badge } from "@/shared/ui/badge";
+import { EmptyState } from "@/shared/ui/empty-state";
+import { ErrorState, NotFoundState } from "@/shared/ui/error-state";
+import { InlineNote } from "@/shared/ui/inline-note";
 import { Skeleton } from "@/shared/ui/skeleton";
 import { AdminPageHeader } from "@/widgets/admin-shell/AdminPageHeader";
 import { PageActions } from "@/widgets/admin-shell/PageActions";
@@ -31,7 +34,7 @@ function fmtClosureDate(date: string): string {
 // clientes reemplazada por tarjetas (mismo patrón mobile-first que
 // `RoutesListScreen`).
 export function ClosureDetailScreen({ id }: { id: string }) {
-  const { data: closure, isLoading, isError } = useClosureDetail(id);
+  const { data: closure, isLoading, isError, refetch } = useClosureDetail(id);
   const download = useDownloadClosurePdf();
 
   if (isLoading) {
@@ -50,10 +53,22 @@ export function ClosureDetailScreen({ id }: { id: string }) {
     return (
       <>
         <AdminPageHeader backHref="/admin/closures" eyebrow="Cierres" title="Detalle del cierre" />
-        <div className="p-4 sm:p-6">
-          <p className="rounded-lg border border-dashed border-border bg-card p-8 text-center text-body-sm text-muted-foreground">
-            Este cierre no existe o no tienes acceso a él.
-          </p>
+        <div className="flex flex-col items-center p-4 sm:p-6">
+          {isError ? (
+            <ErrorState
+              title="No se pudo cargar el cierre"
+              onRetry={() => void refetch()}
+              className="w-full max-w-md"
+            />
+          ) : (
+            <NotFoundState
+              entity="este cierre"
+              description="Puede que no exista o que no tengas acceso a él."
+              backHref="/admin/closures"
+              backLabel="Volver al histórico"
+              className="w-full max-w-md"
+            />
+          )}
         </div>
       </>
     );
@@ -131,7 +146,7 @@ export function ClosureDetailScreen({ id }: { id: string }) {
             </div>
             <div className="flex items-center justify-between">
               <dt className="text-muted-foreground">Clientes sin pagar</dt>
-              <dd className="font-medium tabular-nums text-destructive">{closure.unpaidCount}</dd>
+              <dd className="font-medium tabular-nums text-destructive-strong">{closure.unpaidCount}</dd>
             </div>
           </dl>
         </div>
@@ -147,13 +162,17 @@ export function ClosureDetailScreen({ id }: { id: string }) {
             </h2>
 
             {closure.paidClients === null ? (
-              <p className="rounded-lg border border-dashed border-border bg-background p-8 text-center text-body-sm text-muted-foreground">
-                No disponible para cierres anteriores a esta función.
-              </p>
+              <InlineNote tone="info">
+                Este cierre es anterior a que se guardara el detalle de quién pagó, así que ese dato
+                no existe para esta fecha. Los totales de arriba sí son los del cierre.
+              </InlineNote>
             ) : closure.paidClients.length === 0 ? (
-              <p className="rounded-lg border border-dashed border-border bg-background p-8 text-center text-body-sm text-muted-foreground">
-                Nadie pagó este día.
-              </p>
+              <EmptyState
+                size="inline"
+                icon={<BanknoteIcon />}
+                title="Nadie pagó este día"
+                className="bg-background"
+              />
             ) : (
               <PaidClientsList payments={closure.paidClients} />
             )}
@@ -166,9 +185,12 @@ export function ClosureDetailScreen({ id }: { id: string }) {
             </h2>
 
             {closure.unpaidClients.length === 0 ? (
-              <p className="rounded-lg border border-dashed border-border bg-background p-8 text-center text-body-sm text-muted-foreground">
-                Todos los clientes pagaron ese día.
-              </p>
+              <EmptyState
+                size="inline"
+                icon={<CircleCheckIcon />}
+                title="Todos los clientes pagaron ese día"
+                className="bg-background"
+              />
             ) : (
               <UnpaidClientsList clients={closure.unpaidClients} />
             )}

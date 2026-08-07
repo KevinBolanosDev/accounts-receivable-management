@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
   CopyIcon,
+  CreditCardIcon,
   KeyIcon,
   PencilIcon,
   PlusIcon,
@@ -29,6 +30,8 @@ import {
   DialogTitle,
 } from "@/shared/ui/dialog";
 import { ConfirmDialog } from "@/shared/ui/confirm-dialog";
+import { EmptyState } from "@/shared/ui/empty-state";
+import { ErrorState, NotFoundState } from "@/shared/ui/error-state";
 import { Input } from "@/shared/ui/input";
 import { MetricTile, MetricTileGroup } from "@/shared/ui/metric-tile";
 import { ProgressRing } from "@/shared/ui/progress-ring";
@@ -58,7 +61,7 @@ import { ClientDocumentPhotos } from "./ClientDocumentPhotos";
 
 export function ClientDetailScreen({ clienteId }: { clienteId: string }) {
   const router = useRouter();
-  const { data: cliente, isLoading, isError } = useCliente(clienteId);
+  const { data: cliente, isLoading, isError, refetch } = useCliente(clienteId);
   const deleteCliente = useDeleteCliente();
   const [confirmOpen, setConfirmOpen] = useState(false);
 
@@ -102,18 +105,38 @@ export function ClientDetailScreen({ clienteId }: { clienteId: string }) {
   // "No cargó" y "no existe" son estados distintos. Antes ambos caían en el
   // Skeleton de arriba, así que un cliente borrado (404) dejaba la pantalla
   // cargando para siempre, sin decir nada ni ofrecer salida.
-  if (isError || !cliente) {
+  //
+  // Y entre ellos también: un fallo de red (o un `ZodError` porque el backend
+  // cambió el shape) NO es "este cliente no existe" — ahí sí hay algo que
+  // reintentar. `isError` y `!cliente` se separan a propósito.
+  if (isError) {
     return (
       <>
         <AdminPageHeader backHref="/admin/clients" eyebrow="Clientes" title="Detalle de cliente" />
-        <div className="flex flex-col items-center gap-4 p-4 sm:p-6">
-          <EmptyState
-            title="Este cliente no existe o fue eliminado"
-            description="Puede que lo hayas eliminado desde otra pestaña, o que ya no pertenezca a tu cartera."
+        <div className="flex flex-col items-center p-4 sm:p-6">
+          <ErrorState
+            title="No se pudo cargar el cliente"
+            description="Revisá tu conexión e intentá de nuevo."
+            onRetry={() => void refetch()}
+            className="w-full max-w-md"
           />
-          <Button asChild variant="secondary">
-            <Link href="/admin/clients">Volver a Clientes</Link>
-          </Button>
+        </div>
+      </>
+    );
+  }
+
+  if (!cliente) {
+    return (
+      <>
+        <AdminPageHeader backHref="/admin/clients" eyebrow="Clientes" title="Detalle de cliente" />
+        <div className="flex flex-col items-center p-4 sm:p-6">
+          <NotFoundState
+            entity="este cliente"
+            description="Puede que lo hayas eliminado desde otra pestaña, o que ya no pertenezca a tu cartera."
+            backHref="/admin/clients"
+            backLabel="Volver a Clientes"
+            className="w-full max-w-md"
+          />
         </div>
       </>
     );
@@ -246,8 +269,20 @@ export function ClientDetailScreen({ clienteId }: { clienteId: string }) {
           <TabsContent value="activos">
             {cliente.creditosActivos.length === 0 ? (
               <EmptyState
-                title="Este cliente no tiene créditos activos."
-                description="Puedes crear uno desde el botón “Agregar crédito”."
+                icon={<CreditCardIcon />}
+                title="Este cliente no tiene créditos activos"
+                description="Cuando le otorgues uno, vas a ver acá su saldo y su avance."
+                // §2.9: el vacío lleva la acción que lo llena. Antes esto
+                // apuntaba a un botón que está en el header, fuera de la vista
+                // en móvil.
+                action={
+                  <Button asChild size="sm">
+                    <Link href={`/admin/credits/new?clienteId=${cliente.id}`}>
+                      <PlusIcon />
+                      Agregar crédito
+                    </Link>
+                  </Button>
+                }
               />
             ) : (
               <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
@@ -267,8 +302,9 @@ export function ClientDetailScreen({ clienteId }: { clienteId: string }) {
           <TabsContent value="historial">
             {cliente.creditosHistorial.length === 0 ? (
               <EmptyState
-                title="Aún no hay créditos saldados."
-                description="Aquí aparecerán los créditos PAGADOS y ANULADOS."
+                icon={<CreditCardIcon />}
+                title="Aún no hay créditos saldados"
+                description="Acá van a aparecer los créditos pagados y los anulados."
               />
             ) : (
               <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
@@ -361,7 +397,7 @@ function ClientAccessSection({ cliente }: { cliente: ClienteDetail }) {
           <Button
             variant="secondary"
             size="sm"
-            className="text-destructive"
+            className="text-destructive-strong"
             onClick={() => setConfirmDeleteOpen(true)}
           >
             <ShieldOffIcon />
@@ -420,17 +456,3 @@ function ClientAccessSection({ cliente }: { cliente: ClienteDetail }) {
   );
 }
 
-function EmptyState({
-  title,
-  description,
-}: {
-  title: string;
-  description: string;
-}) {
-  return (
-    <div className="flex flex-col items-center gap-2 rounded-lg border border-dashed border-border bg-card p-8 text-center">
-      <p className="text-sm font-medium">{title}</p>
-      <p className="text-caption text-muted-foreground">{description}</p>
-    </div>
-  );
-}

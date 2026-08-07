@@ -217,7 +217,7 @@ export function DocumentUploader({
               // eslint-disable-next-line @next/next/no-img-element
               <img src={shownImage} alt="" className="size-full object-cover" loading="lazy" />
             ) : status === "error" ? (
-              <TriangleAlertIcon className="size-5 text-destructive" />
+              <TriangleAlertIcon className="size-5 text-destructive-strong" />
             ) : (
               <ImageIcon className="size-5" />
             )}
@@ -232,7 +232,7 @@ export function DocumentUploader({
             <span
               className={cn(
                 "truncate text-caption",
-                status === "error" ? "text-destructive" : "text-muted-foreground",
+                status === "error" ? "text-destructive-strong" : "text-muted-foreground",
               )}
             >
               {status === "error" ? (errorMessage ?? statusText) : statusText}
@@ -247,7 +247,7 @@ export function DocumentUploader({
             <button
               type="button"
               onClick={capture ? undefined : () => openSource(galleryInputRef)}
-              className="text-sm font-medium text-primary hover:underline"
+              className="text-sm font-medium text-primary-strong hover:underline"
             >
               {status === "error" ? "Reintentar" : "Cambiar"}
             </button>

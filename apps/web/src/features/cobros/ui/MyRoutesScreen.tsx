@@ -7,9 +7,12 @@ import { useSessionStore } from "@/entities/session";
 import { useRutas, useRutasSummary } from "@/features/routes-collectors/api/use-rutas";
 import { formatCurrency } from "@/shared/lib/format-currency";
 import { formatDateShort } from "@/shared/lib/format-date";
+import { PRESS_SCALE, useStagger } from "@/shared/lib/motion";
 import { cn } from "@/shared/lib/utils";
 import { MetricTile, MetricTileGroup } from "@/shared/ui/metric-tile";
 import { ProgressRing } from "@/shared/ui/progress-ring";
+import { CountUpValue } from "@/shared/ui/count-up-value";
+import { EmptyState } from "@/shared/ui/empty-state";
 import { Skeleton } from "@/shared/ui/skeleton";
 import { CollectorHero } from "@/widgets/collector-shell/CollectorHero";
 
@@ -26,6 +29,8 @@ export function MyRoutesScreen() {
   const usuario = useSessionStore((state) => state.usuario);
   const { data: rutas, isLoading } = useRutas();
   const { data: summary } = useRutasSummary();
+  // Entrada en stagger corto, solo en el primer montaje (§1.8).
+  const listRef = useStagger<HTMLDivElement>(".route-card");
 
   return (
     <div className="flex flex-col pb-6">
@@ -42,25 +47,30 @@ export function MyRoutesScreen() {
             label="Rutas abiertas"
           />
           <MetricTile
-            value={summary ? formatCurrency(summary.cobradoHoy) : "—"}
+            value={
+              summary ? (
+                <CountUpValue value={summary.cobradoHoy} format={formatCurrency} />
+              ) : (
+                "—"
+              )
+            }
             label="Cobrado hoy"
           />
           <MetricTile value={summary ? String(summary.clientesEnRuta) : "—"} label="Clientes" />
         </MetricTileGroup>
       </div>
 
-      <div className="flex flex-col gap-3 px-4 pt-4">
+      <div ref={listRef} className="flex flex-col gap-3 px-4 pt-4">
         {isLoading ? (
           Array.from({ length: 2 }).map((_, i) => (
             <Skeleton key={i} className="h-21 w-full rounded-xl" />
           ))
         ) : (rutas ?? []).length === 0 ? (
-          <div className="flex flex-col items-center gap-1 rounded-xl border border-dashed border-border bg-card p-8 text-center">
-            <p className="text-sm font-medium">No tienes rutas asignadas todavía</p>
-            <p className="text-caption text-muted-foreground">
-              Cuando tu admin te asigne una ruta aparecerá aquí automáticamente.
-            </p>
-          </div>
+          <EmptyState
+            icon={<MapPinIcon />}
+            title="No tienes rutas asignadas todavía"
+            description="Cuando tu admin te asigne una ruta aparecerá acá automáticamente."
+          />
         ) : (
           (rutas ?? []).map((ruta) => (
             <Link
@@ -68,11 +78,12 @@ export function MyRoutesScreen() {
               href={`/collector/routes/${ruta.id}`}
               aria-label={`Abrir ${ruta.nombre}`}
               className={cn(
-                "flex items-center gap-3 rounded-xl border border-border bg-card p-4 shadow-sm transition-colors",
+                "route-card flex items-center gap-3 rounded-xl border border-border bg-card p-4 shadow-sm transition-colors",
                 "hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                PRESS_SCALE,
               )}
             >
-              <span className="flex size-11 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary">
+              <span className="flex size-11 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary-strong">
                 <MapPinIcon className="size-5" />
               </span>
 

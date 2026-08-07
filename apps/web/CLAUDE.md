@@ -183,9 +183,46 @@ Tokens en `app/globals.css`:
 - Tipografía: `--text-display/h1/h2/h3/body/body-sm/caption/amount`
 - `tabular-nums` para todo monto en pantalla
 
-**Modo por superficie (DESIGN_SYSTEM §0):** Admin=dark, Cobrador/Cliente=light. Aplicado a nivel de layout del route-group (`className="dark"` solo en `(admin)/layout.tsx:6`). Sin FOUC, sin JS para el default.
+**Modo por superficie + selector (DESIGN_SYSTEM §0, Fase 5.5):** los *defaults* siguen siendo Admin=dark, Cobrador/Cliente=light, pero Admin y Cobrador pueden cambiarlo (Claro/Oscuro/**Sistema**) y la preferencia se guarda **por superficie** (`theme:admin`, `theme:collector`). El Portal Cliente no tiene selector.
 
-**Primitivos en `shared/ui/`**: alert-dialog, avatar, badge (cva con status variant), button (cva con variant+size+loading+asChild), card, command (cmdk), **confirm-dialog**, dialog, dropdown-menu, form (wrapper RHF), input, label, metric-card (cva tone), popover, progress-bar, progress-ring (32/64/120px, cambio cian→verde >90%), select, sheet (Radix), skeleton, sonner (Toaster), switch, table, tabs (variant underline), textarea, tooltip. **Sin Storybook**: la galería vive en `/dev/ui` (404 en producción).
+**La clase `dark` vive SOLO en `<html>`.** Antes había tres fuentes de verdad para el mismo booleano: el `className="dark"` del `(admin)/layout.tsx`, el `SurfaceMode` que replicaba la clase en `<html>` para los overlays de Radix (portalizados a `body`, leían `:root`), y el toggle propio de `/dev/ui`. `SurfaceMode` se borró; `<html>` es lo que ven tanto el árbol de la página como los portales.
+
+```
+shared/theme/
+├── theme.ts          SURFACE_DEFAULTS · resolveSurface · resolveTheme · applyTheme (funciones puras)
+├── theme-script.tsx  <script> inline en <head> — resuelve el modo ANTES del primer paint
+├── theme-store.ts    useSyncExternalStore sobre localStorage + matchMedia
+├── theme-sync.tsx    re-aplica en navegación soft / cambio de SO / otra pestaña
+└── use-theme.ts      useTheme(): { surface, preference, resolved, canToggle, setPreference }
+```
+
+- **Sin FOUC:** el script inline lee `location.pathname` → superficie → `localStorage`, y escribe la clase durante el parseo del `<head>`. Patrón oficial de Next 16 (`node_modules/next/dist/docs/01-app/02-guides/preventing-flash-before-hydration.md`, §Themes) con `suppressHydrationWarning` en `<html>`. Un `useEffect` corre **después** del paint; `useLayoutEffect`, después de la hidratación — en conexión lenta el navegador ya pintó el HTML del servidor.
+- **GOTCHA: el algoritmo está escrito dos veces.** En JS plano dentro del script (no puede importar: corre antes del bundle) y en `theme.ts` para React. Las **constantes** sí tienen una sola fuente — se interpolan desde `theme.ts`. Si tocás `resolveSurface` o `resolveTheme`, tocá también el string de `theme-script.tsx`.
+- **`null` ≠ `"system"`.** Sin preferencia guardada manda el default de §0; `"system"` es una elección explícita de seguir al SO. Si `null` significara "system", el panel del Admin se abriría claro para cualquiera con el SO en claro.
+- **`useSyncExternalStore` y no `zustand/persist`:** `persist` hidrata en un efecto y necesita `hasHydrated` (como los dos session stores) — justo el frame de retraso que se está evitando.
+- **`resolveSurface(pathname)` es la única definición de "qué superficie es esta ruta"** y también la usa `providers.tsx` para decidir qué sesión limpiar ante un 401.
+- **`<meta name="theme-color">`** se actualiza con el modo resuelto (barra del navegador en Android — importa para el Cobrador).
+- **`.theme-switching`** (globals.css) congela las transiciones durante un frame al cambiar de modo; sin eso cada `transition-colors` interpola a su ritmo y se ve sucio.
+- El selector es `shared/ui/theme-toggle.tsx`, montado en `UserMenu`, `AdminMoreSheet` y `/collector/profile`. Cambia con **revelado circular** (`document.startViewTransition`, sin el flag `experimental.viewTransition` de Next: es una mutación de DOM, no una navegación).
+- `/dev/ui` cae en la superficie `"public"` (no themeable): conserva su switch local, pero pasa por `applyTheme`, el mismo punto único.
+
+**Tokens `-strong` (Fase 5.5): `--X` para fondos y trazos, `--X-strong` para texto e íconos.** La paleta se había afinado mirando el Admin oscuro; en claro `text-accent`/`text-success`/`text-warning` daban 2.1–2.6:1 sobre el fondo real del badge. Como `Badge` pinta `bg-X/15 text-X` en sus seis estados, encender el modo claro sin esto habría hecho ilegible todo el sistema de estados. Ver `DESIGN_SYSTEM.md` §1.1 para los valores y los ratios medidos. Al escribir una pantalla nueva: si el tono es **texto**, `-strong`.
+
+**Primitivos en `shared/ui/`**: alert-dialog, avatar, badge (cva con status variant), **brand-ring**, button (cva con variant+size+loading+asChild), card, command (cmdk), **confirm-dialog**, **count-up-value**, dialog, dropdown-menu, **empty-state**, **error-state** (`ErrorState` + `NotFoundState`), form (wrapper RHF), **inline-note**, input, label, metric-card (cva tone), popover, progress-bar, progress-ring (32/64/120px, cambio cian→verde >90%), select, sheet (Radix), skeleton, **skeletons** (composiciones), sonner (Toaster), **spinner**, switch, table, tabs (variant underline), textarea, **theme-toggle**, tooltip. **Sin Storybook**: la galería vive en `/dev/ui` (404 en producción) y **es** el criterio de aceptación — cada primitiva nueva se valida ahí en los dos modos.
+
+**Kit de estados (Fase 5.5) — DESIGN_SYSTEM §2.9.** Antes había cuatro `EmptyState` locales con firmas distintas (`{text}` en tres, `{title, description}` en otro) y ~30 `<div border-dashed>` sueltos; ninguno aceptaba acción, así que la tercera parte de §2.9 no se cumplía en ninguna pantalla.
+
+| Cuándo | Qué usar |
+|---|---|
+| No hay contenido todavía | `EmptyState` — `title` obligatorio, `action` con verbo. `size="inline"` dentro de una lista/pestaña |
+| La petición falló | `ErrorState` con `onRetry` |
+| La entidad no existe | `NotFoundState` con `backHref` |
+| Aclarar un dato que puede malinterpretarse | `InlineNote` (`info`/`warning`/`success`) |
+| Espera puntual (botón, bloque) | `Spinner`. Para una pantalla que carga, skeletons con la forma real |
+
+**`ErrorState` ≠ `NotFoundState`, y es la regla que más importa del kit.** El patrón `isError || !entity → "no existe o fue eliminado"` que usaban casi todas las pantallas mezcla dos situaciones opuestas: la entidad no existe (nada que reintentar) versus la petición falló (la entidad puede existir perfectamente). Ese merge ya causó el bug documentado más abajo — un `ZodError` por un campo nuevo requerido se mostraba como "este cliente no existe". Dos componentes obligan a decidir cuál es cuál al escribir la pantalla.
+
+**Boundaries de ruta (Fase 5.5).** Antes no existía **ninguno** en 37 páginas: una excepción no capturada tumbaba el árbol entero. Hoy hay `loading.tsx` + `error.tsx` + `not-found.tsx` en `(admin)/admin/(shell)` y `(collector)/collector/(shell)`, `loading.tsx` + `error.tsx` en `(client)`, y `not-found.tsx` + `global-error.tsx` en la raíz. `global-error.tsx` **no** usa primitivos de `shared/ui`: solo se dispara si falla el root layout, y `globals.css` se importa desde ahí — va con estilos en línea.
 
 **Confirmaciones destructivas: siempre `ConfirmDialog`**, nunca un `<Dialog>` a mano (antes había tres copias divergentes). Va sobre `AlertDialog` de Radix por `role="alertdialog"` y foco inicial en Cancelar. La fricción se escala según el daño, no por defecto:
 
@@ -204,6 +241,15 @@ Tokens en `app/globals.css`:
 - Tokens: `micro 0.14s · base 0.28s · overlay 0.33s · hero 0.6s` + easings `power2/3.out`
 - `useReducedMotion()` — todos los hooks lo consultan
 - Hooks: `useReveal<T>` (fade+rise), `useStagger<T>` (lista), `useCountUp<T>` (monto animado), `animateProgressRing(scope, opts)` (función, no hook; se llama dentro de `useGSAP({scope})`)
+- **Fase 5.5:** `useProgressRing(value)` (envuelve la ceremonia de `animateProgressRing`), `PRESS_SCALE` (constante de clases), `PageTransition` (para `template.tsx`), y `CountUpValue` en `shared/ui`
+
+**El anillo avanza, no se redibuja — es el momento de firma del producto.** `useProgressRing(value)` dibuja de 0 al valor en el primer montaje y, cuando el valor **cambia**, anima desde el anterior. En `ClientPaymentsScreen`, registrar un cobro invalida la query, `porcentajePagado` sube y el cobrador ve crecer exactamente lo que acaba de hacer. `animateProgressRing` existía desde la Fase 0.5 pero **solo lo usaba `/dev/ui`**: ninguna pantalla real animaba el elemento de firma.
+
+**El skeleton usa `.skeleton-shimmer`, no `animate-pulse`.** Barrido diagonal con el gradiente índigo→cian del hero, definido en `globals.css`. Es CSS y no GSAP a propósito: hay decenas de skeletons en pantalla a la vez y montar un timeline por cada uno sería caro para algo decorativo. El gate de `prefers-reduced-motion` vive en el CSS.
+
+**GOTCHA de `PageTransition`: `clearProps` no es opcional.** `gsap.from` deja el `transform` inline puesto al terminar, y **un ancestro con `transform` deja de ser el viewport para sus descendientes `position: fixed`** — pasan a posicionarse contra ese ancestro. `ClientsListScreen`, `CollectorsScreen` y `RoutesListScreen` montan su FAB móvil con `className="fixed right-4 ..."` DENTRO del contenido de la página, así que sin `clearProps` el botón dejaría de estar fijo y scrollearía con la lista. Por eso `PageTransition` corre su propio tween en vez de usar `useReveal` tal cual. Si agregás otro wrapper animado por encima de contenido de página, mismo cuidado.
+
+**`template.tsx` va DENTRO del route-group `(shell)`.** Next re-monta el template en cada navegación (eso es lo que permite animar la entrada); si envolviera al shell, el sidebar y la tab bar parpadearían en cada click.
 
 ## Formularios (RHF + Zod)
 
@@ -254,12 +300,14 @@ Implementado en `ClientFormScreen` y `CollectorDialog` (form montado solo con el
 | Path | Layout | Modo |
 |---|---|---|
 | `/` | raíz | claro |
-| `/dev/ui` | raíz (404 en prod) | toggle manual |
-| `/admin/login` | `(admin)` | oscuro |
-| `/admin/(shell)/...` | `(admin)` + AdminShell | oscuro |
-| `/collector/login` | `(collector)` | claro |
-| `/collector/(shell)/...` | `(collector)` + CollectorShell | claro |
-| `/client` | `(client)` | claro |
+| `/dev/ui` | raíz (404 en prod) | toggle manual de previsualización |
+| `/admin/login` | `(admin)` | oscuro **por defecto**, elegible |
+| `/admin/(shell)/...` | `(admin)` + AdminShell + template | oscuro **por defecto**, elegible |
+| `/collector/login` | `(collector)` | claro **por defecto**, elegible |
+| `/collector/(shell)/...` | `(collector)` + CollectorShell + template | claro **por defecto**, elegible |
+| `/client` | `(client)` | claro (fijo, sin selector) |
+
+"Elegible" = el usuario puede pasar a Claro/Oscuro/Sistema desde su superficie y la preferencia se guarda aparte para cada una (ver §Design system).
 
 Las `page.tsx` son server components. Toda la lógica vive en features/widgets con `"use client"`. Pages dinámicas usan Next 16: `params: Promise<{ id: string }>` (se hace `await params`).
 
@@ -269,9 +317,9 @@ Las `page.tsx` son server components. Toda la lógica vive en features/widgets c
 
 **`RegistrarCobroSheet` recibe `receiptBasePath`.** Default `/collector/receipts`; el Admin pasa `/admin/receipts`. Tenía la ruta hardcodeada, así que cobrar desde el panel del admin lo expulsaba al shell del cobrador y el `RouteGuard` de esa superficie lo rebotaba al login del cobrador. Por la misma razón `/admin/receipts/[pagoId]` existe aparte aunque renderice el MISMO `ReceiptScreen`.
 
-**Rutas del Cobrador implementadas:** `/collector`, `/collector/login`, `/collector/clients`, `/collector/clients/new`, `/collector/profile` (placeholder + Logout), `/collector/routes/[id]`, `/collector/routes/[id]/close` (cierre de ruta, Fase 5, `CloseRouteScreen`), `/collector/routes/payments/[id]` (acepta `?tab=historial`), `/collector/routes/payments/[id]/credits/[creditoId]` (detalle de crédito + historial de sus cuotas), `/collector/receipts/[pagoId]`.
+**Rutas del Cobrador implementadas:** `/collector`, `/collector/login`, `/collector/clients`, `/collector/clients/new`, `/collector/profile` (Fase 5.5: pantalla de cuenta real — identidad, documento/rol desde el JWT sin endpoint nuevo, selector de apariencia y Logout), `/collector/receipts` (vacío explicativo, ver abajo), `/collector/routes/[id]`, `/collector/routes/[id]/close` (cierre de ruta, Fase 5, `CloseRouteScreen`), `/collector/routes/payments/[id]` (acepta `?tab=historial`), `/collector/routes/payments/[id]/credits/[creditoId]` (detalle de crédito + historial de sus cuotas), `/collector/receipts/[pagoId]`.
 
-> **Pendiente conocido:** `nav-items.ts` tiene una pestaña "Recibos" → `/collector/receipts`, pero **no existe `page.tsx` para esa ruta** (solo `[pagoId]`), así que la pestaña da 404. Listar los recibos del cobrador necesita un endpoint nuevo (`GET /payments` scoped por cobrador) que todavía no existe.
+> **Recibos del cobrador (Fase 5.5): ya no es un 404, pero sigue sin listado.** La pestaña "Recibos" de `nav-items.ts` apuntaba a una ruta sin `page.tsx` (solo existía `[pagoId]`), así que tocarla **expulsaba al cobrador de la app**. Ahora `/collector/receipts` es un `EmptyState` honesto que explica dónde SÍ están los recibos (en el historial del crédito) y lleva ahí. El listado real sigue necesitando un endpoint que no existe (`GET /payments` scoped por cobrador).
 
 **Rutas del Cliente:** `/client/login`, `/client/change-password`, `/client/credit` (lista "Mis créditos"), `/client/credit/[id]` (detalle + historial + recibo).
 

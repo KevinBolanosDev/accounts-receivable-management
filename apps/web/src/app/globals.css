@@ -5,7 +5,17 @@
    (set per surface by route-group layouts) instead of `prefers-color-scheme`. */
 @custom-variant dark (&:where(.dark, .dark *));
 
+/* DESIGN_SYSTEM.md §1.1 — dos familias de tono por rol, no una:
+   `--X`        fondos, trazos y rellenos (badge, chip, barra, anillo)
+   `--X-strong` texto e íconos sobre una superficie clara
+   En oscuro `-strong` apunta al token base: ahí el tono claro ya contrasta
+   contra el casi-negro. En claro NO — medido sobre el fondo real del badge
+   (`color/15` sobre `card`): accent 2.43:1, success 2.59:1, warning 2.14:1,
+   destructive 3.78:1, todos por debajo de AA. Los valores `-strong` de abajo
+   están medidos contra ese mismo fondo y pasan 4.5:1. */
 :root {
+  color-scheme: light;
+
   --background: 0 0% 98%;
   --foreground: 240 10% 10%;
   --card: 0 0% 100%;
@@ -14,18 +24,23 @@
   --popover-foreground: var(--card-foreground);
   --primary: 243 75% 59%;
   --primary-foreground: 0 0% 100%;
+  --primary-strong: 243 75% 59%; /* 6.18:1 sobre card — ya pasa, se mantiene */
   --secondary: 240 5% 96%;
   --secondary-foreground: 240 10% 10%;
   --muted: 240 5% 96%;
   --muted-foreground: 240 4% 46%;
   --accent: 189 94% 43%;
   --accent-foreground: 0 0% 100%;
+  --accent-strong: 192 91% 30%; /* 4.54:1 sobre bg-accent/15 */
   --destructive: 0 84% 60%;
   --destructive-foreground: 0 0% 100%;
+  --destructive-strong: 0 72% 45%; /* 4.77:1 sobre bg-destructive/15 */
   --success: 160 84% 39%;
   --success-foreground: 0 0% 100%;
+  --success-strong: 161 94% 24%; /* 4.85:1 sobre bg-success/15 */
   --warning: 38 92% 50%;
   --warning-foreground: 240 10% 10%;
+  --warning-strong: 26 90% 32%; /* 5.64:1 sobre bg-warning/15 */
   --border: 240 6% 90%;
   --input: 240 6% 90%;
   --ring: 243 75% 59%;
@@ -33,26 +48,36 @@
 }
 
 .dark {
+  color-scheme: dark;
+
   --background: 240 14% 7%;
   --foreground: 240 5% 96%;
   --card: 240 8% 11%;
   --card-foreground: 240 5% 96%;
   --popover: var(--card);
   --popover-foreground: var(--card-foreground);
-  --primary: 239 84% 67%;
+  /* 62% y no 67%: con 67% el texto blanco sobre el botón primario sólido
+     quedaba en 4.43:1, justo debajo de AA. A 62% sube a 5.68:1 y el índigo
+     es el mismo a ojo. */
+  --primary: 239 84% 62%;
   --primary-foreground: 0 0% 100%;
+  --primary-strong: 239 84% 72%;
   --secondary: 240 6% 16%;
   --secondary-foreground: 240 5% 96%;
   --muted: 240 6% 16%;
   --muted-foreground: 240 5% 65%;
   --accent: 189 94% 55%;
   --accent-foreground: 240 10% 10%;
+  --accent-strong: var(--accent);
   --destructive: 0 84% 65%;
   --destructive-foreground: 0 0% 100%;
+  --destructive-strong: var(--destructive);
   --success: 160 84% 45%;
   --success-foreground: 0 0% 100%;
+  --success-strong: var(--success);
   --warning: 38 92% 55%;
   --warning-foreground: 240 10% 10%;
+  --warning-strong: var(--warning);
   --border: 240 6% 18%;
   --input: 240 6% 18%;
   --ring: 239 84% 67%;
@@ -67,18 +92,23 @@
   --color-popover-foreground: hsl(var(--popover-foreground));
   --color-primary: hsl(var(--primary));
   --color-primary-foreground: hsl(var(--primary-foreground));
+  --color-primary-strong: hsl(var(--primary-strong));
   --color-secondary: hsl(var(--secondary));
   --color-secondary-foreground: hsl(var(--secondary-foreground));
   --color-muted: hsl(var(--muted));
   --color-muted-foreground: hsl(var(--muted-foreground));
   --color-accent: hsl(var(--accent));
   --color-accent-foreground: hsl(var(--accent-foreground));
+  --color-accent-strong: hsl(var(--accent-strong));
   --color-destructive: hsl(var(--destructive));
   --color-destructive-foreground: hsl(var(--destructive-foreground));
+  --color-destructive-strong: hsl(var(--destructive-strong));
   --color-success: hsl(var(--success));
   --color-success-foreground: hsl(var(--success-foreground));
+  --color-success-strong: hsl(var(--success-strong));
   --color-warning: hsl(var(--warning));
   --color-warning-foreground: hsl(var(--warning-foreground));
+  --color-warning-strong: hsl(var(--warning-strong));
   --color-border: hsl(var(--border));
   --color-input: hsl(var(--input));
   --color-ring: hsl(var(--ring));
@@ -136,4 +166,59 @@
   body {
     @apply bg-background text-foreground;
   }
+}
+
+/* DESIGN_SYSTEM.md §1.8 — barrido de marca de los skeletons. Reemplaza al
+   `animate-pulse` de Tailwind, que late toda la superficie a la vez y no dice
+   nada del producto. Acá el gradiente índigo→cian (los mismos tokens del hero)
+   recorre la pieza en diagonal, como una carga que avanza.
+
+   Es CSS y no GSAP a propósito: hay decenas de skeletons en pantalla a la vez
+   y montar un timeline por cada uno sería caro para algo puramente decorativo.
+   Solo anima `transform` (§1.8: nunca `width`/`left` en caliente). */
+@keyframes brand-shimmer {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(100%);
+  }
+}
+
+.skeleton-shimmer {
+  position: relative;
+  overflow: hidden;
+}
+
+.skeleton-shimmer::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    100deg,
+    transparent 20%,
+    hsl(var(--primary) / 0.14) 45%,
+    hsl(var(--accent) / 0.18) 55%,
+    transparent 80%
+  );
+  animation: brand-shimmer 1.6s ease-in-out infinite;
+}
+
+/* §1.8, innegociable: si el usuario pide menos movimiento, el skeleton se
+   queda quieto. Sigue leyéndose como "acá va a llegar contenido" por su forma
+   y su fondo `bg-muted`, que es lo que importa. */
+@media (prefers-reduced-motion: reduce) {
+  .skeleton-shimmer::after {
+    animation: none;
+  }
+}
+
+/* Al cambiar de modo, cada elemento con `transition-colors` interpola a su
+   propio ritmo y el cambio se ve sucio (el fondo llega antes que el texto).
+   `applyTheme` (shared/theme/theme.ts) pone esta clase durante un frame. */
+.theme-switching,
+.theme-switching *,
+.theme-switching *::before,
+.theme-switching *::after {
+  transition: none !important;
 }

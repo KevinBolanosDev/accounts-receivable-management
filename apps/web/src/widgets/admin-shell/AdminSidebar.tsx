@@ -70,8 +70,13 @@ export function AdminSidebar() {
               aria-current={active ? "page" : undefined}
               className={cn(
                 base,
+                // El ítem activo NO puede ser `bg-secondary`: en claro ese
+                // token (#F4F4F5) contra el fondo de página (#FAFAFA) es un
+                // escalón de 2% de luminosidad — invisible. El velo de
+                // `primary` funciona en los dos modos y es el mismo lenguaje
+                // de chip que ya usa `MetricCard`.
                 active
-                  ? "bg-secondary text-foreground"
+                  ? "bg-primary/10 text-primary-strong"
                   : "text-muted-foreground hover:bg-muted hover:text-foreground",
               )}
             >

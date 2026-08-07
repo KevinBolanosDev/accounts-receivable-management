@@ -1,7 +1,6 @@
 "use client";
 
 import { useMemo } from "react";
-import Link from "next/link";
 import { CheckIcon } from "lucide-react";
 import type { PaymentHistoryItem } from "@repo/types";
 
@@ -20,6 +19,7 @@ import { formatCurrency } from "@/shared/lib/format-currency";
 import { formatDate } from "@/shared/lib/format-date";
 import { cn } from "@/shared/lib/utils";
 import { Button } from "@/shared/ui/button";
+import { ErrorState, NotFoundState } from "@/shared/ui/error-state";
 import { MetricTile, MetricTileGroup } from "@/shared/ui/metric-tile";
 import { Skeleton } from "@/shared/ui/skeleton";
 import { AdminPageHeader } from "@/widgets/admin-shell/AdminPageHeader";
@@ -74,7 +74,7 @@ export function AdminCreditCollectScreen({
   clienteId,
   creditoId,
 }: AdminCreditCollectScreenProps) {
-  const { data: cliente, isLoading, isError } = useCliente(clienteId);
+  const { data: cliente, isLoading, isError, refetch } = useCliente(clienteId);
   const token = useSessionStore((state) => state.token);
   const recibos = useReceiptActions({ scope: "staff", token });
 
@@ -112,18 +112,26 @@ export function AdminCreditCollectScreen({
     return (
       <>
         <AdminPageHeader backHref={volverAlCliente} eyebrow="Rutas" title="Crédito" />
-        <div className="flex flex-col items-center gap-4 p-4 sm:p-6">
-          <div className="flex flex-col items-center gap-2 rounded-lg border border-dashed border-border bg-card p-8 text-center">
-            <p className="text-sm font-medium">No encontramos este crédito</p>
-            <p className="text-caption text-muted-foreground">
-              {cliente
-                ? `${cliente.nombre} no tiene un crédito con ese identificador.`
-                : "El cliente no existe o fue eliminado."}
-            </p>
-          </div>
-          <Button asChild variant="secondary">
-            <Link href={volverAlCliente}>Volver a los créditos</Link>
-          </Button>
+        <div className="flex flex-col items-center p-4 sm:p-6">
+          {isError ? (
+            <ErrorState
+              title="No se pudo cargar el crédito"
+              onRetry={() => void refetch()}
+              className="w-full max-w-md"
+            />
+          ) : (
+            <NotFoundState
+              entity={cliente ? "este crédito" : "este cliente"}
+              description={
+                cliente
+                  ? `${cliente.nombre} no tiene un crédito con ese identificador.`
+                  : "Puede que se haya eliminado o que ya no pertenezca a tu cartera."
+              }
+              backHref={volverAlCliente}
+              backLabel="Volver a los créditos"
+              className="w-full max-w-md"
+            />
+          )}
         </div>
       </>
     );
@@ -165,7 +173,7 @@ export function AdminCreditCollectScreen({
         {activo ? (
           <div className="flex flex-col gap-2 sm:max-w-sm">
             {cobradoHoy ? (
-              <div className="flex items-center gap-2 rounded-lg bg-success/10 px-3 py-2 text-body-sm text-success">
+              <div className="flex items-center gap-2 rounded-lg bg-success/10 px-3 py-2 text-body-sm text-success-strong">
                 <CheckIcon className="size-4 shrink-0" />
                 <span>
                   Cobrado hoy: {formatCurrency(cobradoHoy.total)} en {cobradoHoy.pagos}{" "}

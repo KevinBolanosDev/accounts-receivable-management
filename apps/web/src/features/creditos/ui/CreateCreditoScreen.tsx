@@ -186,7 +186,7 @@ export function CreateCreditoScreen({ clienteIdInicial, creditoId }: CreateCredi
 
       <div className="grid grid-cols-1 gap-6 p-4 sm:p-6 lg:grid-cols-[minmax(0,1fr)_360px]">
         {tienePagos ? (
-          <div className="flex items-start gap-2 rounded-md border border-warning/30 bg-warning/10 p-3 text-body-sm text-warning lg:col-span-2">
+          <div className="flex items-start gap-2 rounded-md border border-warning/30 bg-warning/10 p-3 text-body-sm text-warning-strong lg:col-span-2">
             <TriangleAlertIcon className="mt-0.5 size-4 shrink-0" />
             <span>
               Este crédito ya tiene {credito!.pagos.length}{" "}
@@ -446,7 +446,7 @@ function Field({
       <Label htmlFor={id}>{label}</Label>
       {children}
       {error ? (
-        <p className="text-body-sm text-destructive" role="alert">
+        <p className="text-body-sm text-destructive-strong" role="alert">
           {error}
         </p>
       ) : null}

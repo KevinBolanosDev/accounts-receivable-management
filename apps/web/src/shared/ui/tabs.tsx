@@ -58,7 +58,12 @@ const tabsTriggerVariants = cva(
   {
     variants: {
       variant: {
-        pill: "data-[state=active]:bg-background data-[state=active]:text-foreground data-[state=active]:shadow-sm",
+        // `bg-card` y no `bg-background`: la pestaña activa se recorta contra
+        // la pista `bg-muted` de la lista. En claro `background` (#FAFAFA) y
+        // `muted` (#F4F4F5) se diferencian en 2% de luminosidad — la pestaña
+        // activa era invisible. `card` es blanco puro y funciona en los dos
+        // modos (en oscuro queda más oscura que la pista, que también lee).
+        pill: "data-[state=active]:bg-card data-[state=active]:text-foreground data-[state=active]:shadow-sm",
         underline:
           "rounded-none border-b-2 border-transparent text-muted-foreground data-[state=active]:border-primary data-[state=active]:text-foreground",
       },

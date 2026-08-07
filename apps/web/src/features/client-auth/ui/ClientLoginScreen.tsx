@@ -83,7 +83,7 @@ export function ClientLoginScreen() {
             {...register("documento")}
           />
           {errors.documento && (
-            <p id="documento-error" className="text-xs text-destructive">
+            <p id="documento-error" className="text-xs text-destructive-strong">
               {errors.documento.message}
             </p>
           )}
@@ -104,14 +104,14 @@ export function ClientLoginScreen() {
             {...register("password")}
           />
           {errors.password && (
-            <p id="password-error" className="text-xs text-destructive">
+            <p id="password-error" className="text-xs text-destructive-strong">
               {errors.password.message}
             </p>
           )}
         </div>
 
         {authError && (
-          <p role="alert" className="text-sm text-destructive">
+          <p role="alert" className="text-sm text-destructive-strong">
             {authError}
           </p>
         )}

@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useParams } from "next/navigation";
-import { CheckCircle2Icon, DownloadIcon } from "lucide-react";
+import { CheckCircle2Icon, CircleCheckIcon, DownloadIcon } from "lucide-react";
 import { toast } from "sonner";
 import type { DailyClosure } from "@repo/types";
 
@@ -12,6 +12,7 @@ import { ApiError } from "@/shared/api/client";
 import { formatCurrency } from "@/shared/lib/format-currency";
 import { formatDateShort } from "@/shared/lib/format-date";
 import { Button } from "@/shared/ui/button";
+import { EmptyState } from "@/shared/ui/empty-state";
 import { MetricTile, MetricTileGroup } from "@/shared/ui/metric-tile";
 import { Skeleton } from "@/shared/ui/skeleton";
 import { WhatsAppIcon } from "@/shared/ui/icons/whatsapp-icon";
@@ -119,8 +120,8 @@ export function CloseRouteScreen() {
 
       <div className="flex flex-col gap-4 px-4 pt-4">
         {alreadyClosed ? (
-          <div className="flex flex-col items-center gap-3 rounded-xl border border-dashed border-border bg-card p-8 text-center">
-            <CheckCircle2Icon className="size-8 text-success" aria-hidden />
+          <div className="flex flex-col items-center gap-3 rounded-xl border border-success/30 bg-success/5 p-8 text-center">
+            <CheckCircle2Icon className="size-8 text-success-strong" aria-hidden />
             <p className="text-sm font-medium">Ruta ya cerrada hoy</p>
             <p className="text-caption text-muted-foreground">
               El cierre de hoy ya quedó registrado. Mañana esta pantalla vuelve a abrir el día.
@@ -152,9 +153,12 @@ export function CloseRouteScreen() {
                 Clientes sin pagar
               </h2>
               {unpaidCount === 0 ? (
-                <p className="rounded-lg border border-dashed border-border bg-card p-4 text-center text-caption text-muted-foreground">
-                  Todos los clientes de la ruta pagaron hoy.
-                </p>
+                <EmptyState
+                  size="inline"
+                  icon={<CircleCheckIcon />}
+                  title="Todos los clientes de la ruta pagaron hoy"
+                  description="Podés cerrar la ruta sin pendientes."
+                />
               ) : (
                 <div className="flex flex-col gap-3">
                   {preview.unpaidClients.map((cliente) => (

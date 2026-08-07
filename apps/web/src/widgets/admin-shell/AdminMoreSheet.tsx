@@ -6,6 +6,7 @@ import { ChevronRightIcon } from "lucide-react";
 
 import { cn } from "@/shared/lib/utils";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/shared/ui/sheet";
+import { ThemeToggle } from "@/shared/ui/theme-toggle";
 
 import { ADMIN_MORE_NAV, isNavItemActive } from "./nav-items";
 
@@ -64,8 +65,10 @@ export function AdminMoreSheet({ open, onOpenChange }: AdminMoreSheetProps) {
                 aria-current={active ? "page" : undefined}
                 className={cn(
                   ITEM_CLASS,
+                  // Mismo criterio que `AdminSidebar`: `bg-secondary` no se
+                  // distingue del fondo en modo claro.
                   active
-                    ? "bg-secondary text-foreground"
+                    ? "bg-primary/10 text-primary-strong"
                     : "text-muted-foreground hover:bg-muted hover:text-foreground",
                 )}
               >
@@ -76,6 +79,13 @@ export function AdminMoreSheet({ open, onOpenChange }: AdminMoreSheetProps) {
             );
           })}
         </nav>
+
+        {/* Segundo punto de acceso al modo de color en móvil. El del avatar
+            (`UserMenu`) es el canónico; este existe porque "Más" es donde el
+            usuario ya viene a buscar lo que no está en las pestañas. */}
+        <div className="border-t border-border px-4 pt-3 pb-1">
+          <ThemeToggle size="md" label="Apariencia" />
+        </div>
       </SheetContent>
     </Sheet>
   );

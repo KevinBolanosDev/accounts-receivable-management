@@ -85,7 +85,7 @@ function ConfirmDialogBody({
       </AlertDialogHeader>
 
       {warning ? (
-        <div className="flex items-start gap-2 rounded-md border border-destructive/30 bg-destructive/10 p-3 text-body-sm text-destructive">
+        <div className="flex items-start gap-2 rounded-md border border-destructive/30 bg-destructive/10 p-3 text-body-sm text-destructive-strong">
           <TriangleAlertIcon className="mt-0.5 size-4 shrink-0" />
           <span>{warning}</span>
         </div>

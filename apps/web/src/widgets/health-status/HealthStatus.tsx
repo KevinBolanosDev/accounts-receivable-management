@@ -40,7 +40,7 @@ export function HealthStatus() {
   }
 
   if (state.step === "error") {
-    return <p className="text-destructive">No se pudo conectar con la API: {state.message}</p>;
+    return <p className="text-destructive-strong">No se pudo conectar con la API: {state.message}</p>;
   }
 
   return (
@@ -60,7 +60,7 @@ export function HealthStatus() {
       {state.data.database && (
         <div className="flex gap-2">
           <dt className="font-semibold">Base de datos:</dt>
-          <dd className={state.data.database === "up" ? "text-success" : "text-warning"}>
+          <dd className={state.data.database === "up" ? "text-success-strong" : "text-warning-strong"}>
             {state.data.database}
           </dd>
         </div>
