@@ -15,7 +15,6 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/shared/ui/dropdown-menu";
-import { ThemeToggle } from "@/shared/ui/theme-toggle";
 
 const ROL_LABEL: Record<Rol, string> = {
   ADMIN: "Administrador",
