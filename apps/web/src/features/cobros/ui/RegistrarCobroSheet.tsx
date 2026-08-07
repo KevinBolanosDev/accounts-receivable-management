@@ -61,6 +61,17 @@ interface RegistrarCobroSheetProps {
   receiptBasePath?: string;
 }
 
+// El monto sugerido nunca puede superar lo que realmente queda por cobrar.
+// `cuotaDiaria` es montoTotal/cuotas redondeado a centavos; en la práctica el
+// saldo real se desvía de sus múltiplos exactos (pagos dobles redondeados a
+// un número "lindo", abonos parciales), así que en la última cuota — o
+// cualquiera después de esa deriva — precargar cuotaDiaria puede pedir unos
+// centavos de más que el saldoPendiente real y el cobro queda atascado.
+function montoSugerido(credito: CreditoListItem | null | undefined): number {
+  if (!credito) return 0;
+  return Math.min(credito.cuotaDiaria, credito.saldoPendiente);
+}
+
 // DESIGN_SYSTEM.md §3.5 / #16c — bottom sheet de cobro. El monto llega
 // prellenado con la cuota del período en MODO LECTURA (tarjeta con "Editar"); al
 // editar se vuelve input. Muestra la vista previa del "Nuevo saldo pendiente"
@@ -80,13 +91,15 @@ export function RegistrarCobroSheet({
   const [editandoMonto, setEditandoMonto] = React.useState(false);
   const initialCreditoId =
     creditoPreseleccionado?.id ?? (creditos.length === 1 ? creditos[0]?.id ?? "" : "");
+  const initialCredito =
+    creditoPreseleccionado ?? (creditos.length === 1 ? creditos[0] : undefined);
 
   const form = useForm<CreateCobroRequest>({
     resolver: zodResolver(createCobroRequestSchema),
     mode: "onBlur",
     defaultValues: {
       creditoId: initialCreditoId,
-      monto: creditoPreseleccionado?.cuotaDiaria ?? creditos[0]?.cuotaDiaria ?? 0,
+      monto: montoSugerido(initialCredito),
     },
   });
 
@@ -107,10 +120,10 @@ export function RegistrarCobroSheet({
     if (creditoElegido && Number.isFinite(monto)) {
       const current = form.getValues("monto");
       const matchesOther = creditos.some(
-        (c) => c.id !== creditoElegido.id && c.cuotaDiaria === current,
+        (c) => c.id !== creditoElegido.id && montoSugerido(c) === current,
       );
       if (!current || matchesOther) {
-        form.setValue("monto", creditoElegido.cuotaDiaria, { shouldValidate: false });
+        form.setValue("monto", montoSugerido(creditoElegido), { shouldValidate: false });
       }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -228,7 +241,8 @@ export function RegistrarCobroSheet({
                 id="monto"
                 type="number"
                 min={0}
-                inputMode="numeric"
+                step="any"
+                inputMode="decimal"
                 autoFocus
                 className="h-12 text-h3 font-semibold tabular-nums"
                 {...form.register("monto", { valueAsNumber: true })}

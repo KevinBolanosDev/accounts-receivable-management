@@ -210,7 +210,7 @@ export function RouteDetailScreen({ rutaId }: { rutaId: string }) {
             </span>
 
             {/* Lista en móvil */}
-            <div className="flex flex-col overflow-hidden rounded-lg border border-border bg-card md:hidden">
+            <div className="flex flex-col overflow-hidden rounded-lg border border-border bg-card md:hidden z-0">
               {ruta.clientes.length === 0 ? (
                 <p className="p-8 text-center text-body-sm text-muted-foreground">
                   Esta ruta no tiene clientes asignados.
