@@ -29,22 +29,37 @@ export class CobrosRepository {
 
   /**
    * Descuenta el saldo de un crédito dentro del tx, **atómicamente**.
-   * `where: { id, saldoPendiente: { gte: monto } }` evita el "sobre-descuento"
-   * si otro cobro simultáneo ganó la carrera: `affected = 0` y el service
-   * aborta con 409 (mapea a `P2025`). Si afecta 1 fila, devolvemos el
-   * Crédito ya recalculado para confirmar el nuevo saldo y estado.
+   * `where: { id, saldoPendiente: { gte: monto }, estado: { in: [...] } }`
+   * evita DOS carreras a la vez, no solo el "sobre-descuento":
+   *
+   * 1. Otro cobro simultáneo ya descontó saldo (la cláusula `saldoPendiente`).
+   * 2. El crédito se ANULÓ (o quedó PAGADO por otro cobro) en la ventana
+   *    entre la lectura de `estado` del service (antes de abrir la
+   *    transacción) y este UPDATE. Antes del hardening de Fase 6 (DATA-1),
+   *    el `estado` NO estaba en este WHERE: un cobro podía descontar saldo
+   *    de un crédito recién anulado si `anular()` (creditos.service.ts)
+   *    committeaba justo en esa ventana — el pre-check del service ya no
+   *    alcanza a bloquearlo porque leyó el estado viejo. Postgres serializa
+   *    los dos UPDATE por fila (row lock): el segundo en llegar reevalúa este
+   *    WHERE contra el estado YA actualizado por el primero, así que ahora es
+   *    imposible que ambos "ganen".
+   *
+   * Si `count === 0`, el service aborta con 409 (carrera perdida, cualquiera
+   * de las dos razones). Si afecta 1 fila, devolvemos el Crédito ya
+   * recalculado para confirmar el nuevo saldo y estado.
    */
   descontarSaldo(args: { tx: Tx; creditoId: string; monto: Prisma.Decimal }) {
     return args.tx.credito.updateMany({
       where: {
         id: args.creditoId,
         saldoPendiente: { gte: args.monto },
+        estado: { in: ["ACTIVO", "MORA"] },
       },
       data: {
         // `updateMany` no soporta Decimal dinámico — primero restamos desde
         // la capa service (ya validado contra `saldoActual ≥ monto`). El
-        // guard real contra la carrera es la cláusula `saldoPendiente >=
-        // monto` del WHERE: si no afecta 0 filas, nadie tocó el saldo.
+        // guard real contra la carrera es el WHERE completo de arriba: si no
+        // afecta filas, nadie ganó nada de más.
         saldoPendiente: { decrement: Number(args.monto.toString()) },
       },
     });
