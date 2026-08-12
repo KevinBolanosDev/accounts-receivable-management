@@ -3,7 +3,10 @@ import type { PaymentHistoryItem } from "@repo/types";
 
 import { formatCurrency } from "@/shared/lib/format-currency";
 import { formatDateShort, formatDateTimeShort } from "@/shared/lib/format-date";
+import { ReceiptIcon } from "lucide-react";
+
 import { cn } from "@/shared/lib/utils";
+import { EmptyState } from "@/shared/ui/empty-state";
 import { Badge } from "@/shared/ui/badge";
 import {
   Table,
@@ -65,9 +68,7 @@ export function PaymentHistoryTable({
 
   if (pagos.length === 0) {
     return (
-      <div className="rounded-xl border border-dashed border-border bg-card p-6 text-center text-body-sm text-muted-foreground">
-        {emptyText}
-      </div>
+      <EmptyState size="inline" icon={<ReceiptIcon />} title={emptyText} />
     );
   }
 

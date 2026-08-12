@@ -34,9 +34,11 @@ export const ESTADO_CLIENTE_FILTER_LABEL: Record<EstadoCliente, string> = {
   pagado: "Pagados",
 };
 
+// Tonos `-strong`: esto es TEXTO, y los tonos base solo contrastan sobre
+// fondo oscuro (ver globals.css §1.1).
 export const ESTADO_CLIENTE_TEXT: Record<EstadoCliente, string> = {
-  activo: "text-accent",
-  "proximo-a-vencer": "text-warning",
-  mora: "text-destructive",
-  pagado: "text-success",
+  activo: "text-accent-strong",
+  "proximo-a-vencer": "text-warning-strong",
+  mora: "text-destructive-strong",
+  pagado: "text-success-strong",
 };

@@ -16,9 +16,9 @@ const metricTileVariants = cva("flex min-w-0 flex-col gap-0.5", {
     },
     tone: {
       default: "",
-      success: "[&_[data-slot=metric-tile-value]]:text-success",
-      warning: "[&_[data-slot=metric-tile-value]]:text-warning",
-      destructive: "[&_[data-slot=metric-tile-value]]:text-destructive",
+      success: "[&_[data-slot=metric-tile-value]]:text-success-strong",
+      warning: "[&_[data-slot=metric-tile-value]]:text-warning-strong",
+      destructive: "[&_[data-slot=metric-tile-value]]:text-destructive-strong",
     },
   },
   defaultVariants: { align: "center", tone: "default" },

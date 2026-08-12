@@ -111,7 +111,7 @@ function CollectorForm({
             <Label htmlFor="cobrador-nombre">Nombre completo</Label>
             <Input id="cobrador-nombre" placeholder="Ej. Diana Reyes" {...register("nombre")} />
             {errors.nombre ? (
-              <p className="text-body-sm text-destructive" role="alert">
+              <p className="text-body-sm text-destructive-strong" role="alert">
                 {errors.nombre.message}
               </p>
             ) : null}
@@ -133,7 +133,7 @@ function CollectorForm({
               )}
             />
             {errors.telefono ? (
-              <p className="text-body-sm text-destructive" role="alert">
+              <p className="text-body-sm text-destructive-strong" role="alert">
                 {errors.telefono.message}
               </p>
             ) : null}
@@ -143,7 +143,7 @@ function CollectorForm({
             <Label htmlFor="cobrador-documento">Documento</Label>
             <Input id="cobrador-documento" placeholder="Ej. 1000000004" {...register("documento")} />
             {errors.documento ? (
-              <p className="text-body-sm text-destructive" role="alert">
+              <p className="text-body-sm text-destructive-strong" role="alert">
                 {errors.documento.message}
               </p>
             ) : null}
@@ -153,7 +153,7 @@ function CollectorForm({
             <Label htmlFor="cobrador-password">Contraseña inicial</Label>
             <Input id="cobrador-password" type="password" {...register("password")} />
             {errors.password ? (
-              <p className="text-body-sm text-destructive" role="alert">
+              <p className="text-body-sm text-destructive-strong" role="alert">
                 {errors.password.message}
               </p>
             ) : null}

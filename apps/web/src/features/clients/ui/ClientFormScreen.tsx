@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { useState } from "react";
 import { Controller, useForm, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -17,6 +16,7 @@ import { ChevronsUpDownIcon } from "lucide-react";
 
 import { ApiError } from "@/shared/api/client";
 import { Button } from "@/shared/ui/button";
+import { NotFoundState } from "@/shared/ui/error-state";
 import { Input } from "@/shared/ui/input";
 import { Label } from "@/shared/ui/label";
 import { PhoneInput } from "@/shared/ui/phone-input";
@@ -60,7 +60,7 @@ function Field({
       <Label htmlFor={id}>{label}</Label>
       {children}
       {error ? (
-        <p className="text-body-sm text-destructive" role="alert">
+        <p className="text-body-sm text-destructive-strong" role="alert">
           {error}
         </p>
       ) : null}
@@ -141,14 +141,14 @@ export function ClientFormScreen({ clienteId }: { clienteId?: string }) {
     return (
       <>
         <AdminPageHeader backHref={`/admin/clients/${clienteId}`} eyebrow="Clientes" title="Editar cliente" />
-        <div className="flex flex-col items-center gap-4 p-4 sm:p-6">
-          <div className="flex flex-col items-center gap-2 rounded-lg border border-dashed border-border bg-card p-8 text-center">
-            <p className="text-sm font-medium">Este cliente no existe o fue eliminado</p>
-            <p className="text-caption text-muted-foreground">No hay nada que editar.</p>
-          </div>
-          <Button asChild variant="secondary">
-            <Link href="/admin/clients">Volver a Clientes</Link>
-          </Button>
+        <div className="flex flex-col items-center p-4 sm:p-6">
+          <NotFoundState
+            entity="este cliente"
+            description="No hay nada que editar: puede que se haya eliminado o que ya no pertenezca a tu cartera."
+            backHref="/admin/clients"
+            backLabel="Volver a Clientes"
+            className="w-full max-w-md"
+          />
         </div>
       </>
     );

@@ -33,7 +33,12 @@ function uniqueDocumento(): string {
   return `${DOCUMENTO_PREFIX}${Date.now()}-${counter}`;
 }
 
+// El login (`AuthClienteService.login`) exige al menos una relación
+// `ClientAdmin` ACTIVA — sin `admins: { create: ... }` acá, todo este archivo
+// creaba clientes sin cartera y `loginCliente` (más abajo) fallaba con 401
+// "Documento o contraseña incorrectos" sin importar la contraseña.
 async function createCliente(overrides: Record<string, unknown> = {}) {
+  const adminId = await seedAdminId(prisma);
   return prisma.cliente.create({
     data: {
       nombre: "Cliente Portal E2E",
@@ -42,6 +47,7 @@ async function createCliente(overrides: Record<string, unknown> = {}) {
       direccion: "Test",
       passwordHash: await bcrypt.hash(PLAIN_PASSWORD, 10),
       mustChangePassword: false,
+      admins: { create: { adminId, activo: true } },
       ...overrides,
     },
   });
@@ -134,6 +140,7 @@ describe("ClientPortalController (e2e)", () => {
     const clienteIds = clientes.map((c) => c.id);
     await prisma.pago.deleteMany({ where: { credito: { clienteId: { in: clienteIds } } } });
     await prisma.credito.deleteMany({ where: { clienteId: { in: clienteIds } } });
+    await prisma.clientAdmin.deleteMany({ where: { clientId: { in: clienteIds } } });
     await prisma.cliente.deleteMany({ where: { id: { in: clienteIds } } });
     await prisma.$disconnect();
   });

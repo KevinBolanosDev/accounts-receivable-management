@@ -4,15 +4,21 @@ import { useEffect, useRef, useState } from "react";
 import { notFound } from "next/navigation";
 import { useForm } from "react-hook-form";
 import {
+  BanknoteIcon,
   CheckIcon,
   ChevronsUpDownIcon,
+  CreditCardIcon,
+  DownloadIcon,
   LogOutIcon,
   MoreHorizontalIcon,
+  PackageIcon,
   PencilIcon,
   PlusIcon,
+  ReceiptIcon,
   SendIcon,
   Trash2Icon,
   UserIcon,
+  UsersIcon,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -21,9 +27,11 @@ import { CreditCard, CreditSummaryCard } from "@/entities/credit";
 import { PaymentHistory, esCuotaSinPagar } from "@/entities/payment";
 import { ReceiptActions } from "@/entities/receipt";
 import { ReceiptCard } from "@/features/receipts";
-import type { CreditoListItem, PaymentHistoryItem, Receipt } from "@repo/types";
+import type { CreditoListItem, DailyClosureListItem, PaymentHistoryItem, Receipt } from "@repo/types";
 import { formatCurrency } from "@/shared/lib/format-currency";
+import { applyTheme, type ResolvedTheme } from "@/shared/theme";
 import { DataField, DataFieldList } from "@/shared/ui/data-field";
+import { MetricCard } from "@/shared/ui/metric-card";
 import { MetricTile, MetricTileGroup } from "@/shared/ui/metric-tile";
 import {
   animateProgressRing,
@@ -91,7 +99,21 @@ import {
   SheetTitle,
   SheetTrigger,
 } from "@/shared/ui/sheet";
+import { BrandRing } from "@/shared/ui/brand-ring";
+import { EmptyState } from "@/shared/ui/empty-state";
+import { ErrorState, NotFoundState } from "@/shared/ui/error-state";
+import { InlineNote } from "@/shared/ui/inline-note";
 import { Skeleton } from "@/shared/ui/skeleton";
+import {
+  SkeletonCardList,
+  SkeletonDetail,
+  SkeletonForm,
+  SkeletonList,
+  SkeletonMetrics,
+  SkeletonTable,
+} from "@/shared/ui/skeletons";
+import { Spinner } from "@/shared/ui/spinner";
+import { ThemeToggle } from "@/shared/ui/theme-toggle";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/shared/ui/table";
 import { Textarea } from "@/shared/ui/textarea";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/shared/ui/tooltip";
@@ -377,6 +399,39 @@ const RECEIPT_DEMO: Receipt = {
   anulado: false,
 };
 
+const CIERRES_DEMO: DailyClosureListItem[] = [
+  {
+    id: "dc-demo-1",
+    routeId: "r3",
+    rutaNombre: "Ruta 3 · Centro",
+    date: "2026-08-05",
+    totalCollected: 540_000,
+    collectedCount: 24,
+    newCredits: 2,
+    newCreditsAmount: 1_200_000,
+    productsSold: 2,
+    unpaidCount: 3,
+    status: "CLOSED",
+    closedByNombre: "Carlos Ramírez",
+    createdAt: "2026-08-05T22:03:00.000Z",
+  },
+  {
+    id: "dc-demo-2",
+    routeId: "r1",
+    rutaNombre: "Ruta 1 · Norte",
+    date: "2026-08-04",
+    totalCollected: 420_000,
+    collectedCount: 19,
+    newCredits: 0,
+    newCreditsAmount: 0,
+    productsSold: 0,
+    unpaidCount: 0,
+    status: "CLOSED",
+    closedByNombre: "Carlos Ramírez",
+    createdAt: "2026-08-04T22:01:00.000Z",
+  },
+];
+
 function ComboboxDemo() {
   const [open, setOpen] = useState(false);
   const [value, setValue] = useState<string | null>(null);
@@ -478,15 +533,19 @@ export default function UiGalleryPage() {
     notFound();
   }
 
-  const [mode, setMode] = useState<"light" | "dark">("light");
+  // La galería es una herramienta de previsualización, no una superficie con
+  // preferencia de usuario: `/dev/ui` cae en la superficie "public", que no es
+  // themeable. Por eso conserva su switch local — pero pasa por `applyTheme`,
+  // el mismo punto único que usa el selector real, en vez de manipular
+  // `classList` a mano como antes.
+  const [mode, setMode] = useState<ResolvedTheme>("light");
   const [estadoFiltro, setEstadoFiltro] = useState("all");
 
   useEffect(() => {
-    const root = document.documentElement;
-    const hadDark = root.classList.contains("dark");
-    root.classList.toggle("dark", mode === "dark");
+    const hadDark = document.documentElement.classList.contains("dark");
+    applyTheme(mode);
     return () => {
-      root.classList.toggle("dark", hadDark);
+      applyTheme(hadDark ? "dark" : "light");
     };
   }, [mode]);
 
@@ -1001,12 +1060,148 @@ export default function UiGalleryPage() {
 
       <Section
         title="Skeleton"
-        description="Imita la forma real del contenido — DESIGN_SYSTEM.md §2.9"
+        description="Imita la forma real del contenido — DESIGN_SYSTEM.md §2.9. El barrido de marca (índigo→cian) reemplaza al animate-pulse gris."
       >
         <div className="flex flex-col gap-2">
           <Skeleton className="h-4 w-48" />
           <Skeleton className="h-4 w-64" />
           <Skeleton className="h-10 w-full" />
+        </div>
+      </Section>
+
+      <Section
+        title="Skeletons compuestos"
+        description="Fase 5.5 — la forma real de cada bloque del producto, no un rectángulo. SkeletonList · SkeletonCardList · SkeletonMetrics · SkeletonTable · SkeletonDetail · SkeletonForm"
+      >
+        <div className="flex flex-col gap-6">
+          <div className="flex flex-col gap-2">
+            <p className="text-caption text-muted-foreground uppercase">SkeletonList</p>
+            <div className="overflow-hidden rounded-lg border border-border bg-card">
+              <SkeletonList rows={3} />
+            </div>
+          </div>
+
+          <div className="flex flex-col gap-2">
+            <p className="text-caption text-muted-foreground uppercase">SkeletonCardList</p>
+            <SkeletonCardList rows={2} />
+          </div>
+
+          <div className="flex flex-col gap-2">
+            <p className="text-caption text-muted-foreground uppercase">SkeletonMetrics</p>
+            <SkeletonMetrics columns={4} />
+          </div>
+
+          <div className="flex flex-col gap-2">
+            <p className="text-caption text-muted-foreground uppercase">SkeletonTable</p>
+            <SkeletonTable rows={3} columns={4} />
+          </div>
+
+          <div className="grid gap-6 md:grid-cols-2">
+            <div className="flex flex-col gap-2">
+              <p className="text-caption text-muted-foreground uppercase">SkeletonDetail</p>
+              <SkeletonDetail rows={3} />
+            </div>
+            <div className="flex flex-col gap-2">
+              <p className="text-caption text-muted-foreground uppercase">SkeletonForm</p>
+              <SkeletonForm rows={2} />
+            </div>
+          </div>
+        </div>
+      </Section>
+
+      <Section
+        title="Estados: vacío, error y no encontrado"
+        description="Fase 5.5 — DESIGN_SYSTEM.md §2.9. El vacío nombra el espacio y lleva la acción que lo llena; el error ofrece Reintentar; 'no existe' es un estado DISTINTO del error (un ZodError no es un 404)."
+      >
+        <div className="flex flex-col gap-6">
+          <div className="grid gap-4 md:grid-cols-2">
+            <EmptyState
+              icon={<UsersIcon />}
+              title="Aún no hay clientes en esta ruta"
+              description="Agregá el primero para empezar a cobrar."
+              action={
+                <Button size="sm">
+                  <PlusIcon />
+                  Agregar cliente
+                </Button>
+              }
+            />
+            <EmptyState
+              size="inline"
+              icon={<ReceiptIcon />}
+              title="Todavía no hay pagos registrados"
+              description="Variante inline, para huecos dentro de una lista o pestaña."
+            />
+          </div>
+
+          <div className="grid gap-4 md:grid-cols-2">
+            <ErrorState onRetry={() => toast.info("Reintentando…")} />
+            <NotFoundState entity="este cliente" backHref="/dev/ui" backLabel="Volver" />
+          </div>
+        </div>
+      </Section>
+
+      <Section
+        title="Avisos en línea"
+        description="Fase 5.5 — acompañan contenido que SÍ está, a diferencia del vacío. Para explicar un dato raro antes de que se malinterprete."
+      >
+        <div className="flex flex-col gap-3">
+          <InlineNote tone="info">
+            Este cierre es anterior a que se guardara el detalle de quién pagó, así que ese dato no
+            existe para esta fecha.
+          </InlineNote>
+          <InlineNote tone="warning">
+            Este cliente tiene créditos abiertos. Al reactivarlo vuelven también su saldo y su
+            historial.
+          </InlineNote>
+          <InlineNote tone="success">
+            El cierre quedó registrado. Mañana esta pantalla vuelve a abrir el día.
+          </InlineNote>
+        </div>
+      </Section>
+
+      <Section
+        title="Anillo de marca y spinner"
+        description="Fase 5.5 — la geometría del elemento de firma (§1.7) cuando NO hay dato que mostrar: el vacío, el error y la espera. Para representar un porcentaje va ProgressRing."
+      >
+        <div className="flex flex-wrap items-center gap-8">
+          <div className="flex flex-col items-center gap-2">
+            <BrandRing size="lg" dashed tone="muted" />
+            <span className="text-caption text-muted-foreground">dashed · muted</span>
+          </div>
+          <div className="flex flex-col items-center gap-2">
+            <BrandRing size="lg" tone="destructive" />
+            <span className="text-caption text-muted-foreground">error</span>
+          </div>
+          <div className="flex flex-col items-center gap-2">
+            <Spinner size="lg" />
+            <span className="text-caption text-muted-foreground">Spinner lg</span>
+          </div>
+          <div className="flex flex-col items-center gap-2">
+            <Spinner size="md" />
+            <span className="text-caption text-muted-foreground">Spinner md</span>
+          </div>
+          <div className="flex flex-col items-center gap-2">
+            <Spinner size="sm" />
+            <span className="text-caption text-muted-foreground">Spinner sm</span>
+          </div>
+        </div>
+      </Section>
+
+      <Section
+        title="Selector de modo de color"
+        description="Fase 5.5 — Claro/Oscuro/Sistema, con preferencia independiente por superficie. Acá se ve inerte: /dev/ui cae en la superficie 'public', que no es themeable — usá el switch de arriba para previsualizar."
+      >
+        <div className="flex flex-wrap items-end gap-6">
+          <div className="w-64">
+            <ThemeToggle size="sm" label="sm (menú del Admin)" />
+          </div>
+          <div className="w-64">
+            <ThemeToggle size="md" label="md (sheet 'Más')" />
+          </div>
+          <div className="w-72">
+            <ThemeToggle size="lg" label="lg (perfil del Cobrador)" showHint />
+          </div>
         </div>
       </Section>
 
@@ -1036,6 +1231,76 @@ export default function UiGalleryPage() {
               />
             </DialogContent>
           </Dialog>
+        </div>
+      </Section>
+
+      <Section
+        title="Cierre diario"
+        description="Metric cards del cierre + tabla del histórico + PDF on-demand — Fase 5 (#19c/#12c/#13c)"
+      >
+        <div className="flex flex-col gap-6">
+          <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
+            <MetricCard
+              icon={<BanknoteIcon />}
+              label="Total cobrado"
+              value={formatCurrency(540_000)}
+              tone="primary"
+            />
+            <MetricCard icon={<CreditCardIcon />} label="Créditos nuevos" value="2" tone="accent" />
+            <MetricCard icon={<PackageIcon />} label="Productos vendidos" value="2" tone="success" />
+            <MetricCard
+              icon={<UsersIcon />}
+              label="Clientes sin pagar"
+              value="3"
+              tone="destructive"
+            />
+          </div>
+
+          <div className="overflow-hidden rounded-lg border border-border">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Fecha</TableHead>
+                  <TableHead>Ruta</TableHead>
+                  <TableHead>Total cobrado</TableHead>
+                  <TableHead>Estado</TableHead>
+                  <TableHead className="text-right">PDF</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {CIERRES_DEMO.map((cierre) => (
+                  <TableRow key={cierre.id}>
+                    <TableCell>{cierre.date}</TableCell>
+                    <TableCell className="font-medium">{cierre.rutaNombre}</TableCell>
+                    <TableCell className="tabular-nums">{formatCurrency(cierre.totalCollected)}</TableCell>
+                    <TableCell>
+                      <Badge status={cierre.status === "OPEN" ? "ruta-abierta" : "ruta-cerrada"}>
+                        {cierre.status === "OPEN" ? "Abierta" : "Cerrada"}
+                      </Badge>
+                    </TableCell>
+                    <TableCell className="text-right">
+                      <Button variant="ghost" size="icon" aria-label="Descargar PDF">
+                        <DownloadIcon />
+                      </Button>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
+
+          <div className="flex items-center gap-4 rounded-lg border border-dashed border-border bg-card p-4">
+            <div className="flex size-12 shrink-0 items-center justify-center rounded-lg bg-muted">
+              <DownloadIcon className="size-5 text-muted-foreground" />
+            </div>
+            <div className="flex flex-col gap-0.5">
+              <p className="text-sm font-medium">cierre-ruta-3-centro-2026-08-05.pdf</p>
+              <p className="text-caption text-muted-foreground">
+                Generado on-demand con pdfkit (<code>GET /daily-closures/:id/pdf</code>): encabezado,
+                resumen del día, tabla de clientes sin pagar y pie con quién cerró — sin tocar Storage.
+              </p>
+            </div>
+          </div>
         </div>
       </Section>
     </div>

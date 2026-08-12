@@ -99,8 +99,9 @@ function DesktopAction({ action }: { action: PageAction }) {
       variant="secondary"
       className={cn(
         HEADER_ACTION_CLASS,
-        // Sobre el degradado el rojo del token no contrasta; el destructivo se
-        // distingue con un velo más cálido, no con `text-destructive`.
+        // Sobre el degradado ningún tono rojo del sistema contrasta (ni
+        // `text-destructive` ni su variante `-strong`, pensada para fondos
+        // claros); el destructivo se distingue con un velo más cálido.
         action.variant === "destructive" && "bg-destructive/80 hover:bg-destructive",
       )}
       disabled={action.disabled}

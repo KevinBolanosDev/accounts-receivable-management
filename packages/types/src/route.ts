@@ -1,6 +1,7 @@
 import { z } from "zod";
 
 import { clienteListItemSchema } from "./client";
+import { closureStatusSchema } from "./daily-closure";
 
 // Estado del día de la ruta (cierre diario). Es dato de Cierre → Fase 5;
 // en la Fase 2 lo provee el mock.
@@ -30,10 +31,16 @@ export const rutaListItemSchema = rutaSchema.extend({
 });
 export type RutaListItem = z.infer<typeof rutaListItemSchema>;
 
-// Resumen de un cierre diario en el histórico (pantalla 8c). Stub Fase 5.
+// Resumen de un cierre diario en el histórico (pantalla 8c), enlazado al
+// detalle (#13c) por `id`. Antes stub `{ fecha, total }`; el backend lo puebla
+// en Fase 5 (5.9), sin cambiar el tipo desde acá.
 export const cierreResumenSchema = z.object({
+  id: z.string(),
   fecha: z.string(),
   total: z.number(),
+  estado: closureStatusSchema,
+  creditosNuevos: z.number().int(),
+  clientesSinPagar: z.number().int(),
 });
 export type CierreResumen = z.infer<typeof cierreResumenSchema>;
 

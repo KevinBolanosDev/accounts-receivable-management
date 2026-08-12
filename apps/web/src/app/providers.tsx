@@ -10,6 +10,7 @@ import {
 
 import { useSessionStore, useClientSessionStore } from "@/entities/session";
 import { ApiError } from "@/shared/api/client";
+import { resolveSurface } from "@/shared/theme";
 
 // Un 401 significa que ESTE token ya no sirve: expiró, el usuario dejó de
 // existir, o quedó viejo para la versión actual del backend (ej. los JWT
@@ -26,8 +27,9 @@ function handleAuthError(error: unknown): void {
   // Cuál de las dos sesiones limpiar se decide por la superficie en la que
   // está el usuario, no por el error: staff y cliente pueden convivir en el
   // mismo navegador (claves de localStorage distintas) y un 401 en una no
-  // debe cerrar la otra.
-  if (window.location.pathname.startsWith("/client")) {
+  // debe cerrar la otra. `resolveSurface` es la misma función que usa el tema
+  // — una sola definición de "qué superficie es esta ruta".
+  if (resolveSurface(window.location.pathname) === "client") {
     useClientSessionStore.getState().clearSession();
   } else {
     useSessionStore.getState().clearSession();

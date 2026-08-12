@@ -10,21 +10,21 @@ const badgeVariants = cva(
   {
     variants: {
       status: {
-        activo: "bg-success/15 text-success",
-        "proximo-a-vencer": "bg-warning/15 text-warning",
-        mora: "bg-destructive/15 text-destructive",
-        pagado: "bg-accent/15 text-accent",
-        "ruta-abierta": "bg-success/15 text-success",
+        activo: "bg-success/15 text-success-strong",
+        "proximo-a-vencer": "bg-warning/15 text-warning-strong",
+        mora: "bg-destructive/15 text-destructive-strong",
+        pagado: "bg-accent/15 text-accent-strong",
+        "ruta-abierta": "bg-success/15 text-success-strong",
         "ruta-cerrada": "bg-muted text-muted-foreground",
         // Fase 4 — puntualidad de cuota en el historial (Portal Cliente #21c y
         // detalle de crédito del Cobrador). Las cuotas sin pagar escalan con el
         // tiempo: `missed` (vence hoy, neutro) → `overdue` (ámbar) → `defaulted`
         // (rojo, a la semana).
-        "on-time": "bg-success/15 text-success",
-        late: "bg-destructive/15 text-destructive",
+        "on-time": "bg-success/15 text-success-strong",
+        late: "bg-destructive/15 text-destructive-strong",
         missed: "bg-muted text-muted-foreground",
-        overdue: "bg-warning/15 text-warning",
-        defaulted: "bg-destructive/15 text-destructive",
+        overdue: "bg-warning/15 text-warning-strong",
+        defaulted: "bg-destructive/15 text-destructive-strong",
         // Pago anulado (error de tipeo, cuota equivocada): ni bueno ni malo,
         // simplemente "esto no cuenta" — mismo tono neutro que `missed`.
         anulado: "bg-muted text-muted-foreground",

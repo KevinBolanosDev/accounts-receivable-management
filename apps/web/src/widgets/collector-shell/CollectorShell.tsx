@@ -31,7 +31,7 @@ export function CollectorShell({ children }: { children: React.ReactNode }) {
               aria-current={active ? "page" : undefined}
               className={cn(
                 "flex flex-1 flex-col items-center justify-center gap-1 text-caption",
-                active ? "text-primary" : "text-muted-foreground",
+                active ? "text-primary-strong" : "text-muted-foreground",
               )}
             >
               <Icon className="size-5" />

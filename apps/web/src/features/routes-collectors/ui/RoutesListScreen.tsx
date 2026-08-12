@@ -12,6 +12,7 @@ import { Button } from "@/shared/ui/button";
 import { MetricCard } from "@/shared/ui/metric-card";
 import { MetricTile, MetricTileGroup } from "@/shared/ui/metric-tile";
 import { ProgressBar } from "@/shared/ui/progress-bar";
+import { EmptyState } from "@/shared/ui/empty-state";
 import { Skeleton } from "@/shared/ui/skeleton";
 import { Switch } from "@/shared/ui/switch";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/shared/ui/table";
@@ -21,9 +22,9 @@ import { AdminPageHeader, HEADER_ACTION_CLASS } from "@/widgets/admin-shell/Admi
 import { useRutas, useRutasSummary, useUpdateRuta } from "../api/use-rutas";
 
 function avanceColor(value: number): string {
-  if (value >= 100) return "text-success";
-  if (value < 50) return "text-warning";
-  return "text-accent";
+  if (value >= 100) return "text-success-strong";
+  if (value < 50) return "text-warning-strong";
+  return "text-accent-strong";
 }
 
 // Tarjeta de ruta en móvil (#m6): nombre + estado del día, cobrador y
@@ -161,9 +162,7 @@ function RutasGroup({
       </div>
 
       {!isLoading && rutas.length === 0 ? (
-        <p className="rounded-lg border border-dashed border-border bg-card p-6 text-center text-body-sm text-muted-foreground">
-          {emptyText}
-        </p>
+        <EmptyState size="inline" icon={<MapPinIcon />} title={emptyText} />
       ) : (
         <>
           {/* Lista de tarjetas en móvil */}

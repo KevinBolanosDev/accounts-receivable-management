@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { PlusIcon } from "lucide-react";
+import { PlusIcon, UsersIcon } from "lucide-react";
 import type { ClienteListItem } from "@repo/types";
 
 import { ClientCard, ESTADO_CLIENTE_LABEL } from "@/entities/client";
@@ -9,6 +9,7 @@ import { useClientes, useClientesSummary } from "@/features/clients/api/use-clie
 import { formatCurrency } from "@/shared/lib/format-currency";
 import { Badge } from "@/shared/ui/badge";
 import { MetricTile, MetricTileGroup } from "@/shared/ui/metric-tile";
+import { EmptyState } from "@/shared/ui/empty-state";
 import { Skeleton } from "@/shared/ui/skeleton";
 import { CollectorHero } from "@/widgets/collector-shell/CollectorHero";
 
@@ -70,12 +71,11 @@ export function MyClientsScreen() {
             <Skeleton key={i} className="h-18 w-full rounded-xl" />
           ))
         ) : (clientes ?? []).length === 0 ? (
-          <div className="flex flex-col items-center gap-1 rounded-xl border border-dashed border-border bg-card p-8 text-center">
-            <p className="text-sm font-medium">No tienes clientes asignados todavía</p>
-            <p className="text-caption text-muted-foreground">
-              Cuando tu admin te asigne clientes aparecerán aquí automáticamente.
-            </p>
-          </div>
+          <EmptyState
+            icon={<UsersIcon />}
+            title="No tienes clientes asignados todavía"
+            description="Cuando tu admin te asigne clientes aparecerán acá automáticamente."
+          />
         ) : (
           (clientes ?? []).map((cliente) => <ClienteCard key={cliente.id} cliente={cliente} />)
         )}

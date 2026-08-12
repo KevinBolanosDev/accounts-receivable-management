@@ -104,7 +104,7 @@ function ReceiptScreenInner({ pagoId }: ReceiptScreenProps) {
       <div className="flex flex-col">
         <ReceiptTopBar />
         <div className="flex flex-1 items-center justify-center p-6 text-center">
-          <p className="text-body text-destructive">{state.message}</p>
+          <p className="text-body text-destructive-strong">{state.message}</p>
         </div>
       </div>
     );

@@ -66,7 +66,7 @@ export function CreditoCalculoPanel({
           único bloque de la pantalla que no es un campo, así que se separa por
           color en vez de por otro borde gris más. */}
       <div className="flex flex-col gap-4 rounded-lg border border-primary/40 bg-primary/5 p-5">
-        <p className="text-caption font-semibold uppercase tracking-wide text-primary">
+        <p className="text-caption font-semibold uppercase tracking-wide text-primary-strong">
           Cálculo estimado
         </p>
 

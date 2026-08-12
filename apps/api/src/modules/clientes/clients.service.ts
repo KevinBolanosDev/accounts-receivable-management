@@ -29,6 +29,7 @@ import {
   type CreditoRowForMapping,
 } from "../../core/domain/credito-cliente.util";
 import { buildPaymentHistory } from "../../core/domain/payment-schedule.util";
+import { assertRouteAccess } from "../../core/domain/route-access.util";
 import { ReceiptTokenService } from "../../core/receipts/receipt-token.service";
 import { StorageService } from "../../core/storage/storage.service";
 import {
@@ -431,16 +432,12 @@ export class ClientsService {
     };
   }
 
+  // Delgado a propósito: la decisión (404 fuera de tenant / 403 ruta ajena)
+  // vive en `core/domain/route-access.util.ts`, compartida con `cobros` y
+  // `daily-closures` — acá solo queda la lectura, propia de este repository.
   private async assertRouteAccess(rutaId: string, user: AuthenticatedUser): Promise<void> {
     const route = await this.clientsRepository.findRouteById(rutaId);
-    // Una ruta de otro tenant se reporta como inexistente, no como prohibida:
-    // un 403 confirmaría que ese id existe en la cartera de otro admin.
-    if (!route || route.adminId !== requireAdminId(user)) {
-      throw new NotFoundException("La ruta no existe.");
-    }
-    if (user.rol === "COBRADOR" && route.cobradorId !== user.sub) {
-      throw new ForbiddenException("No puedes asignar clientes a una ruta ajena.");
-    }
+    assertRouteAccess(route, user, { forbidden: "No puedes asignar clientes a una ruta ajena." });
   }
 
   private mapError(error: unknown): Error {

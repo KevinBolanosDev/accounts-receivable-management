@@ -22,6 +22,7 @@ import {
   mapCreditoListItem,
   type CreditoRowForMapping,
 } from "../../core/domain/credito-cliente.util";
+import { assertRouteOwnership } from "../../core/domain/route-access.util";
 import { buildReciboCodigo } from "../../core/domain/receipt-code.util";
 import { ReceiptTokenService } from "../../core/receipts/receipt-token.service";
 
@@ -59,13 +60,15 @@ export class CobrosService {
     }
     const clientRelation = credito.cliente.admins[0];
 
-    // Scoping por cobrador: la ruta del cliente del crédito (en ESTE tenant)
-    // debe ser del cobrador (ADMIN pasa sin chequeo). Un cliente "sin ruta"
-    // (§3 — cierre de Fase 3) no tiene cobrador asignado, así que ningún
-    // COBRADOR pasa.
-    if (user.rol === "COBRADOR" && clientRelation?.ruta?.cobradorId !== user.sub) {
-      throw new ForbiddenException("Solo puedes cobrar créditos de clientes de tus rutas.");
-    }
+    // Scoping por cobrador: la ruta del cliente del crédito (en ESTE tenant,
+    // ya confirmado por el `findFirst` de arriba) debe ser del cobrador
+    // (ADMIN pasa sin chequeo). Un cliente "sin ruta" (§3 — cierre de Fase 3)
+    // no tiene cobrador asignado, así que ningún COBRADOR pasa.
+    assertRouteOwnership(
+      clientRelation?.ruta,
+      user,
+      "Solo puedes cobrar créditos de clientes de tus rutas.",
+    );
 
     if (credito.estado === "ANULADO") {
       throw new ConflictException("El crédito está anulado.");
@@ -182,9 +185,11 @@ export class CobrosService {
 
     // Mismo criterio de scoping que cobrar: un COBRADOR solo anula pagos de
     // clientes de SUS rutas (ADMIN pasa sin chequeo).
-    if (user.rol === "COBRADOR" && clientRelation?.ruta?.cobradorId !== user.sub) {
-      throw new ForbiddenException("Solo puedes anular pagos de clientes de tus rutas.");
-    }
+    assertRouteOwnership(
+      clientRelation?.ruta,
+      user,
+      "Solo puedes anular pagos de clientes de tus rutas.",
+    );
 
     if (pago.anulado) {
       throw new ConflictException("Este pago ya fue anulado.");

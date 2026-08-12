@@ -73,7 +73,7 @@ function Field({
       <Label htmlFor={id}>{label}</Label>
       {children}
       {error ? (
-        <p className="text-body-sm text-destructive" role="alert">
+        <p className="text-body-sm text-destructive-strong" role="alert">
           {error}
         </p>
       ) : null}
@@ -280,7 +280,7 @@ function ClientePicker({ value, onChange, error, disabled }: ClientePickerProps)
           >
             {selected ? (
               <>
-                <span className="flex size-9 shrink-0 items-center justify-center rounded-full bg-primary/15 text-xs font-semibold text-primary">
+                <span className="flex size-9 shrink-0 items-center justify-center rounded-full bg-primary/15 text-xs font-semibold text-primary-strong">
                   {getInitials(selected.nombre)}
                 </span>
                 <span className="flex min-w-0 flex-1 flex-col">

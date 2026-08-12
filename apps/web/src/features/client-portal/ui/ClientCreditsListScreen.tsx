@@ -1,5 +1,6 @@
 "use client";
 
+import { CreditCardIcon } from "lucide-react";
 import type { ClientCreditListItem } from "@repo/types";
 
 import { CreditSummaryCard } from "@/entities/credit";
@@ -7,6 +8,7 @@ import { useClientSessionStore } from "@/entities/session";
 import { formatCurrency } from "@/shared/lib/format-currency";
 import { formatDateShort } from "@/shared/lib/format-date";
 import { Badge } from "@/shared/ui/badge";
+import { EmptyState } from "@/shared/ui/empty-state";
 import { Skeleton } from "@/shared/ui/skeleton";
 import { TabsContent, TabsList, TabsRoot, TabsTrigger } from "@/shared/ui/tabs";
 
@@ -45,7 +47,12 @@ export function ClientCreditsListScreen() {
 
           <TabsContent value="activos" className="flex flex-col gap-3">
             {activos.length === 0 ? (
-              <EmptyState text="Aún no tienes créditos activos" />
+              <EmptyState
+                size="inline"
+                icon={<CreditCardIcon />}
+                title="Aún no tienes créditos activos"
+                description="Cuando tu cobrador te otorgue uno, vas a ver acá tu saldo y tus cuotas."
+              />
             ) : (
               activos.map((credito) => <ClientCreditRow key={credito.id} credito={credito} />)
             )}
@@ -53,7 +60,12 @@ export function ClientCreditsListScreen() {
 
           <TabsContent value="historial" className="flex flex-col gap-3">
             {historial.length === 0 ? (
-              <EmptyState text="Sin historial todavía" />
+              <EmptyState
+                size="inline"
+                icon={<CreditCardIcon />}
+                title="Sin historial todavía"
+                description="Acá van a aparecer los créditos que ya terminaste de pagar."
+              />
             ) : (
               historial.map((credito) => (
                 <ClientCreditRow key={credito.id} credito={credito} amountKind="pagado" />
@@ -88,10 +100,3 @@ function ClientCreditRow({
   );
 }
 
-function EmptyState({ text }: { text: string }) {
-  return (
-    <div className="flex flex-col items-center gap-2 rounded-lg border border-dashed border-border bg-card p-8 text-center">
-      <p className="text-sm font-medium">{text}</p>
-    </div>
-  );
-}

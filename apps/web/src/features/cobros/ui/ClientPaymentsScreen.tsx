@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo } from "react";
-import { CheckIcon } from "lucide-react";
+import { CheckIcon, CreditCardIcon } from "lucide-react";
 import type { ClienteDetail, CreditoListItem } from "@repo/types";
 
 import { ClientContactPanel, ESTADO_CLIENTE_LABEL } from "@/entities/client";
@@ -22,12 +22,17 @@ import { useCliente } from "@/features/clients/api/use-clientes";
 import { getInitials } from "@/shared/lib/initials";
 import { formatCurrency } from "@/shared/lib/format-currency";
 import { formatRelativeDateTime } from "@/shared/lib/format-date";
+import { useProgressRing } from "@/shared/lib/motion";
 import { cn } from "@/shared/lib/utils";
 import { Badge } from "@/shared/ui/badge";
 import { Button } from "@/shared/ui/button";
+import { CountUpValue } from "@/shared/ui/count-up-value";
+import { EmptyState } from "@/shared/ui/empty-state";
+import { ErrorState, NotFoundState } from "@/shared/ui/error-state";
 import { MetricTile, MetricTileGroup } from "@/shared/ui/metric-tile";
 import { ProgressRing } from "@/shared/ui/progress-ring";
 import { Skeleton } from "@/shared/ui/skeleton";
+import { SkeletonCardList } from "@/shared/ui/skeletons";
 import { TabsContent, TabsList, TabsRoot, TabsTrigger } from "@/shared/ui/tabs";
 import { CollectorHero } from "@/widgets/collector-shell/CollectorHero";
 
@@ -57,7 +62,8 @@ export function ClientPaymentsScreen({
   clienteId,
   initialTab = "activos",
 }: ClientPaymentsScreenProps) {
-  const { data: cliente, isLoading } = useCliente(clienteId);
+  const { data: cliente, isLoading, isError, refetch } = useCliente(clienteId);
+  const ringRef = useProgressRing<HTMLDivElement>(cliente?.porcentajePagado ?? 0);
 
   // Un crédito por producto para la pestaña Historial — SOLO terminados
   // (`cliente.creditosHistorial`: PAGADO o ANULADO). Antes también entraban
@@ -73,14 +79,41 @@ export function ClientPaymentsScreen({
       .sort((a, b) => (b.resumen.ultimoPago ?? "").localeCompare(a.resumen.ultimoPago ?? ""));
   }, [cliente]);
 
-  if (isLoading || !cliente) {
+  if (isLoading) {
     return (
       <div className="flex flex-col pb-6">
         <CollectorHero title="Cliente" backHref="/collector" />
         <div className="relative z-10 -mt-9 flex flex-col gap-3 px-4">
           <Skeleton className="h-28 w-full rounded-xl" />
-          <Skeleton className="h-32 w-full rounded-xl" />
-          <Skeleton className="h-32 w-full rounded-xl" />
+          <SkeletonCardList rows={2} />
+        </div>
+      </div>
+    );
+  }
+
+  // Esta pantalla tenía `isLoading || !cliente` en la misma rama, así que un
+  // cliente que ya no existe (o una red caída) dejaba el Skeleton girando
+  // para siempre: el cobrador no veía ni el problema ni la salida. Son tres
+  // estados distintos y ahora se tratan como tales.
+  if (isError || !cliente) {
+    return (
+      <div className="flex flex-col pb-6">
+        <CollectorHero title="Cliente" backHref="/collector" />
+        <div className="relative z-10 -mt-9 px-4">
+          {isError ? (
+            <ErrorState
+              title="No se pudo cargar el cliente"
+              description="Revisá tu conexión y volvé a intentar."
+              onRetry={() => void refetch()}
+            />
+          ) : (
+            <NotFoundState
+              entity="este cliente"
+              description="Puede que ya no esté asignado a tu ruta."
+              backHref="/collector"
+              backLabel="Ir a mis rutas"
+            />
+          )}
         </div>
       </div>
     );
@@ -112,11 +145,20 @@ export function ClientPaymentsScreen({
 
       {/* Resumen general superpuesto al hero (screenshot 16c). */}
       <div className="relative z-10 -mt-9 px-4">
-        <div className="flex items-center gap-4 rounded-xl border border-border bg-card p-5 shadow-md">
+        {/* `useProgressRing` hace acá el momento de firma del producto: al
+            registrar un cobro desde esta misma pantalla, TanStack invalida y
+            `porcentajePagado` sube — el anillo avanza desde donde estaba, no
+            se redibuja desde cero. El cobrador ve crecer lo que acaba de
+            cobrar. */}
+        <div ref={ringRef} className="flex items-center gap-4 rounded-xl border border-border bg-card p-5 shadow-md">
           <ProgressRing value={cliente.porcentajePagado ?? 0} size="md" />
           <div className="flex min-w-0 flex-col">
             <span className="text-h1 font-bold tabular-nums">
-              {formatCurrency(cliente.saldoPendiente ?? 0)}
+              <CountUpValue
+                value={cliente.saldoPendiente ?? 0}
+                format={formatCurrency}
+                token="hero"
+              />
             </span>
             <span className="text-body-sm text-muted-foreground">saldo pendiente</span>
           </div>
@@ -158,7 +200,12 @@ export function ClientPaymentsScreen({
           <TabsContent value="activos">
             <div className="flex flex-col gap-3">
               {creditosActivos.length === 0 ? (
-                <EmptyState text="Este cliente no tiene créditos activos." />
+                <EmptyState
+                  size="inline"
+                  icon={<CreditCardIcon />}
+                  title="Este cliente no tiene créditos activos"
+                  description="No hay nada que cobrarle hoy."
+                />
               ) : (
                 creditosActivos.map((credito) => (
                   <CreditoActivoCard
@@ -176,7 +223,12 @@ export function ClientPaymentsScreen({
           <TabsContent value="historial">
             <div className="flex flex-col gap-3">
               {creditosTerminados.length === 0 ? (
-                <EmptyState text="Este cliente todavía no tiene créditos terminados." />
+                <EmptyState
+                  size="inline"
+                  icon={<CreditCardIcon />}
+                  title="Todavía no tiene créditos terminados"
+                  description="Acá van a aparecer los créditos pagados y los anulados."
+                />
               ) : (
                 creditosTerminados.map(({ credito, resumen }) => (
                   <CreditSummaryCard
@@ -204,14 +256,6 @@ export function ClientPaymentsScreen({
           </TabsContent>
         </TabsRoot>
       </div>
-    </div>
-  );
-}
-
-function EmptyState({ text }: { text: string }) {
-  return (
-    <div className="rounded-xl border border-dashed border-border bg-card p-6 text-center">
-      <p className="text-body-sm text-muted-foreground">{text}</p>
     </div>
   );
 }

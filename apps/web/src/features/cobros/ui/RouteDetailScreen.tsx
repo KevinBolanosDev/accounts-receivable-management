@@ -1,8 +1,8 @@
 "use client";
 
+import Link from "next/link";
 import { useParams } from "next/navigation";
-import { CheckIcon } from "lucide-react";
-import { toast } from "sonner";
+import { CheckIcon, UsersIcon } from "lucide-react";
 import type { RutaDetail } from "@repo/types";
 
 import { ClientCard, ESTADO_CLIENTE_LABEL } from "@/entities/client";
@@ -12,15 +12,16 @@ import { formatDateShort } from "@/shared/lib/format-date";
 import { cn } from "@/shared/lib/utils";
 import { Badge } from "@/shared/ui/badge";
 import { MetricTile, MetricTileGroup } from "@/shared/ui/metric-tile";
+import { EmptyState } from "@/shared/ui/empty-state";
 import { Skeleton } from "@/shared/ui/skeleton";
 import { CollectorHero } from "@/widgets/collector-shell/CollectorHero";
 
 // DESIGN_SYSTEM.md §3.5 — Detalle de ruta (#15c). Hero de marca (CollectorHero)
-// con "Cerrar ruta" (stub Fase 5) + tarjeta resumen superpuesta
-// (Pendientes / Cobrados / Hoy) + lista de clientes: pendientes primero y la
-// sección "Cobrados hoy" atenuada (no oculta). Cada tarjeta lleva avatar,
-// nombre + ruta, saldo + badge de estado y el anillo de avance. Reusa
-// `useRuta(id)` — el mismo hook real que el Admin (8c); el backend ya
+// con "Cerrar ruta" (enlaza a #19c, `features/closures`) + tarjeta resumen
+// superpuesta (Pendientes / Cobrados / Hoy) + lista de clientes: pendientes
+// primero y la sección "Cobrados hoy" atenuada (no oculta). Cada tarjeta
+// lleva avatar, nombre + ruta, saldo + badge de estado y el anillo de avance.
+// Reusa `useRuta(id)` — el mismo hook real que el Admin (8c); el backend ya
 // calcula `clientes[].cobroHoy` a partir de los Pagos del día.
 
 export function RouteDetailScreen() {
@@ -52,18 +53,15 @@ export function RouteDetailScreen() {
         subtitle={`${ruta.cobrador?.nombre ?? "Sin cobrador"} · hoy, ${formatDateShort(new Date())}`}
         backHref="/collector"
         actions={
-          <button
-            type="button"
-            onClick={() =>
-              toast.info("El cierre de ruta llega con el cierre diario (Fase 5).")
-            }
+          <Link
+            href={`/collector/routes/${routeId}/close`}
             className={cn(
               "rounded-full border border-white/40 px-3.5 py-1.5 text-sm font-medium text-primary-foreground",
               "transition-colors hover:bg-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/60",
             )}
           >
             Cerrar ruta
-          </button>
+          </Link>
         }
       />
 
@@ -78,12 +76,11 @@ export function RouteDetailScreen() {
 
       <div className="flex flex-col gap-3 px-4 pt-4">
         {ruta.clientes.length === 0 ? (
-          <div className="flex flex-col items-center gap-1 rounded-xl border border-dashed border-border bg-card p-8 text-center">
-            <p className="text-sm font-medium">No tienes clientes asignados a esta ruta todavía</p>
-            <p className="text-caption text-muted-foreground">
-              Cuando tu admin te asigne clientes aparecerán aquí automáticamente.
-            </p>
-          </div>
+          <EmptyState
+            icon={<UsersIcon />}
+            title="Esta ruta todavía no tiene clientes"
+            description="Cuando tu admin te asigne clientes aparecerán acá automáticamente."
+          />
         ) : null}
 
         {pendientes.map((cliente) => (

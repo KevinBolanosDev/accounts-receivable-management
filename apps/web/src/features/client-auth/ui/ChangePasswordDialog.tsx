@@ -136,7 +136,7 @@ export function ChangePasswordDialog({ open, blocking }: ChangePasswordDialogPro
               {...register("currentPassword")}
             />
             {errors.currentPassword && (
-              <p className="text-xs text-destructive">{errors.currentPassword.message}</p>
+              <p className="text-xs text-destructive-strong">{errors.currentPassword.message}</p>
             )}
           </div>
 
@@ -154,7 +154,7 @@ export function ChangePasswordDialog({ open, blocking }: ChangePasswordDialogPro
               {...register("newPassword")}
             />
             {errors.newPassword && (
-              <p className="text-xs text-destructive">{errors.newPassword.message}</p>
+              <p className="text-xs text-destructive-strong">{errors.newPassword.message}</p>
             )}
           </div>
 
@@ -172,12 +172,12 @@ export function ChangePasswordDialog({ open, blocking }: ChangePasswordDialogPro
               {...register("confirmNewPassword")}
             />
             {errors.confirmNewPassword && (
-              <p className="text-xs text-destructive">{errors.confirmNewPassword.message}</p>
+              <p className="text-xs text-destructive-strong">{errors.confirmNewPassword.message}</p>
             )}
           </div>
 
           {submitError && (
-            <p role="alert" className="text-sm text-destructive">
+            <p role="alert" className="text-sm text-destructive-strong">
               {submitError}
             </p>
           )}

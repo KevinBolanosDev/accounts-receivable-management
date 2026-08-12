@@ -1,6 +1,9 @@
 import type { PaymentHistoryItem } from "@repo/types";
 
+import { ReceiptIcon } from "lucide-react";
+
 import { cn } from "@/shared/lib/utils";
+import { EmptyState } from "@/shared/ui/empty-state";
 import { PaymentHistoryTable, type PaymentHistoryTableProps } from "./PaymentHistoryTable";
 import { PaymentRow } from "./PaymentRow";
 
@@ -32,9 +35,11 @@ export function PaymentHistory({
   const rows = (
     <div className={cn("flex flex-col gap-2", className)}>
       {pagos.length === 0 ? (
-        <div className="rounded-xl border border-dashed border-border bg-card p-6 text-center text-body-sm text-muted-foreground">
-          {emptyText ?? "Todavía no hay pagos registrados."}
-        </div>
+        <EmptyState
+          size="inline"
+          icon={<ReceiptIcon />}
+          title={emptyText ?? "Todavía no hay pagos registrados"}
+        />
       ) : (
         pagos.map((pago: PaymentHistoryItem) => (
           <PaymentRow

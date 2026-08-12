@@ -3,7 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { PencilIcon, Trash2Icon, XIcon } from "lucide-react";
+import { LockIcon, PencilIcon, SquareCheckBigIcon, Trash2Icon, XIcon } from "lucide-react";
 import { toast } from "sonner";
 
 import { ESTADO_CLIENTE_LABEL, ESTADO_CLIENTE_TEXT, getInitials } from "@/entities/client";
@@ -13,6 +13,8 @@ import { formatDate } from "@/shared/lib/format-date";
 import { cn } from "@/shared/lib/utils";
 import { Badge } from "@/shared/ui/badge";
 import { Button } from "@/shared/ui/button";
+import { EmptyState } from "@/shared/ui/empty-state";
+import { ErrorState, NotFoundState } from "@/shared/ui/error-state";
 import { ConfirmDialog } from "@/shared/ui/confirm-dialog";
 import { Skeleton } from "@/shared/ui/skeleton";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/shared/ui/table";
@@ -46,7 +48,7 @@ function RouteStat({
 
 export function RouteDetailScreen({ rutaId }: { rutaId: string }) {
   const router = useRouter();
-  const { data: ruta, isLoading, isError } = useRuta(rutaId);
+  const { data: ruta, isLoading, isError, refetch } = useRuta(rutaId);
   const unassignCliente = useUnassignClienteFromRuta(rutaId);
   const deleteRuta = useDeleteRuta();
   const [removingId, setRemovingId] = useState<string | null>(null);
@@ -93,16 +95,22 @@ export function RouteDetailScreen({ rutaId }: { rutaId: string }) {
     return (
       <>
         <AdminPageHeader backHref="/admin/routes-collectors" eyebrow="Rutas" title="Detalle de ruta" />
-        <div className="flex flex-col items-center gap-4 p-4 sm:p-6">
-          <div className="flex flex-col items-center gap-2 rounded-lg border border-dashed border-border bg-card p-8 text-center">
-            <p className="text-sm font-medium">Esta ruta no existe o fue eliminada</p>
-            <p className="text-caption text-muted-foreground">
-              Puede que la hayas eliminado desde otra pestaña.
-            </p>
-          </div>
-          <Button asChild variant="secondary">
-            <Link href="/admin/routes-collectors">Volver a Rutas</Link>
-          </Button>
+        <div className="flex flex-col items-center p-4 sm:p-6">
+          {isError ? (
+            <ErrorState
+              title="No se pudo cargar la ruta"
+              onRetry={() => void refetch()}
+              className="w-full max-w-md"
+            />
+          ) : (
+            <NotFoundState
+              entity="esta ruta"
+              description="Puede que la hayas eliminado desde otra pestaña."
+              backHref="/admin/routes-collectors"
+              backLabel="Volver a Rutas"
+              className="w-full max-w-md"
+            />
+          )}
         </div>
       </>
     );
@@ -119,6 +127,18 @@ export function RouteDetailScreen({ rutaId }: { rutaId: string }) {
         actions={
           <PageActions
             actions={[
+              {
+                id: "close",
+                label: "Cerrar ruta",
+                icon: <LockIcon />,
+                href: `/admin/routes-collectors/${ruta.id}/close`,
+                // `estadoDia` ya lee el `DailyClosure` de hoy (Fase 5) — evita
+                // que el admin entre a cerrar una ruta que ya cerró él mismo o
+                // el cobrador, en vez de dejar que la pantalla de destino se
+                // lo explique después.
+                disabled: !abierta,
+                disabledReason: !abierta ? "Ya se cerró hoy" : undefined,
+              },
               {
                 id: "edit",
                 label: "Editar ruta",
@@ -174,7 +194,7 @@ export function RouteDetailScreen({ rutaId }: { rutaId: string }) {
           <RouteStat
             label="En mora"
             value={String(ruta.enMora)}
-            valueClassName={ruta.enMora > 0 ? "text-destructive" : undefined}
+            valueClassName={ruta.enMora > 0 ? "text-destructive-strong" : undefined}
           />
         </div>
 
@@ -190,7 +210,7 @@ export function RouteDetailScreen({ rutaId }: { rutaId: string }) {
             </span>
 
             {/* Lista en móvil */}
-            <div className="flex flex-col overflow-hidden rounded-lg border border-border bg-card md:hidden">
+            <div className="flex flex-col overflow-hidden rounded-lg border border-border bg-card md:hidden z-0">
               {ruta.clientes.length === 0 ? (
                 <p className="p-8 text-center text-body-sm text-muted-foreground">
                   Esta ruta no tiene clientes asignados.
@@ -300,9 +320,17 @@ export function RouteDetailScreen({ rutaId }: { rutaId: string }) {
 
           <TabsContent value="cierres">
             {ruta.cierres.length === 0 ? (
-              <p className="rounded-lg border border-dashed border-border bg-card p-8 text-center text-body-sm text-muted-foreground">
-                Todavía no hay cierres registrados para esta ruta.
-              </p>
+              <EmptyState
+                size="inline"
+                icon={<SquareCheckBigIcon />}
+                title="Todavía no hay cierres de esta ruta"
+                description="Cada vez que se cierre el día vas a ver acá el corte con sus totales."
+                action={
+                  <Button asChild size="sm" variant="secondary">
+                    <Link href={`/admin/routes-collectors/${ruta.id}/close`}>Cerrar ruta</Link>
+                  </Button>
+                }
+              />
             ) : (
               <div className="flex flex-col overflow-hidden rounded-lg border border-border bg-card">
                 {ruta.cierres.map((cierre) => (
