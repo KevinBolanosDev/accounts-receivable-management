@@ -171,7 +171,18 @@ export function ClientCreditDetailScreen({ creditoId }: { creditoId: string }) {
             <DialogTitle>Recibo de pago</DialogTitle>
           </DialogHeader>
           {reciboHtml ? (
-            <iframe title="Recibo" srcDoc={reciboHtml} className="h-[70vh] w-full border-0" />
+            // Fase 6 (hardening, FE-SEC-1): mismo fix que `ReceiptScreen` —
+            // sin `sandbox` este iframe comparte origen con el `localStorage`
+            // que tiene la sesión del cliente. `allow-scripts` sin
+            // `allow-same-origin` deja andando el botón "Imprimir" del recibo
+            // (el único script del HTML) en un origen opaco, sin acceso real
+            // al storage de la app.
+            <iframe
+              title="Recibo"
+              srcDoc={reciboHtml}
+              sandbox="allow-scripts"
+              className="h-[70vh] w-full border-0"
+            />
           ) : null}
         </DialogContent>
       </Dialog>

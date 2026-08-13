@@ -156,6 +156,17 @@ function ReceiptScreenInner({ pagoId }: ReceiptScreenProps) {
       <iframe
         title={`Recibo ${pagoId}`}
         srcDoc={html}
+        // Fase 6 (hardening, FE-SEC-1): sin `sandbox`, este iframe heredaba el
+        // origen del padre — cualquier XSS en el HTML del recibo (hoy el back
+        // escapa todos los campos interpolados, pero esto es defensa en
+        // profundidad, no confianza en que nunca haya una regresión) tendría
+        // acceso directo al `localStorage` con el JWT de staff. `allow-scripts`
+        // sin `allow-same-origin` fuerza al iframe a un origen opaco único:
+        // el botón "Imprimir / Guardar PDF" del recibo (`onclick="window.print()"`,
+        // el único script que este HTML ejecuta) sigue andando, pero cualquier
+        // script inyectado queda aislado — sin `localStorage`/`document.domain`
+        // reales que robar.
+        sandbox="allow-scripts"
         // `flex-1` en vez de `h-screen`: con el alto completo de viewport la
         // barra empujaba el iframe y aparecía scroll de más.
         className="min-h-[70vh] w-full flex-1 border-0 bg-background"
