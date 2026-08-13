@@ -44,17 +44,24 @@ enum ClosureStatus {
 }
 
 model Usuario {
-  id           String   @id @default(uuid())
-  nombre       String
+  id                  String    @id @default(uuid())
+  nombre              String
   // Global, NO por tenant: el login (staff y portal) resuelve por documento.
   // Si fuera único por admin, `findUnique({ documento })` sería ambiguo.
-  documento    String   @unique
-  passwordHash String
-  rol          Rol
-  telefono     String?
-  activo       Boolean  @default(true)
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  documento           String    @unique
+  passwordHash        String
+  rol                 Rol
+  telefono            String?
+  activo              Boolean   @default(true)
+  // Lockout por cuenta (mismo mecanismo que `Cliente`, ver
+  // `core/security/lockout-policy.ts`): complementa el throttle por IP del
+  // login de staff. Sin esto, un atacante distribuido por IP podía probar
+  // contraseñas contra un mismo ADMIN sin límite — el rol de mayor privilegio
+  // del sistema era el único login sin defensa por cuenta.
+  failedLoginAttempts Int       @default(0)
+  lockedUntil         DateTime?
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
 
   // Multi-tenancy: el ADMIN es la raíz del tenant. Un COBRADOR pertenece a
   // exactamente un ADMIN (`adminId` apunta a él); un ADMIN tiene `adminId`
@@ -65,7 +72,7 @@ model Usuario {
   admin      Usuario?  @relation("AdminCobradores", fields: [adminId], references: [id], onDelete: Restrict)
   cobradores Usuario[] @relation("AdminCobradores")
 
-  rutas Ruta[] @relation("CobradorRutas")
+  rutas         Ruta[] @relation("CobradorRutas")
   pagos         Pago[] // back-relation Fase 3 (cobrador persiste pagos)
   pagosAnulados Pago[] @relation("PagoAnuladoPor") // quién anuló, no quién cobró
 
@@ -110,11 +117,11 @@ model Ruta {
 }
 
 model Cliente {
-  id                      String        @id @default(uuid())
-  nombre                  String
-  telefono                String
-  documento               String        @unique
-  direccion               String
+  id                       String    @id @default(uuid())
+  nombre                   String
+  telefono                 String
+  documento                String    @unique
+  direccion                String
   // Guardan el PATH dentro del bucket privado de Supabase, no una URL: el
   // bucket dejó de ser público (documentos de identidad), así que la URL
   // pública ya no existe — se firma al vuelo con expiración cuando se pide
@@ -124,8 +131,8 @@ model Cliente {
   // Contacto de referencia (a quién llamar si no se ubica al cliente). Ambos
   // nullable e independientes: los clientes dados de alta antes de este campo
   // no lo tienen, y el alta no lo exige.
-  contactoNombre          String?
-  contactoTelefono        String?
+  contactoNombre           String?
+  contactoTelefono         String?
   // Fase 4 — acceso opcional al portal del cliente. `passwordHash` null =
   // el staff aún no le generó credenciales (caso normal al dar de alta).
   // Cuando el staff genera/resetea el acceso, `passwordHash` se llena y
@@ -133,14 +140,14 @@ model Cliente {
   // en el primer ingreso. `passwordExpiresAt` caduca la temporal tras 24h.
   // Estos campos de login son GLOBALES (una sola cuenta por persona, sin
   // importar cuántos admins la tengan como cliente — ver `ClientAdmin`).
-  passwordHash            String?
-  mustChangePassword      Boolean       @default(false)
-  passwordExpiresAt       DateTime?
-  failedLoginAttempts     Int           @default(0)
-  lockedUntil             DateTime?
-  lastLoginAt             DateTime?
-  createdAt               DateTime      @default(now())
-  updatedAt               DateTime      @updatedAt
+  passwordHash             String?
+  mustChangePassword       Boolean   @default(false)
+  passwordExpiresAt        DateTime?
+  failedLoginAttempts      Int       @default(0)
+  lockedUntil              DateTime?
+  lastLoginAt              DateTime?
+  createdAt                DateTime  @default(now())
+  updatedAt                DateTime  @updatedAt
 
   // Multi-tenancy (v2): un Cliente es una identidad única (mismo documento,
   // mismo login) que puede pertenecer a VARIOS admins a la vez — cada
@@ -212,12 +219,12 @@ model Producto {
 // cobro (ver §3.9 del plan). `estado` cambia por evento, excepto MORA que se
 // deriva en lectura y se cierra con el cierre diario (Fase 5).
 model Credito {
-  id             String        @id @default(uuid())
-  codigo         String        @unique
+  id             String         @id @default(uuid())
+  codigo         String         @unique
   clienteId      String
-  cliente        Cliente       @relation(fields: [clienteId], references: [id], onDelete: Restrict)
+  cliente        Cliente        @relation(fields: [clienteId], references: [id], onDelete: Restrict)
   productoId     String
-  producto       Producto      @relation(fields: [productoId], references: [id], onDelete: Restrict)
+  producto       Producto       @relation(fields: [productoId], references: [id], onDelete: Restrict)
   // Explícito, NO derivado de `cliente.adminId`: desde que un Cliente puede
   // ser cartera de varios admins (`ClientAdmin`), el tenant del crédito tiene
   // que quedar en el crédito mismo — si no, un crédito que el admin A le dio
@@ -225,7 +232,7 @@ model Credito {
   // ese cliente también tiene relación. Se exige que exista una fila
   // `ClientAdmin(clienteId, adminId)` al crear (el service lo valida).
   adminId        String
-  admin          Usuario       @relation("AdminCreditos", fields: [adminId], references: [id], onDelete: Restrict)
+  admin          Usuario        @relation("AdminCreditos", fields: [adminId], references: [id], onDelete: Restrict)
   monto          Decimal        @db.Decimal(12, 2) // capital (sin interés)
   interes        Decimal        @db.Decimal(5, 2) // % de interés sobre el capital
   frecuencia     FrecuenciaPago @default(DIARIO)
@@ -238,12 +245,12 @@ model Credito {
   dias           Int
   montoTotal     Decimal        @db.Decimal(12, 2) // derivado = monto + monto*interes/100
   cuotaDiaria    Decimal        @db.Decimal(12, 2) // derivado = montoTotal/cuotas
-  saldoPendiente Decimal       @db.Decimal(12, 2)
-  estado         EstadoCredito @default(ACTIVO)
-  fechaInicio    DateTime      @default(now())
+  saldoPendiente Decimal        @db.Decimal(12, 2)
+  estado         EstadoCredito  @default(ACTIVO)
+  fechaInicio    DateTime       @default(now())
   pagos          Pago[]
-  createdAt      DateTime      @default(now())
-  updatedAt      DateTime      @updatedAt
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
 
   @@index([clienteId])
   @@index([adminId])
@@ -291,7 +298,7 @@ model DailyClosure {
   totalCollected   Decimal       @db.Decimal(12, 2)
   collectedCount   Int           @default(0)
   newCredits       Int           @default(0)
-  newCreditsAmount Decimal       @db.Decimal(12, 2) @default(0)
+  newCreditsAmount Decimal       @default(0) @db.Decimal(12, 2)
   productsSold     Int           @default(0)
   unpaidClients    Json // [{ clienteId, nombre, saldoPendiente, telefono }]
   unpaidCount      Int           @default(0)

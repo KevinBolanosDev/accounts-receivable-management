@@ -9,6 +9,7 @@ import { formatCurrency } from "@/shared/lib/format-currency";
 import { formatDateShort } from "@/shared/lib/format-date";
 import { Badge } from "@/shared/ui/badge";
 import { EmptyState } from "@/shared/ui/empty-state";
+import { ErrorState } from "@/shared/ui/error-state";
 import { Skeleton } from "@/shared/ui/skeleton";
 import { TabsContent, TabsList, TabsRoot, TabsTrigger } from "@/shared/ui/tabs";
 
@@ -38,6 +39,17 @@ export function ClientCreditsListScreen() {
 
       {creditsQuery.isLoading ? (
         <Skeleton className="h-40 w-full" />
+      ) : creditsQuery.isError ? (
+        // Fase 6 (hardening, FE-1): antes esta rama no existía — un error de
+        // red, un 500, o un `ZodError` (shape drift, ver `apps/web/CLAUDE.md`)
+        // dejaban `data` en `undefined`, `creditos` caía a `[]` y la pantalla
+        // le decía al cliente "aún no tienes créditos activos" aunque sí
+        // tuviera. `ErrorState`, nunca el vacío, cuando la petición falló.
+        <ErrorState
+          title="No pudimos cargar tus créditos"
+          description="Intentá de nuevo en un momento. Si sigue pasando, avisale a tu cobrador."
+          onRetry={() => void creditsQuery.refetch()}
+        />
       ) : (
         <TabsRoot defaultValue="activos" className="w-full">
           <TabsList>

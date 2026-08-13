@@ -39,9 +39,12 @@ describe("CobrosController (e2e)", () => {
   let creditoId: string;
   let segundoCreditoId: string;
   let creditoChicoId: string; // dedicado a los tests de "anular pago"
+  let adminIdGlobal: string;
+  let productoIdGlobal: string;
 
   beforeAll(async () => {
     const adminId = await seedAdminId(prisma);
+    adminIdGlobal = adminId;
     const collectorA = await prisma.usuario.findUniqueOrThrow({
       where: { documento: COLLECTOR_A.documento },
     });
@@ -63,6 +66,7 @@ describe("CobrosController (e2e)", () => {
       update: {},
       create: { nombre: PRODUCTO_NOMBRE, precioBase: new Prisma.Decimal(100000), adminId },
     });
+    productoIdGlobal = producto.id;
     // Dos créditos ACTIVOS del mismo cliente: el escenario que rompía el total
     // del día (un pago en cada uno el mismo día).
     const crear = (codigo: string) =>
@@ -320,5 +324,90 @@ describe("CobrosController (e2e)", () => {
         .set("Authorization", `Bearer ${admin.token}`)
         .expect(404);
     });
+  });
+
+  // Fase 6 (hardening) — DATA-1: `descontarSaldo` solo miraba `saldoPendiente`
+  // en su WHERE condicional, nunca `estado`. Un cobro y una anulación
+  // concurrentes sobre el mismo crédito podían "ganar" los dos: el crédito
+  // quedaba ANULADO con un Pago igual aplicado encima (saldo descontado sobre
+  // un crédito que debía quedar congelado). El fix agregó `estado: { in:
+  // ["ACTIVO", "MORA"] }` al WHERE de `descontarSaldo` (cobros.repository.ts)
+  // y volvió `anular` (creditos.service.ts) igual de condicional — Postgres
+  // serializa las dos escrituras por fila (row lock): quien llegue primero
+  // gana, pero el segundo reevalúa su condición contra el estado YA
+  // actualizado, así que ahora es imposible que ambos tengan éxito.
+  describe("POST /collections vs DELETE /credits/:id — carrera de anulación (DATA-1)", () => {
+    async function crearCreditoActivo(suffix: string) {
+      return prisma.credito.create({
+        data: {
+          codigo: `CR-CBR-RACE-${Date.now()}-${suffix}`,
+          clienteId,
+          productoId: productoIdGlobal,
+          adminId: adminIdGlobal,
+          monto: new Prisma.Decimal(1000),
+          interes: new Prisma.Decimal(0),
+          cuotas: 1,
+          dias: 1,
+          montoTotal: new Prisma.Decimal(1000),
+          cuotaDiaria: new Prisma.Decimal(1000),
+          saldoPendiente: new Prisma.Decimal(1000),
+          estado: "ACTIVO",
+        },
+      });
+    }
+
+    it("de un cobro y una anulación simultáneos sobre el mismo crédito, gana exactamente uno", async () => {
+      const admin = await login(app, ADMIN);
+
+      // 5 iteraciones × 2 requests HTTP concurrentes + writes contra Supabase
+      // (red, no local): supera el timeout default de Jest (5s) cuando corre
+      // dentro del suite completo (16 archivos compitiendo por el pool de la
+      // Supabase pooler, ver gotcha de `CLAUDE.md`), aunque en aislado es rápido.
+      // Varias corridas: cuál de los dos "gana" la carrera de Postgres no es
+      // determinístico (depende de qué UPDATE adquiere el row lock primero),
+      // así que repetimos para no depender de una sola interleaving.
+      for (let i = 0; i < 5; i++) {
+        const credito = await crearCreditoActivo(String(i));
+
+        const [cobroRes, anularRes] = await Promise.all([
+          request(app.getHttpServer())
+            .post("/collections")
+            .set("Authorization", `Bearer ${admin.token}`)
+            .send({ creditoId: credito.id, monto: 1000 }),
+          request(app.getHttpServer())
+            .delete(`/credits/${credito.id}`)
+            .set("Authorization", `Bearer ${admin.token}`),
+        ]);
+
+        const cobroOk = cobroRes.status === 201;
+        const anularOk = anularRes.status === 200;
+
+        // Exactamente uno de los dos tuvo éxito (XOR) — nunca los dos, nunca
+        // ninguno. Antes del fix, ambos podían devolver éxito.
+        expect(cobroOk).not.toBe(anularOk);
+        if (!cobroOk) expect(cobroRes.status).toBe(409);
+        if (!anularOk) expect(anularRes.status).toBe(409);
+
+        const final = await prisma.credito.findUniqueOrThrow({
+          where: { id: credito.id },
+          include: { pagos: true },
+        });
+
+        if (cobroOk) {
+          // El cobro ganó: el monto exacto del saldo lo dejó PAGADO, y la
+          // anulación (que corrió después, contra el estado ya actualizado)
+          // no pudo tocarlo.
+          expect(final.estado).toBe("PAGADO");
+          expect(final.pagos).toHaveLength(1);
+        } else {
+          // La anulación ganó: el cobro abortó DENTRO de la transacción
+          // (`descontarSaldo` afectó 0 filas), así que el rollback deja el
+          // crédito sin ningún Pago — no un Pago "huérfano" sobre un crédito
+          // ANULADO, que era exactamente el bug.
+          expect(final.estado).toBe("ANULADO");
+          expect(final.pagos).toHaveLength(0);
+        }
+      }
+    }, 30_000);
   });
 });

@@ -114,20 +114,19 @@ export function RegistrarCobroSheet({
   const montoNum = Number.isFinite(monto) ? monto : 0;
   const nuevoSaldo = Math.max(0, saldo - montoNum);
 
-  // Cuando el cobrador cambia el crédito del selector, re-rellenamos el monto
-  // con la cuota del nuevo crédito (sin pisar un valor editado a mano).
+  // Recalculamos el monto sugerido cada vez que el sheet se ABRE (nuevo cobro
+  // o reapertura tras uno anterior) y cada vez que cambia el crédito
+  // elegido. El sheet no se desmonta entre cobros, así que sin el `open` en
+  // las dependencias el campo se quedaba con el valor del cobro anterior: un
+  // abono parcial en la última cuota reduce `saldoPendiente`, pero al
+  // reabrir el sheet para cobrar el resto seguía mostrando el monto viejo
+  // (mayor al saldo ya reducido) y el submit rebotaba con "el monto no
+  // puede superar el saldo pendiente" sin que el cobrador tocara nada.
   React.useEffect(() => {
-    if (creditoElegido && Number.isFinite(monto)) {
-      const current = form.getValues("monto");
-      const matchesOther = creditos.some(
-        (c) => c.id !== creditoElegido.id && montoSugerido(c) === current,
-      );
-      if (!current || matchesOther) {
-        form.setValue("monto", montoSugerido(creditoElegido), { shouldValidate: false });
-      }
-    }
+    if (!open || !creditoElegido) return;
+    form.setValue("monto", montoSugerido(creditoElegido), { shouldValidate: false });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [creditoId]);
+  }, [open, creditoId]);
 
   const registrar = useRegistrarCobro();
 

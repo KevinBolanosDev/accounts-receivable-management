@@ -3,6 +3,12 @@ import { Prisma } from "@prisma/client";
 
 import { PrismaService } from "../../core/prisma/prisma.service";
 
+// El tipo real que entrega `prisma.$transaction(async (tx) => ...)` — a
+// diferencia de `cobros.repository.ts` (que castea a través de `unknown`,
+// ver ARCH-2 de `specs/AUDITORIA_TECNICA.md`), acá se usa el tipo correcto de
+// Prisma directamente: no hace falta ningún cast en el call site.
+type Tx = Prisma.TransactionClient;
+
 const creditoListInclude = {
   producto: { select: { id: true, nombre: true } },
 } satisfies Prisma.CreditoInclude;
@@ -81,6 +87,22 @@ export class CreditosRepository {
 
   update(id: string, data: Prisma.CreditoUpdateInput): Promise<CreditoWithProducto> {
     return this.prisma.credito.update({ where: { id }, data, include: creditoListInclude });
+  }
+
+  /**
+   * Marca el crédito ANULADO, condicional (`estado: { in: ["ACTIVO", "MORA"] }`
+   * en el WHERE) — mismo patrón de carrera que `cobros.repository.ts`
+   * (`descontarSaldo`/`anularPago`, ver DATA-1 del hardening de Fase 6): si
+   * un cobro concurrente ya dejó el crédito PAGADO, o si ya estaba ANULADO,
+   * `affected = 0` y el caller aborta con 409 en vez de pisar el estado sin
+   * mirar qué pasó mientras tanto.
+   */
+  anularCondicional(id: string, tx?: Tx) {
+    const runner = tx ?? this.prisma;
+    return runner.credito.updateMany({
+      where: { id, estado: { in: ["ACTIVO", "MORA"] } },
+      data: { estado: "ANULADO" },
+    });
   }
 
   // Genera el siguiente `CR-XXXX` desde la secuencia de Postgres. La migración
