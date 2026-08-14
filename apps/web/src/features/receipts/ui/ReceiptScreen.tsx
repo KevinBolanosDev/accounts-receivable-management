@@ -5,8 +5,8 @@ import { useRouter } from "next/navigation";
 import { ArrowLeftIcon } from "lucide-react";
 import type { Receipt } from "@repo/types";
 
-import { ReceiptActions } from "@/entities/receipt";
-import { printHtmlDocument } from "@/shared/lib/print";
+import { ReceiptActions, receiptFilename, shareReceiptFile } from "@/entities/receipt";
+import { downloadBlob } from "@/shared/lib/download-blob";
 
 import { receiptsService } from "../api/receipts-service";
 
@@ -42,11 +42,11 @@ function ReceiptTopBar({ actions }: { actions?: React.ReactNode }) {
 type ReceiptState =
   | { status: "loading" }
   | { status: "error"; message: string }
-  | { status: "ready"; html: string };
+  | { status: "ready"; pdf: Blob; url: string };
 
 // Pantalla #18c — Recibo y compartir (Cobrador, móvil).
-// Envuelve el HTML server-rendered del back en un iframe con `srcDoc` para
-// no perder la sesión del cobrador ni abrir nueva pestaña.
+// Monta el PDF que genera el back en un iframe (el visor nativo del navegador)
+// para no perder la sesión del cobrador ni abrir nueva pestaña.
 //
 // Patrón `useState` + `useEffect` con fetch asíncrono: el `setState` se hace
 // dentro del `.then`/`.catch` del effect, que es la forma canónica para
@@ -63,12 +63,16 @@ function ReceiptScreenInner({ pagoId }: ReceiptScreenProps) {
 
   useEffect(() => {
     let cancelled = false;
+    // El object URL del PDF vive lo que vive esta pantalla; sin revocarlo, el
+    // Blob completo queda retenido en memoria hasta recargar la página.
+    let objectUrl: string | null = null;
 
     void receiptsService
       .getByPagoId(pagoId)
-      .then((value) => {
+      .then((pdf) => {
         if (cancelled) return;
-        setState({ status: "ready", html: value });
+        objectUrl = URL.createObjectURL(pdf);
+        setState({ status: "ready", pdf, url: objectUrl });
       })
       .catch((err: unknown) => {
         if (cancelled) return;
@@ -78,6 +82,7 @@ function ReceiptScreenInner({ pagoId }: ReceiptScreenProps) {
 
     return () => {
       cancelled = true;
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
     };
   }, [pagoId]);
 
@@ -121,7 +126,13 @@ function ReceiptScreenInner({ pagoId }: ReceiptScreenProps) {
     );
   }
 
-  const html = state.html;
+  // Se arma una sola vez porque lo usan las dos vías de compartir: el archivo
+  // adjunto (como `text` del mensaje) y el enlace `wa.me` de respaldo. El PDF
+  // ya lleva todo el detalle (producto, cuota, monto, fecha) — el mensaje solo
+  // necesita el saludo y el link.
+  const shareInfo = data
+    ? { clienteNombre: data.credito.clienteNombre, publicUrl: data.reciboPublicUrl }
+    : undefined;
 
   return (
     <div className="flex min-h-full flex-col">
@@ -130,43 +141,46 @@ function ReceiptScreenInner({ pagoId }: ReceiptScreenProps) {
           <ReceiptActions
             actions={["download", "share"]}
             onDownload={() => {
-              // Reusa el MISMO HTML que ya está en pantalla (el del iframe) —
-              // sin re-pedirlo — así que el PDF generado es idéntico a lo que
-              // se ve. `printHtmlDocument` es el iframe fuera de pantalla con
-              // layout real (ver `shared/lib/print.ts`); un `window.print()`
-              // acá imprimiría también esta barra y el shell de la app.
-              printHtmlDocument(html, { title: data?.codigo ?? `Recibo ${pagoId}` });
+              // Reusa el MISMO PDF que ya está en pantalla (el del iframe), sin
+              // volver a pedirlo: el archivo que se guarda es byte por byte el
+              // que se está viendo.
+              downloadBlob(state.pdf, receiptFilename(data?.codigo));
             }}
             phone={data?.clienteTelefono}
-            share={
-              data
-                ? {
-                    clienteNombre: data.credito.clienteNombre,
-                    producto: data.credito.productoNombre,
-                    monto: data.monto,
-                    fecha: data.fecha,
-                    reciboCodigo: data.codigo,
-                    publicUrl: data.reciboPublicUrl,
-                  }
-                : undefined
+            share={shareInfo}
+            // Esta pantalla es la única que puede compartir SIN esperar: el PDF
+            // ya está en memoria (es el mismo del iframe), así que la llamada a
+            // `navigator.share` sale dentro del gesto del click y no se pierde
+            // la activación — el problema que sí tienen las filas del historial,
+            // que deben bajar el PDF antes.
+            onShare={(text) =>
+              shareReceiptFile({
+                pdf: state.pdf,
+                filename: receiptFilename(data?.codigo),
+                text,
+              })
             }
           />
         }
       />
       <iframe
         title={`Recibo ${pagoId}`}
-        srcDoc={html}
-        // Fase 6 (hardening, FE-SEC-1): sin `sandbox`, este iframe heredaba el
-        // origen del padre — cualquier XSS en el HTML del recibo (hoy el back
-        // escapa todos los campos interpolados, pero esto es defensa en
-        // profundidad, no confianza en que nunca haya una regresión) tendría
-        // acceso directo al `localStorage` con el JWT de staff. `allow-scripts`
-        // sin `allow-same-origin` fuerza al iframe a un origen opaco único:
-        // el botón "Imprimir / Guardar PDF" del recibo (`onclick="window.print()"`,
-        // el único script que este HTML ejecuta) sigue andando, pero cualquier
-        // script inyectado queda aislado — sin `localStorage`/`document.domain`
-        // reales que robar.
-        sandbox="allow-scripts"
+        src={state.url}
+        // SIN `sandbox`, a diferencia de la versión HTML de esta pantalla.
+        //
+        // El `sandbox="allow-scripts"` que había acá era el fix de FE-SEC-1, y
+        // existía por una razón que ya no aplica: el recibo era HTML con campos
+        // del cliente interpolados, así que un escapado mal hecho habría sido
+        // XSS con acceso al `localStorage` que guarda el JWT. Hoy el recibo es
+        // un PDF generado con `pdfkit` — no se construye markup en ningún
+        // punto, no hay nada que inyectar.
+        //
+        // Y `sandbox` acá haría daño real: el visor de PDF de Firefox es
+        // pdf.js, o sea JavaScript, así que un sandbox sin `allow-scripts`
+        // deja el recibo en blanco; y `allow-scripts` a secas fuerza un origen
+        // opaco, que rompe la carga del `blob:`. No hay combinación que sirva
+        // en los dos navegadores.
+        //
         // `flex-1` en vez de `h-screen`: con el alto completo de viewport la
         // barra empujaba el iframe y aparecía scroll de más.
         className="min-h-[70vh] w-full flex-1 border-0 bg-background"

@@ -199,7 +199,11 @@ describe("CobrosController (e2e)", () => {
     const path = new URL(publicUrl!).pathname;
 
     const receipt = await request(app.getHttpServer()).get(path).expect(200);
-    expect(receipt.text).toContain("<!doctype html>");
+    expect(receipt.headers["content-type"]).toContain("application/pdf");
+    const bytes = Buffer.isBuffer(receipt.body)
+      ? receipt.body
+      : Buffer.from(receipt.text ?? "", "binary");
+    expect(bytes.subarray(0, 5).toString("latin1")).toBe("%PDF-");
   });
 
   // El bug de "Cobrado hoy": `summarizeRuta` se quedaba con UN solo pago por

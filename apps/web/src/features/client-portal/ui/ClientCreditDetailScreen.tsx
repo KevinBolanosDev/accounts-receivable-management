@@ -1,6 +1,5 @@
 "use client";
 
-import { useState } from "react";
 import Link from "next/link";
 import { ArrowLeftIcon } from "lucide-react";
 
@@ -30,14 +29,12 @@ import { useMyCreditDetail } from "../api/use-client-portal";
 export function ClientCreditDetailScreen({ creditoId }: { creditoId: string }) {
   const { data: credito, isLoading, isError, refetch } = useMyCreditDetail(creditoId);
   const token = useClientSessionStore((state) => state.token);
-  const [reciboHtml, setReciboHtml] = useState<string | null>(null);
   const ringRef = useProgressRing<HTMLDivElement>(Math.round(credito?.porcentajePagado ?? 0));
 
-  const recibos = useReceiptActions({
-    scope: "client",
-    token,
-    onHtml: (html) => setReciboHtml(html),
-  });
+  // El object URL del PDF lo gestiona el hook (lo crea al abrir, lo revoca al
+  // cerrar y al desmontar) — antes esta pantalla guardaba el HTML en su propio
+  // `useState`.
+  const recibos = useReceiptActions({ scope: "client", token });
 
   if (isLoading) {
     return (
@@ -149,40 +146,33 @@ export function ClientCreditDetailScreen({ creditoId }: { creditoId: string }) {
                 onView={() => void recibos.view(pago.id)}
                 onDownload={() => void recibos.download(pago.id, pago.reciboCodigo ?? undefined)}
                 pending={recibos.pendingPagoId === pago.id ? recibos.pendingKind : null}
-                share={{
-                  clienteNombre: credito.cliente.nombre,
-                  producto: credito.producto,
-                  numeroCuota: pago.numeroCuota,
-                  cuotasTotal: credito.cuotasTotal,
-                  monto: pago.monto,
-                  fecha: pago.fecha,
-                  reciboCodigo: pago.reciboCodigo,
-                  publicUrl: pago.reciboPublicUrl,
-                }}
+                share={{ clienteNombre: credito.cliente.nombre, publicUrl: pago.reciboPublicUrl }}
+                // Adjunta el PDF por la hoja nativa del teléfono; si el
+                // navegador no soporta compartir archivos, `ReceiptActions`
+                // cae solo al enlace `wa.me`.
+                onShare={(text) =>
+                  recibos.share(pago.id, { text, codigo: pago.reciboCodigo ?? undefined })
+                }
               />
             )
           }
         />
       </div>
 
-      <Dialog open={!!reciboHtml} onOpenChange={(open) => !open && setReciboHtml(null)}>
+      <Dialog
+        open={!!recibos.previewUrl}
+        onOpenChange={(open) => !open && recibos.closePreview()}
+      >
         <DialogContent className="sm:max-w-lg">
           <DialogHeader>
             <DialogTitle>Recibo de pago</DialogTitle>
           </DialogHeader>
-          {reciboHtml ? (
-            // Fase 6 (hardening, FE-SEC-1): mismo fix que `ReceiptScreen` —
-            // sin `sandbox` este iframe comparte origen con el `localStorage`
-            // que tiene la sesión del cliente. `allow-scripts` sin
-            // `allow-same-origin` deja andando el botón "Imprimir" del recibo
-            // (el único script del HTML) en un origen opaco, sin acceso real
-            // al storage de la app.
-            <iframe
-              title="Recibo"
-              srcDoc={reciboHtml}
-              sandbox="allow-scripts"
-              className="h-[70vh] w-full border-0"
-            />
+          {recibos.previewUrl ? (
+            // Sin `sandbox`, por el mismo motivo que `ReceiptScreen`: el recibo
+            // pasó de HTML interpolado a PDF, así que ya no hay markup que
+            // inyectar, y sandboxear un `blob:` de PDF rompe el visor (ver el
+            // comentario largo en `ReceiptScreen.tsx`).
+            <iframe title="Recibo" src={recibos.previewUrl} className="h-[70vh] w-full border-0" />
           ) : null}
         </DialogContent>
       </Dialog>

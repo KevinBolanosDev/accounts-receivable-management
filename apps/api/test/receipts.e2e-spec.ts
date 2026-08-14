@@ -28,6 +28,16 @@ async function login(
   return loginResponseSchema.parse(res.body);
 }
 
+// El recibo se sirve como `application/pdf`. Mismo patrón de aserción que
+// `daily-closures.e2e-spec.ts` para el PDF del cierre: supertest deja el cuerpo
+// en `body` (Buffer) o en `text` según cómo haya negociado el parseo, así que
+// se normaliza antes de mirar la firma `%PDF-`.
+function expectPdf(res: request.Response): void {
+  expect(res.headers["content-type"]).toContain("application/pdf");
+  const bytes = Buffer.isBuffer(res.body) ? res.body : Buffer.from(res.text ?? "", "binary");
+  expect(bytes.subarray(0, 5).toString("latin1")).toBe("%PDF-");
+}
+
 describe("ReceiptsController (e2e)", () => {
   let app: INestApplication<App>;
   let routeA: { id: string };
@@ -110,22 +120,22 @@ describe("ReceiptsController (e2e)", () => {
     await prisma.$disconnect();
   });
 
-  it("responde 200 + HTML para un ADMIN", async () => {
+  it("responde 200 + PDF para un ADMIN", async () => {
     const admin = await login(app, ADMIN);
     const res = await request(app.getHttpServer())
       .get(`/payments/${pagoId}/receipt`)
       .set("Authorization", `Bearer ${admin.token}`)
       .expect(200);
-    expect(res.text).toContain("<!doctype html>");
+    expectPdf(res);
   });
 
-  it("responde 200 + HTML para el COBRADOR de la ruta del cliente", async () => {
+  it("responde 200 + PDF para el COBRADOR de la ruta del cliente", async () => {
     const collector = await login(app, COLLECTOR_A);
     const res = await request(app.getHttpServer())
       .get(`/payments/${pagoId}/receipt`)
       .set("Authorization", `Bearer ${collector.token}`)
       .expect(200);
-    expect(res.text).toContain("<!doctype html>");
+    expectPdf(res);
   });
 
   it("responde 403 para un COBRADOR de otra ruta", async () => {
@@ -160,12 +170,12 @@ describe("ReceiptsController (e2e)", () => {
         .get(`/payments/${pagoId}/receipt`)
         .set("Authorization", `Bearer ${admin.token}`)
         .expect(200);
-      expect(receiptRes.text).toContain("<!doctype html>");
+      expectPdf(receiptRes);
 
       const token = app.get(ReceiptTokenService).sign(pagoId);
 
       const res = await request(app.getHttpServer()).get(`/r/${token}`).expect(200);
-      expect(res.text).toContain("<!doctype html>");
+      expectPdf(res);
       expect(res.headers["x-robots-tag"]).toContain("noindex");
     });
 
