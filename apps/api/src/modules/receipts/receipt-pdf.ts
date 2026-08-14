@@ -238,7 +238,7 @@ function drawHeader(doc: PDFKit.PDFDocument, r: Receipt): void {
     .font("Helvetica")
     .fontSize(6.5)
     .fillColor(COLORS.mutedFg)
-    .text("COBRODIARIO · RECIBO DE PAGO", MARGIN, doc.y, {
+    .text("RECIBO DE PAGO", MARGIN, doc.y, {
       width: CONTENT_WIDTH,
       align: "center",
       characterSpacing: 0.6,
