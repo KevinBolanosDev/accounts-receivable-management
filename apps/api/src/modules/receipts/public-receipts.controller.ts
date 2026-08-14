@@ -1,8 +1,9 @@
-import { Controller, Get, Header, Param } from "@nestjs/common";
+import { Controller, Get, Header, Param, StreamableFile } from "@nestjs/common";
 import { Throttle } from "@nestjs/throttler";
 
 import { Public } from "../../core/auth/public.decorator";
 import { ReceiptTokenService } from "../../core/receipts/receipt-token.service";
+import { buildReceiptPdf, receiptPdfFilename } from "./receipt-pdf";
 import { ReceiptsService } from "./receipts.service";
 
 // Recibo público por enlace firmado — es lo que se comparte por WhatsApp.
@@ -28,14 +29,19 @@ export class PublicReceiptsController {
 
   @Throttle({ default: { limit: 30, ttl: 60_000 } })
   @Get(":token")
-  @Header("Content-Type", "text/html; charset=utf-8")
   // `noindex`: el recibo lleva PII (nombre, producto, montos). El enlace es "no
   // listado", pero si alguien lo pega en un sitio público no debe terminar
   // indexado por un buscador.
   @Header("X-Robots-Tag", "noindex, nofollow")
   @Header("Cache-Control", "private, no-store")
-  async getPublicReceipt(@Param("token") token: string): Promise<string> {
+  // `inline`: el enlace se abre desde WhatsApp, y el cliente espera VER el
+  // recibo en el visor del navegador, no que le arranque una descarga.
+  async getPublicReceipt(@Param("token") token: string): Promise<StreamableFile> {
     const pagoId = this.receiptToken.verify(token);
-    return this.receiptsService.getPublicReceiptHtml(pagoId);
+    const receipt = await this.receiptsService.getPublicReceipt(pagoId);
+    return new StreamableFile(await buildReceiptPdf(receipt), {
+      type: "application/pdf",
+      disposition: `inline; filename="${receiptPdfFilename(receipt.codigo)}"`,
+    });
   }
 }

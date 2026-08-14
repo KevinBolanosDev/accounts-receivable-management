@@ -18,6 +18,19 @@ export interface ReceiptActionsProps extends Omit<React.ComponentProps<"div">, "
   phone?: string | null;
   onView?: () => void;
   onDownload?: () => void;
+  /**
+   * Comparte el PDF como archivo adjunto (hoja nativa del teléfono). Si
+   * devuelve `"unsupported"`, este componente abre el enlace `wa.me` de texto
+   * como respaldo — por eso la acción sigue funcionando en escritorio.
+   *
+   * Recibe el mensaje YA armado: este componente lo construye igual para el
+   * enlace (`buildReceiptShareText(share)`), así que pasarlo evita que cada
+   * pantalla rearme el mismo objeto y que las dos vías de compartir puedan
+   * divergir en el texto.
+   *
+   * Sin este prop, "compartir" se comporta como siempre: solo el enlace.
+   */
+  onShare?: (text: string) => Promise<"shared" | "cancelled" | "unsupported">;
   /** Acción en curso para ESTE recibo (spinner). */
   pending?: ReceiptActionKind | null;
   disabled?: boolean;
@@ -48,15 +61,18 @@ export function ReceiptActions({
   phone,
   onView,
   onDownload,
+  onShare,
   pending = null,
   disabled = false,
   variant = "icon",
   className,
   ...props
 }: ReceiptActionsProps) {
-  const shareUrl = share?.publicUrl
-    ? buildWhatsAppUrl({ text: buildReceiptShareText(share), phone })
-    : null;
+  // El mismo texto alimenta las dos vías: el enlace `wa.me` (respaldo) y el
+  // `text` que acompaña al PDF adjunto en la hoja nativa.
+  const shareText = share ? buildReceiptShareText(share) : null;
+  const shareUrl =
+    share?.publicUrl && shareText ? buildWhatsAppUrl({ text: shareText, phone }) : null;
 
   function renderAction(kind: ReceiptActionKind) {
     const isPending = pending === kind;
@@ -85,22 +101,53 @@ export function ReceiptActions({
       variant === "icon" ? "size-8" : "h-9 px-3 text-body-sm font-medium",
     );
 
-    // Compartir es un enlace real (`wa.me`) para que el móvil abra la app
-    // nativa; el resto son botones.
+    // Compartir tiene dos caminos, y el elemento cambia según cuál esté
+    // disponible:
+    //
+    // - Con `onShare`: BOTÓN. Intenta adjuntar el PDF por la hoja nativa del
+    //   teléfono; si el navegador no soporta compartir archivos, recién ahí
+    //   abre el enlace `wa.me`. Es un botón y no un `<a>` porque hasta no
+    //   preguntarle al navegador no se sabe adónde lleva.
+    // - Sin `onShare`: el `<a href="wa.me">` de siempre (solo texto + link).
+    //
+    // El respaldo se abre con `window.open` y no navegando el `<a>`, porque
+    // para cuando se sabe que hace falta ya se perdió el click original.
     const node =
       kind === "share" && shareUrl && !noDisponible ? (
-        <a
-          key={kind}
-          href={shareUrl}
-          target="_blank"
-          rel="noopener noreferrer"
-          aria-label={label}
-          className={base}
-          onClick={(e) => e.stopPropagation()}
-        >
-          {icon}
-          {variant === "labeled" ? <span>Compartir</span> : null}
-        </a>
+        onShare ? (
+          <button
+            key={kind}
+            type="button"
+            aria-label={label}
+            disabled={isPending}
+            className={base}
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              void onShare(shareText ?? "").then((result) => {
+                if (result === "unsupported") {
+                  window.open(shareUrl, "_blank", "noopener,noreferrer");
+                }
+              });
+            }}
+          >
+            {icon}
+            {variant === "labeled" ? <span>Compartir</span> : null}
+          </button>
+        ) : (
+          <a
+            key={kind}
+            href={shareUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            aria-label={label}
+            className={base}
+            onClick={(e) => e.stopPropagation()}
+          >
+            {icon}
+            {variant === "labeled" ? <span>Compartir</span> : null}
+          </a>
+        )
       ) : (
         <button
           key={kind}
