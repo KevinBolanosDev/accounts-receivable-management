@@ -222,16 +222,13 @@ export function AdminCreditCollectScreen({
                     pending={recibos.pendingPagoId === pago.id ? recibos.pendingKind : null}
                     // Al teléfono del cliente: es a quien va dirigido el recibo.
                     phone={cliente.telefono}
-                    share={{
-                      clienteNombre: cliente.nombre,
-                      producto: credito.producto,
-                      numeroCuota: pago.numeroCuota,
-                      cuotasTotal: credito.cuotasTotal,
-                      monto: pago.monto,
-                      fecha: pago.fecha,
-                      reciboCodigo: pago.reciboCodigo,
-                      publicUrl: pago.reciboPublicUrl,
-                    }}
+                    share={{ clienteNombre: cliente.nombre, publicUrl: pago.reciboPublicUrl }}
+                    // Adjunta el PDF por la hoja nativa del teléfono; si el
+                    // navegador no soporta compartir archivos, `ReceiptActions`
+                    // cae solo al enlace `wa.me`.
+                    onShare={(text) =>
+                      recibos.share(pago.id, { text, codigo: pago.reciboCodigo ?? undefined })
+                    }
                   />
                   {/* Un pago ya anulado no se puede anular otra vez. */}
                   {esCuotaAnulada(pago.estado) ? null : <AnularPagoButton pago={pago} />}

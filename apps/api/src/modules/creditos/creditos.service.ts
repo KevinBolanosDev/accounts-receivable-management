@@ -191,20 +191,52 @@ export class CreditosService {
         : derivados.montoTotal
       : undefined;
 
-    const updated = await this.prisma.credito.update({
-      where: { id },
-      data: {
-        producto: productoId ? { connect: { id: productoId } } : undefined,
-        monto: body.monto !== undefined ? new Prisma.Decimal(body.monto) : undefined,
-        interes: body.interes !== undefined ? new Prisma.Decimal(body.interes) : undefined,
-        frecuencia: body.frecuencia,
-        cuotas: body.cuotas,
-        dias: derivados?.dias,
-        montoTotal: derivados?.montoTotal,
-        cuotaDiaria: derivados?.cuotaDiaria,
-        saldoPendiente: saldoPendienteNuevo,
-      },
-      include: { producto: { select: { id: true, nombre: true } } },
+    const data: Prisma.CreditoUpdateInput = {
+      producto: productoId ? { connect: { id: productoId } } : undefined,
+      monto: body.monto !== undefined ? new Prisma.Decimal(body.monto) : undefined,
+      interes: body.interes !== undefined ? new Prisma.Decimal(body.interes) : undefined,
+      frecuencia: body.frecuencia,
+      cuotas: body.cuotas,
+      dias: derivados?.dias,
+      montoTotal: derivados?.montoTotal,
+      cuotaDiaria: derivados?.cuotaDiaria,
+      saldoPendiente: saldoPendienteNuevo,
+    };
+
+    const updated = await this.prisma.$transaction(async (tx) => {
+      if (saldoPendienteNuevo !== undefined) {
+        // Concurrencia optimista (DATA-2, hardening Fase 6): `saldoPendienteNuevo`
+        // se calculó arriba con `existing.pagos`, leído al PRINCIPIO del
+        // request — no dentro de esta transacción. Si un cobro concurrente
+        // registró un pago entre esa lectura y este UPDATE, escribir el valor
+        // absoluto de `saldoPendienteNuevo` lo pisaría en silencio: el `Pago`
+        // sobrevive como fila, pero `saldoPendiente` queda desincronizado de
+        // la plata que realmente se cobró (el mismo lost-update que DATA-1,
+        // un nivel más abajo). El WHERE fija el `saldoPendiente` que
+        // `existing` tenía al leerlo: si cambió mientras tanto —cualquier
+        // cobro, anulación de pago o edición concurrente que lo haya
+        // tocado—, `count === 0` y abortamos en vez de pisarlo. Mismo patrón
+        // que `cobros.repository.ts` (`descontarSaldo`) y
+        // `creditos.repository.ts` (`anularCondicional`).
+        const result = await tx.credito.updateMany({
+          where: { id, saldoPendiente: existing.saldoPendiente },
+          data,
+        });
+        if (result.count === 0) {
+          throw new ConflictException(
+            "El crédito cambió mientras lo editabas (¿se registró un pago?). Reintenta.",
+          );
+        }
+      } else {
+        // Nada de dinero en juego (ej. solo cambia `producto`): sin
+        // `saldoPendiente` de por medio, no hay lost-update que prevenir.
+        await tx.credito.update({ where: { id }, data });
+      }
+
+      return tx.credito.findUniqueOrThrow({
+        where: { id },
+        include: { producto: { select: { id: true, nombre: true } } },
+      });
     });
 
     return toListItem(updated);
@@ -222,10 +254,23 @@ export class CreditosService {
     );
     if (!existing) throw new NotFoundException("Crédito no encontrado.");
 
-    const updated = await this.prisma.credito.update({
-      where: { id },
-      data: { estado: "ANULADO" },
-      include: { producto: { select: { id: true, nombre: true } } },
+    // Condicional (DATA-1, hardening Fase 6): si un cobro concurrente saldó
+    // el crédito (PAGADO) o alguien más ya lo anuló entre el `findById` de
+    // arriba y este punto, `count === 0` y abortamos con 409 en vez de pisar
+    // el estado — mismo patrón que `cobros.repository.ts` (`descontarSaldo`).
+    // Sin este guard, anular podía "ganarle" en silencio a un cobro que
+    // acababa de saldar el crédito, o re-anular uno que ya lo estaba.
+    const updated = await this.prisma.$transaction(async (tx) => {
+      const anulado = await this.creditosRepository.anularCondicional(id, tx);
+      if (anulado.count === 0) {
+        throw new ConflictException(
+          "El crédito ya no se puede anular: está pagado o ya fue anulado.",
+        );
+      }
+      return tx.credito.findUniqueOrThrow({
+        where: { id },
+        include: { producto: { select: { id: true, nombre: true } } },
+      });
     });
 
     return toListItem(updated);

@@ -391,11 +391,21 @@ const RECEIPT_DEMO: Receipt = {
     codigo: "CR-2041",
     clienteNombre: "María Fernández",
     productoNombre: "Nevera",
+    capital: 1_000_000,
+    interes: 20,
+    montoTotal: 1_200_000,
+    cuotaValor: 20_000,
+    cuotas: 60,
+    frecuencia: "DIARIO",
   },
   monto: 20_000,
   saldoRestante: 1_160_000,
   fecha: "2026-07-24T15:00:00.000Z",
   cobradorNombre: "Cobrador Demo",
+  numeroCuota: 2,
+  cuotasPagadas: 2,
+  cuotasRestantes: 58,
+  cuotasPagadasDetalle: [],
   anulado: false,
 };
 
@@ -871,7 +881,7 @@ export default function UiGalleryPage() {
                 <ReceiptActions
                   actions={["download", "share"]}
                   onDownload={() => undefined}
-                  share={{ monto: pago.monto, publicUrl: pago.reciboPublicUrl }}
+                  share={{ publicUrl: pago.reciboPublicUrl }}
                 />
               )
             }
@@ -890,21 +900,21 @@ export default function UiGalleryPage() {
               actions={["view", "download", "share"]}
               onView={() => undefined}
               onDownload={() => undefined}
-              share={{ monto: 55000, publicUrl: "https://example.com/r/token" }}
+              share={{ clienteNombre: "María", publicUrl: "https://example.com/r/token" }}
             />
           </div>
           <div className="flex items-center gap-3">
             {/* Sin `publicUrl` compartir queda deshabilitado con tooltip, en vez
                 de mostrar un botón que al pulsarlo no hace nada. */}
             <span className="text-body-sm text-muted-foreground">Sin recibo:</span>
-            <ReceiptActions actions={["view", "download", "share"]} share={{ monto: 0 }} />
+            <ReceiptActions actions={["view", "download", "share"]} share={{}} />
           </div>
           <div className="flex items-center gap-3">
             <span className="text-body-sm text-muted-foreground">Con etiqueta:</span>
             <ReceiptActions
               variant="labeled"
               onDownload={() => undefined}
-              share={{ monto: 55000, publicUrl: "https://example.com/r/token" }}
+              share={{ clienteNombre: "María", publicUrl: "https://example.com/r/token" }}
             />
           </div>
         </div>

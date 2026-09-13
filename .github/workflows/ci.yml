@@ -1,0 +1,57 @@
+name: CI
+
+# Fase 6 (hardening, INFRA-1): antes no había ningún pipeline — nada corría
+# lint/typecheck/test/build automáticamente, así que un `PATCH /credits/:id`
+# roto podía llegar a `main` sin que nadie se enterara hasta que un cobrador
+# se quejara. Corre en cada PR y en cada push a `main`.
+#
+# A propósito NO corre `test:e2e`: esos 130 casos necesitan una Supabase real
+# (el pooler, ver `CLAUDE.md`) y las credenciales del `.env` del proyecto, que
+# no viven en este repo. Lint + typecheck + unit tests (70 casos, cero I/O) +
+# build sí corren limpio sin ningún secreto — verificado a mano simulando un
+# checkout limpio (sin `apps/api/.env` ni `apps/web/.env`) antes de escribir
+# este workflow.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  ci:
+    name: Lint, typecheck, test, build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # Sin `version:` a propósito — lee el campo `packageManager` del
+      # package.json raíz (`pnpm@10.15.1`), una sola fuente de verdad.
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: ".nvmrc"
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Lint
+        run: pnpm lint
+
+      - name: Typecheck
+        run: pnpm typecheck
+
+      - name: Unit tests
+        run: pnpm test
+
+      - name: Build
+        run: pnpm build

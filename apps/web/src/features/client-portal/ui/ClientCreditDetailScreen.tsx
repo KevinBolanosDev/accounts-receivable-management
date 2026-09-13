@@ -1,6 +1,5 @@
 "use client";
 
-import { useState } from "react";
 import Link from "next/link";
 import { ArrowLeftIcon } from "lucide-react";
 
@@ -14,6 +13,7 @@ import { useProgressRing } from "@/shared/lib/motion";
 import { CountUpValue } from "@/shared/ui/count-up-value";
 import { Card, CardContent } from "@/shared/ui/card";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/shared/ui/dialog";
+import { ErrorState, NotFoundState } from "@/shared/ui/error-state";
 import { MetricTile, MetricTileGroup } from "@/shared/ui/metric-tile";
 import { ProgressRing } from "@/shared/ui/progress-ring";
 import { Skeleton } from "@/shared/ui/skeleton";
@@ -27,21 +27,48 @@ import { useMyCreditDetail } from "../api/use-client-portal";
 // `entities/receipt`: el detalle de crédito del Cobrador usa exactamente los
 // mismos componentes, solo cambia el `scope` y qué acciones se pintan.
 export function ClientCreditDetailScreen({ creditoId }: { creditoId: string }) {
-  const { data: credito, isLoading } = useMyCreditDetail(creditoId);
+  const { data: credito, isLoading, isError, refetch } = useMyCreditDetail(creditoId);
   const token = useClientSessionStore((state) => state.token);
-  const [reciboHtml, setReciboHtml] = useState<string | null>(null);
   const ringRef = useProgressRing<HTMLDivElement>(Math.round(credito?.porcentajePagado ?? 0));
 
-  const recibos = useReceiptActions({
-    scope: "client",
-    token,
-    onHtml: (html) => setReciboHtml(html),
-  });
+  // El object URL del PDF lo gestiona el hook (lo crea al abrir, lo revoca al
+  // cerrar y al desmontar) — antes esta pantalla guardaba el HTML en su propio
+  // `useState`.
+  const recibos = useReceiptActions({ scope: "client", token });
 
-  if (isLoading || !credito) {
+  if (isLoading) {
     return (
       <main className="mx-auto flex min-h-screen w-full max-w-2xl flex-col gap-6 px-6 py-8">
         <Skeleton className="h-64 w-full" />
+      </main>
+    );
+  }
+
+  // Fase 6 (hardening, FE-1): antes era `isLoading || !credito` — sin `isError`
+  // en la mezcla, un error de red, un 500, o un `ZodError` (shape drift)
+  // dejaban `credito` en `undefined` para siempre y esta pantalla quedaba en
+  // Skeleton infinito (nunca mostraba nada, ni un error ni un reintento).
+  // `ErrorState` cuando falló la petición, `NotFoundState` solo cuando de
+  // verdad no hay crédito — mismo criterio que `AdminClientCreditsScreen`.
+  if (isError || !credito) {
+    return (
+      <main className="mx-auto flex min-h-screen w-full max-w-2xl flex-col items-center gap-6 px-6 py-8">
+        {isError ? (
+          <ErrorState
+            title="No pudimos cargar este crédito"
+            description="Intentá de nuevo en un momento. Si sigue pasando, avisale a tu cobrador."
+            onRetry={() => void refetch()}
+            className="w-full"
+          />
+        ) : (
+          <NotFoundState
+            entity="este crédito"
+            description="Puede que ya no esté disponible."
+            backHref="/client/credit"
+            backLabel="Mis créditos"
+            className="w-full"
+          />
+        )}
       </main>
     );
   }
@@ -119,29 +146,33 @@ export function ClientCreditDetailScreen({ creditoId }: { creditoId: string }) {
                 onView={() => void recibos.view(pago.id)}
                 onDownload={() => void recibos.download(pago.id, pago.reciboCodigo ?? undefined)}
                 pending={recibos.pendingPagoId === pago.id ? recibos.pendingKind : null}
-                share={{
-                  clienteNombre: credito.cliente.nombre,
-                  producto: credito.producto,
-                  numeroCuota: pago.numeroCuota,
-                  cuotasTotal: credito.cuotasTotal,
-                  monto: pago.monto,
-                  fecha: pago.fecha,
-                  reciboCodigo: pago.reciboCodigo,
-                  publicUrl: pago.reciboPublicUrl,
-                }}
+                share={{ clienteNombre: credito.cliente.nombre, publicUrl: pago.reciboPublicUrl }}
+                // Adjunta el PDF por la hoja nativa del teléfono; si el
+                // navegador no soporta compartir archivos, `ReceiptActions`
+                // cae solo al enlace `wa.me`.
+                onShare={(text) =>
+                  recibos.share(pago.id, { text, codigo: pago.reciboCodigo ?? undefined })
+                }
               />
             )
           }
         />
       </div>
 
-      <Dialog open={!!reciboHtml} onOpenChange={(open) => !open && setReciboHtml(null)}>
+      <Dialog
+        open={!!recibos.previewUrl}
+        onOpenChange={(open) => !open && recibos.closePreview()}
+      >
         <DialogContent className="sm:max-w-lg">
           <DialogHeader>
             <DialogTitle>Recibo de pago</DialogTitle>
           </DialogHeader>
-          {reciboHtml ? (
-            <iframe title="Recibo" srcDoc={reciboHtml} className="h-[70vh] w-full border-0" />
+          {recibos.previewUrl ? (
+            // Sin `sandbox`, por el mismo motivo que `ReceiptScreen`: el recibo
+            // pasó de HTML interpolado a PDF, así que ya no hay markup que
+            // inyectar, y sandboxear un `blob:` de PDF rompe el visor (ver el
+            // comentario largo en `ReceiptScreen.tsx`).
+            <iframe title="Recibo" src={recibos.previewUrl} className="h-[70vh] w-full border-0" />
           ) : null}
         </DialogContent>
       </Dialog>

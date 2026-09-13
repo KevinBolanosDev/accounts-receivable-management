@@ -100,9 +100,14 @@ export class CobrosService {
           monto,
         });
         if (descuento.count === 0) {
-          // Carrera perdida (otro cobro simultáneo). El servicio ya validó
-          // que el saldo era suficiente — algo cambió en milisegundos.
-          throw new ConflictException("El saldo del crédito cambió durante el cobro. Reintenta.");
+          // Carrera perdida: el WHERE de `descontarSaldo` no afectó ninguna
+          // fila. Dos causas posibles, indistinguibles desde acá a propósito
+          // (ver el comentario del repository) — otro cobro simultáneo ya
+          // descontó el saldo, o el crédito se anuló/saldó en la ventana
+          // entre la validación de arriba y este punto (DATA-1). El servicio
+          // ya validó estado y saldo hace un instante — algo cambió en
+          // milisegundos.
+          throw new ConflictException("El crédito cambió durante el cobro. Reintenta.");
         }
 
         // 2) crear el Pago dentro del mismo tx.

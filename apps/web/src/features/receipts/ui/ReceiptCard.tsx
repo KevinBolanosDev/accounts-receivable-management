@@ -96,14 +96,7 @@ export function ReceiptCard({
             // historial.
             onDownload={() => window.print()}
             phone={phone}
-            share={{
-              clienteNombre: receipt.credito.clienteNombre,
-              producto: receipt.credito.productoNombre,
-              monto: receipt.monto,
-              fecha: receipt.fecha,
-              reciboCodigo: codigo,
-              publicUrl,
-            }}
+            share={{ clienteNombre: receipt.credito.clienteNombre, publicUrl }}
             className="w-full justify-center gap-3"
           />
         </CardFooter>

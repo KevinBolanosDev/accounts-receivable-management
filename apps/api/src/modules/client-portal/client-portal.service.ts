@@ -1,5 +1,10 @@
 import { Injectable, NotFoundException } from "@nestjs/common";
-import type { ClientCreditDetail, ClientCreditListItem, ClientCreditSummary } from "@repo/types";
+import type {
+  ClientCreditDetail,
+  ClientCreditListItem,
+  ClientCreditSummary,
+  Receipt,
+} from "@repo/types";
 
 import type { AuthenticatedUser } from "../../core/auth/auth-request";
 import { mapCreditoListItem } from "../../core/domain/credito-cliente.util";
@@ -25,8 +30,8 @@ export class ClientPortalService {
   // El chequeo de pertenencia (`pago.credito.clienteId === user.sub`) ya lo
   // hace `ReceiptsService.assertAccess` para `rol: "CLIENTE"` — este método
   // solo delega, no duplica esa lógica.
-  getPaymentReceiptHtml(pagoId: string, user: AuthenticatedUser): Promise<string> {
-    return this.receiptsService.getReceiptHtml(pagoId, user);
+  getPaymentReceipt(pagoId: string, user: AuthenticatedUser): Promise<Receipt> {
+    return this.receiptsService.getReceipt(pagoId, user);
   }
 
   async getMyCredits(user: AuthenticatedUser): Promise<ClientCreditListItem[]> {

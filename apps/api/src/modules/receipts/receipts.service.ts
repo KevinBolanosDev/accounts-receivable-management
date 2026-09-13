@@ -1,8 +1,9 @@
 import { ForbiddenException, Injectable, NotFoundException } from "@nestjs/common";
-import type { Receipt } from "@repo/types";
+import type { Receipt, ReceiptInstallment } from "@repo/types";
 
 import type { AuthenticatedUser } from "../../core/auth/auth-request";
 import { requireAdminId } from "../../core/auth/tenant.util";
+import { buildPaymentHistory } from "../../core/domain/payment-schedule.util";
 import { buildReciboCodigo } from "../../core/domain/receipt-code.util";
 import { PrismaService } from "../../core/prisma/prisma.service";
 import { ReceiptTokenService } from "../../core/receipts/receipt-token.service";
@@ -50,8 +51,8 @@ export class ReceiptsService {
   // Variante SIN chequeo de rol, para el enlace público firmado (`GET /r/:token`).
   // La autorización ya la hizo `ReceiptTokenService.verify`: el token es la
   // capability. No exponer este método a ningún controller autenticado.
-  async getPublicReceiptHtml(pagoId: string): Promise<string> {
-    return buildReceiptHtml(await this.loadReceipt(pagoId, null));
+  async getPublicReceipt(pagoId: string): Promise<Receipt> {
+    return this.loadReceipt(pagoId, null);
   }
 
   // `user === null` ⇒ acceso ya autorizado por token firmado.
@@ -69,6 +70,14 @@ export class ReceiptsService {
               },
             },
             producto: { select: { nombre: true } },
+            // Todos los pagos del crédito, no solo este: el registro de cuotas
+            // y la numeración salen de `buildPaymentHistory`, que necesita el
+            // orden cronológico COMPLETO para numerar bien (mismo motivo que
+            // documenta `ClosureCreditRow.pagos` en `daily-closure.util.ts`).
+            pagos: {
+              orderBy: { fecha: "asc" },
+              include: { cobrador: { select: { nombre: true } } },
+            },
           },
         },
         cobrador: { select: { nombre: true } },
@@ -82,6 +91,8 @@ export class ReceiptsService {
       this.assertAccess(pago, user);
     }
 
+    const credito = pago.credito;
+
     // El saldo restante al momento del pago no se persiste — se deriva del
     // `credito.saldoPendiente` ACTUAL menos los pagos POSTERIORES. Si el
     // crédito ya está saldado y no hay pagos posteriores, `saldoRestante`
@@ -94,8 +105,10 @@ export class ReceiptsService {
       _sum: { monto: true },
     });
     const saldoRestante =
-      Number(pago.credito.saldoPendiente.toString()) +
+      Number(credito.saldoPendiente.toString()) +
       Number(pagosPosteriores._sum.monto?.toString() ?? "0");
+
+    const progreso = buildReceiptProgress(credito, pago.id);
 
     return {
       id: pago.id,
@@ -103,14 +116,21 @@ export class ReceiptsService {
       codigo: buildReciboCodigo(pago.id),
       createdAt: pago.createdAt.toISOString(),
       credito: {
-        codigo: pago.credito.codigo,
-        clienteNombre: pago.credito.cliente.nombre,
-        productoNombre: pago.credito.producto.nombre,
+        codigo: credito.codigo,
+        clienteNombre: credito.cliente.nombre,
+        productoNombre: credito.producto.nombre,
+        capital: Number(credito.monto.toString()),
+        interes: Number(credito.interes.toString()),
+        montoTotal: Number(credito.montoTotal.toString()),
+        cuotaValor: Number(credito.cuotaDiaria.toString()),
+        cuotas: credito.cuotas,
+        frecuencia: credito.frecuencia,
       },
       monto: Number(pago.monto.toString()),
       saldoRestante,
       fecha: pago.fecha.toISOString(),
       cobradorNombre: pago.cobrador.nombre,
+      ...progreso,
       // El HTML server-rendered no los usa (trae su propio botón "Imprimir" y
       // ya se abre desde el link firmado): calcularlos siempre es más simple
       // que ramificar por consumidor, y firmar un JWT sin I/O es barato.
@@ -118,15 +138,6 @@ export class ReceiptsService {
       clienteTelefono: pago.credito.cliente.telefono,
       anulado: pago.anulado,
     };
-  }
-
-  // Construye el HTML server-rendered del recibo. Es un documento STANDALONE:
-  // CSS inline, sin Tailwind, sin necesidad del SPA. Diseñado para abrirse
-  // directamente desde WhatsApp sin autenticación (futuro público) — hoy
-  // protegido por JWT (staff o cliente, según el controller que lo invoque).
-  async getReceiptHtml(pagoId: string, user: AuthenticatedUser): Promise<string> {
-    const receipt = await this.getReceipt(pagoId, user);
-    return buildReceiptHtml(receipt);
   }
 
   // Scoping por rol (hallazgo de revisión de Fase 4.0-4.10: antes no existía
@@ -162,131 +173,94 @@ export class ReceiptsService {
   }
 }
 
-// === HTML builder =====================================================
-// Plantilla standalone con CSS inline. No usa Tailwind ni dependencias del
-// SPA — el recibo es un documento que se abre solo.
+// === progreso del crédito AL MOMENTO DEL PAGO ===============================
 
-function formatCop(n: number): string {
-  return new Intl.NumberFormat("es-CO", {
-    style: "currency",
-    currency: "COP",
-    maximumFractionDigits: 0,
-  }).format(n);
+interface ProgresoCredito {
+  numeroCuota: number;
+  cuotasPagadas: number;
+  cuotasRestantes: number;
+  cuotasPagadasDetalle: ReceiptInstallment[];
 }
 
-// Fecha CON hora: un cobrador puede registrar varios pagos del mismo cliente
-// el mismo día, y sin la hora los recibos son indistinguibles entre sí.
-// `timeZone` fijo: el server corre en UTC y sin esto el recibo mostraría una
-// hora distinta a la que ve el cobrador en pantalla.
-function formatDate(iso: string): string {
-  return new Date(iso).toLocaleString("es-CO", {
-    day: "2-digit",
-    month: "2-digit",
-    year: "numeric",
-    hour: "numeric",
-    minute: "2-digit",
-    timeZone: "America/Bogota",
-  });
-}
+type CreditoConPagos = {
+  id: string;
+  fechaInicio: Date;
+  cuotas: number;
+  frecuencia: "DIARIO" | "SEMANAL" | "MENSUAL";
+  pagos: {
+    id: string;
+    creditoId: string;
+    monto: { toString(): string };
+    fecha: Date;
+    cobradorId: string;
+    cobrador: { nombre: string | null };
+    reciboUrl: string | null;
+    anulado: boolean;
+  }[];
+};
 
-function escapeHtml(s: string): string {
-  return s
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#39;");
-}
+/**
+ * Cuántas cuotas llevaba pagadas el crédito CUANDO se hizo este pago, y con
+ * qué puntualidad — nunca "a hoy".
+ *
+ * Un recibo es el comprobante de un instante: el enlace público dura 90 días,
+ * así que si se abre tres meses después tiene que seguir diciendo lo mismo que
+ * el día que se emitió. Es la misma disciplina que ya usaba `saldoRestante`
+ * (que suma de vuelta los pagos posteriores en lugar de leer el saldo actual);
+ * calcular esto "a hoy" habría dejado el recibo contradiciéndose solo: "cuota
+ * 18 de 20" arriba y el saldo de la cuota 5 abajo.
+ *
+ * Reusa `buildPaymentHistory` en vez de recontar acá: esa función ya sabe
+ * numerar cuotas salteando los pagos anulados y decidir ON_TIME vs LATE, y
+ * tiene 35 unit tests. Se corta el historial en este pago y se descarta lo
+ * posterior.
+ */
+function buildReceiptProgress(credito: CreditoConPagos, pagoId: string): ProgresoCredito {
+  const historial = buildPaymentHistory(
+    credito,
+    credito.pagos.map((p) => ({
+      id: p.id,
+      creditoId: p.creditoId,
+      monto: Number(p.monto.toString()),
+      fecha: p.fecha,
+      cobradorId: p.cobradorId,
+      cobradorNombre: p.cobrador.nombre,
+      reciboUrl: p.reciboUrl,
+      anulado: p.anulado,
+    })),
+    new Date(),
+  );
 
-function buildReceiptHtml(r: Receipt): string {
-  // Mantenemos fidelidad con `ReceiptCard` del front (paleta índigo/cian).
-  // CSS print-friendly incluido (oculta acciones, agranda el monto).
-  return `<!doctype html>
-<html lang="es">
-<head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Recibo ${escapeHtml(r.codigo)}</title>
-  <style>
-    :root {
-      --primary: #4f46e5;
-      --accent: #06b6d4;
-      --muted: #f4f4f5;
-      --text: #18181b;
-      --muted-fg: #71717a;
-      --border: #e4e4e7;
-    }
-    * { box-sizing: border-box; }
-    html, body { margin: 0; padding: 0; background: #fafafa; color: var(--text); font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
-    .wrap { max-width: 480px; margin: 0 auto; padding: 24px 16px; }
-    .card { background: white; border: 1px solid var(--border); border-radius: 16px; overflow: hidden; }
-    .header { padding: 24px 24px 8px; text-align: center; }
-    .header .kicker { font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted-fg); }
-    .header .code { font-size: 22px; font-weight: 700; margin-top: 4px; font-variant-numeric: tabular-nums; }
-    .amount { margin: 16px 24px; padding: 20px; border-radius: 12px; background: linear-gradient(135deg, rgba(79,70,229,0.08), rgba(6,182,212,0.08)); text-align: center; }
-    .amount .kicker { font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted-fg); }
-    .amount .value { font-size: 36px; font-weight: 700; margin-top: 4px; font-variant-numeric: tabular-nums; }
-    dl { padding: 8px 24px; display: grid; grid-template-columns: 1fr 1fr; gap: 12px 16px; margin: 0; }
-    dl .k { font-size: 11px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted-fg); margin-bottom: 2px; }
-    dl .v { font-size: 14px; font-weight: 500; font-variant-numeric: tabular-nums; }
-    .balance { grid-column: 1 / -1; padding: 12px; border: 1px solid var(--border); border-radius: 8px; margin-top: 8px; }
-    .balance .v { font-size: 20px; font-weight: 700; }
-    .actions { padding: 16px 24px 24px; display: flex; flex-direction: column; gap: 8px; }
-    .actions a, .actions button { display: block; text-align: center; padding: 12px 16px; border-radius: 8px; font-size: 14px; font-weight: 500; text-decoration: none; border: 0; cursor: pointer; }
-    .btn-primary { background: var(--primary); color: white; }
-    .btn-secondary { background: var(--muted); color: var(--text); }
-    .void-banner { margin: 16px 24px 0; padding: 10px 12px; border-radius: 8px; background: #fef2f2; color: #b91c1c; font-size: 13px; font-weight: 600; text-align: center; }
-    @media print {
-      .actions { display: none; }
-      .wrap { padding: 0; }
-      .card { border: 0; box-shadow: none; }
-      body { background: white; }
-      .amount .value { font-size: 42px; }
-    }
-  </style>
-</head>
-<body>
-  <div class="wrap">
-    <div class="card">
-      ${r.anulado ? '<p class="void-banner">Este pago fue ANULADO — no cuenta como abono al crédito.</p>' : ""}
-      <div class="header">
-        <p class="kicker">Recibo de pago</p>
-        <p class="code">${escapeHtml(r.codigo)}</p>
-      </div>
+  // Solo cuotas realmente pagadas: `buildPaymentHistory` también devuelve
+  // filas SINTÉTICAS de cuotas sin pagar (`fechaPago === null`) y filas de
+  // auditoría de pagos anulados (`numeroCuota === 0`). Ninguna de las dos va
+  // en el registro de un recibo.
+  const pagadas = historial
+    .filter((c) => c.fechaPago !== null && c.numeroCuota > 0 && c.estado !== "ANULADO")
+    .sort((a, b) => a.numeroCuota - b.numeroCuota);
 
-      <div class="amount">
-        <p class="kicker">Monto pagado</p>
-        <p class="value">${escapeHtml(formatCop(r.monto))}</p>
-      </div>
+  const indice = pagadas.findIndex((c) => c.id === pagoId);
 
-      <dl>
-        <div>
-          <p class="k">Cliente</p>
-          <p class="v">${escapeHtml(r.credito.clienteNombre)}</p>
-        </div>
-        <div>
-          <p class="k">Producto</p>
-          <p class="v">${escapeHtml(r.credito.productoNombre)}</p>
-        </div>
-        <div>
-          <p class="k">Crédito</p>
-          <p class="v">${escapeHtml(r.credito.codigo)}</p>
-        </div>
-        <div>
-          <p class="k">Fecha</p>
-          <p class="v">${escapeHtml(formatDate(r.fecha))}</p>
-        </div>
-        <div class="balance">
-          <p class="k">Saldo restante</p>
-          <p class="v">${escapeHtml(formatCop(r.saldoRestante))}</p>
-        </div>
-      </dl>
+  // El pago no está en el cronograma: es un pago ANULADO (su fila quedó como
+  // auditoría con `numeroCuota: 0`). El recibo sigue siendo válido como
+  // comprobante — se marca anulado y se muestra sin número de cuota — pero no
+  // tiene una posición que reportar, así que no se inventa ninguna.
+  if (indice === -1) {
+    return { numeroCuota: 0, cuotasPagadas: 0, cuotasRestantes: 0, cuotasPagadasDetalle: [] };
+  }
 
-      <div class="actions">
-        <a class="btn-primary" href="#" onclick="window.print(); return false;">Imprimir / Guardar PDF</a>
-      </div>
-    </div>
-  </div>
-</body>
-</html>`;
+  const hastaEstePago = pagadas.slice(0, indice + 1);
+  const cuotasPagadas = hastaEstePago.length;
+
+  return {
+    numeroCuota: pagadas[indice]!.numeroCuota,
+    cuotasPagadas,
+    cuotasRestantes: Math.max(0, credito.cuotas - cuotasPagadas),
+    cuotasPagadasDetalle: hastaEstePago.map((c) => ({
+      numeroCuota: c.numeroCuota,
+      monto: c.monto,
+      fechaPago: c.fechaPago!,
+      estado: c.estado,
+    })),
+  };
 }

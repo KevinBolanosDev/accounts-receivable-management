@@ -1,4 +1,4 @@
-import { Controller, Get, Header, Param, UseGuards } from "@nestjs/common";
+import { Controller, Get, Param, StreamableFile, UseGuards } from "@nestjs/common";
 import {
   clientCreditDetailSchema,
   clientCreditListItemSchema,
@@ -13,6 +13,7 @@ import { CurrentUser } from "../../core/auth/current-user.decorator";
 import { MustChangePasswordGuard } from "../../core/auth/must-change-password.guard";
 import { Roles } from "../../core/auth/roles.decorator";
 
+import { buildReceiptPdf, receiptPdfFilename } from "../receipts/receipt-pdf";
 import { ClientPortalService } from "./client-portal.service";
 
 // Fase 4 — portal de solo lectura del cliente autenticado (`rol: "CLIENTE"`).
@@ -50,11 +51,14 @@ export class ClientPortalController {
   // `GET /payments/:pagoId/receipt`, que es del staff con otro scoping) —
   // decisión #15 de FASE_4_SUBFASES.md.
   @Get("payments/:pagoId/receipt")
-  @Header("Content-Type", "text/html; charset=utf-8")
   async getPaymentReceipt(
     @Param("pagoId") pagoId: string,
     @CurrentUser() user: AuthenticatedUser,
-  ): Promise<string> {
-    return this.clientPortalService.getPaymentReceiptHtml(pagoId, user);
+  ): Promise<StreamableFile> {
+    const receipt = await this.clientPortalService.getPaymentReceipt(pagoId, user);
+    return new StreamableFile(await buildReceiptPdf(receipt), {
+      type: "application/pdf",
+      disposition: `inline; filename="${receiptPdfFilename(receipt.codigo)}"`,
+    });
   }
 }

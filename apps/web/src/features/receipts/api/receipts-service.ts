@@ -1,41 +1,29 @@
 import { receiptSchema, type Receipt } from "@repo/types";
 
-import { fetchReceiptHtml } from "@/entities/receipt";
+import { fetchReceiptPdf } from "@/entities/receipt";
 import { useSessionStore } from "@/entities/session";
 import { apiFetch } from "@/shared/api/client";
 
 export interface ReceiptsService {
-  // Devuelve el HTML server-rendered del recibo (no JSON). El front lo monta
-  // en un iframe con `srcDoc`. Requiere JWT del staff.
-  getByPagoId(pagoId: string): Promise<string>;
+  // Devuelve el PDF del recibo (no JSON). El front lo monta en un iframe con
+  // un object URL. Requiere JWT del staff.
+  getByPagoId(pagoId: string): Promise<Blob>;
   // Contraparte JSON del mismo recibo — lo que necesita `ReceiptScreen` para
   // armar el mensaje de WhatsApp (cliente, producto, monto, `reciboPublicUrl`)
   // justo después de cobrar, cuando solo tiene el `pagoId` en la URL.
   getData(pagoId: string): Promise<Receipt>;
 }
 
-// Mock — devuelve un HTML placeholder con datos del seed para poder iterar
-// el front sin esperar al back (se activa en 4.9). Mantenido por la
-// convención "mocks no se borran".
-const mockHtml = (pagoId: string): string => `
-<!doctype html>
-<html lang="es">
-<head>
-  <meta charset="utf-8" />
-  <title>Recibo (mock)</title>
-</head>
-<body style="font-family: system-ui; padding: 24px; color: #1f2937;">
-  <h1 style="margin: 0 0 8px; font-size: 20px;">RECIBO DE PAGO (mock)</h1>
-  <p style="color:#6b7280; margin: 0 0 24px;">pagoId: ${pagoId}</p>
-  <p>Este HTML es un placeholder. En 4.8 el back sirve el HTML real
-     desde <code>/payments/:pagoId/receipt</code>.</p>
-</body>
-</html>
-`;
-
+// Mock — mantenido por la convención "mocks no se borran", pero `getByPagoId`
+// ya no puede devolver algo útil: el recibo es un PDF generado con `pdfkit`,
+// que es server-only. Mismo criterio que `mockCobrosService.registrarCobro` y
+// `mockClosuresService.getPdfBlob` — no tiene sentido fingir en el navegador
+// algo que solo corre en el servidor.
 export const mockReceiptsService: ReceiptsService = {
-  async getByPagoId(pagoId: string): Promise<string> {
-    return mockHtml(pagoId);
+  getByPagoId(): Promise<Blob> {
+    return Promise.reject(
+      new Error("El PDF del recibo lo genera el backend (pdfkit); no hay mock en el navegador."),
+    );
   },
   async getData(pagoId: string): Promise<Receipt> {
     return receiptSchema.parse({
@@ -43,11 +31,25 @@ export const mockReceiptsService: ReceiptsService = {
       pagoId,
       codigo: `R-${pagoId.slice(0, 6).toUpperCase()}`,
       createdAt: new Date().toISOString(),
-      credito: { codigo: "CR-2041", clienteNombre: "Cliente mock", productoNombre: "Producto mock" },
+      credito: {
+        codigo: "CR-2041",
+        clienteNombre: "Cliente mock",
+        productoNombre: "Producto mock",
+        capital: 200000,
+        interes: 20,
+        montoTotal: 240000,
+        cuotaValor: 20000,
+        cuotas: 12,
+        frecuencia: "DIARIO",
+      },
       monto: 20000,
       saldoRestante: 180000,
       fecha: new Date().toISOString(),
       cobradorNombre: "Cobrador mock",
+      numeroCuota: 3,
+      cuotasPagadas: 3,
+      cuotasRestantes: 9,
+      cuotasPagadasDetalle: [],
       reciboPublicUrl: null,
       clienteTelefono: null,
     });
@@ -59,9 +61,9 @@ export const mockReceiptsService: ReceiptsService = {
 // crédito del Cobrador). Acá solo queda resolver el token del staff — el
 // `scope: "staff"` es lo que elige el endpoint protegido por rol.
 export const httpReceiptsService: ReceiptsService = {
-  getByPagoId(pagoId: string): Promise<string> {
+  getByPagoId(pagoId: string): Promise<Blob> {
     const token = useSessionStore.getState().token;
-    return fetchReceiptHtml({ pagoId, scope: "staff", token });
+    return fetchReceiptPdf({ pagoId, scope: "staff", token });
   },
   getData(pagoId: string): Promise<Receipt> {
     return apiFetch(`/payments/${pagoId}`, receiptSchema, {

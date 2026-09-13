@@ -283,7 +283,7 @@ describe("ClientPortalController (e2e)", () => {
     expect(summary.creditosActivos).toBe(1);
   });
 
-  it("GET /client-portal/payments/:pagoId/receipt responde 200 + HTML para un pago propio", async () => {
+  it("GET /client-portal/payments/:pagoId/receipt responde 200 + PDF para un pago propio", async () => {
     const cliente = await createCliente();
     const { pagoOnTimeId } = await createCreditoConHistorialMixto(cliente.id, cobradorId);
     const token = await loginCliente(cliente.documento);
@@ -293,7 +293,11 @@ describe("ClientPortalController (e2e)", () => {
       .set("Authorization", `Bearer ${token}`)
       .expect(200);
 
-    expect(res.text).toContain("<!doctype html>");
+    // El recibo del portal es el MISMO PDF que ve el staff (mismo
+    // `buildReceiptPdf`), solo cambia el scoping del endpoint.
+    expect(res.headers["content-type"]).toContain("application/pdf");
+    const bytes = Buffer.isBuffer(res.body) ? res.body : Buffer.from(res.text ?? "", "binary");
+    expect(bytes.subarray(0, 5).toString("latin1")).toBe("%PDF-");
   });
 
   it("GET /client-portal/payments/:pagoId/receipt responde 404 para un pago de otro cliente", async () => {

@@ -1,4 +1,4 @@
-import { fetchReceiptHtml } from "@/entities/receipt";
+import { fetchReceiptPdf } from "@/entities/receipt";
 import { useClientSessionStore } from "@/entities/session";
 
 // Fase 4.12 — el cliente ve el recibo de sus propios pagos a través de un
@@ -11,7 +11,7 @@ import { useClientSessionStore } from "@/entities/session";
 // `features/cobros` no puede importar `features/receipts` (acoplamiento
 // horizontal). Acá solo queda resolver el token, que es lo propio de esta
 // feature.
-export function getClientReceiptHtml(pagoId: string): Promise<string> {
+export function getClientReceiptPdf(pagoId: string): Promise<Blob> {
   const token = useClientSessionStore.getState().token;
-  return fetchReceiptHtml({ pagoId, scope: "client", token });
+  return fetchReceiptPdf({ pagoId, scope: "client", token });
 }
