@@ -22,7 +22,7 @@ import {
   esCuotaAnulada,
   esCuotaSinPagar,
 } from "../lib/cuota-estado";
-import { describeCobertura } from "../lib/cobertura";
+import { coberturaLabels } from "../lib/cobertura";
 
 export type PaymentColumn =
   | "cuota"
@@ -92,6 +92,7 @@ export function PaymentHistoryTable({
         {pagos.map((pago) => {
           const sinPagar = esCuotaSinPagar(pago.estado);
           const anulada = esCuotaAnulada(pago.estado);
+          const cobertura = !sinPagar && !anulada ? coberturaLabels(pago, cuotasTotal) : [];
           return (
             <TableRow
               key={pago.id}
@@ -136,7 +137,7 @@ export function PaymentHistoryTable({
               ) : null}
               {show("monto") ? (
                 <TableCell className="text-right">
-                  <div className="flex flex-col items-end gap-0.5">
+                  <div className="flex flex-col items-end gap-1">
                     <span
                       className={cn(
                         "font-medium tabular-nums",
@@ -146,13 +147,19 @@ export function PaymentHistoryTable({
                       {/* Anulada SÍ tuvo monto — se tacha, no se oculta (auditoría). */}
                       {sinPagar ? "—" : formatCurrency(pago.monto)}
                     </span>
-                    {/* Solo aparece si el pago cubrió más de una cuota de una
-                        vez o dejó saldo a favor — un pago normal (1 cuota
-                        exacta) no muestra nada acá. */}
-                    {!sinPagar && !anulada && describeCobertura(pago) ? (
-                      <span className="max-w-40 text-right text-caption text-muted-foreground">
-                        {describeCobertura(pago)}
-                      </span>
+                    {/* Chips cortos (`whitespace-nowrap`, ver `Badge`), no una
+                        frase larga: una frase libre acá desbordaba la columna
+                        y se montaba sobre "Estado". Solo aparecen si el pago
+                        cubrió más de una cuota de una vez o dejó saldo a
+                        favor — un pago normal no muestra nada acá. */}
+                    {cobertura.length > 0 ? (
+                      <div className="flex flex-wrap justify-end gap-1">
+                        {cobertura.map((label) => (
+                          <Badge key={label} status="pagado">
+                            {label}
+                          </Badge>
+                        ))}
+                      </div>
                     ) : null}
                   </div>
                 </TableCell>

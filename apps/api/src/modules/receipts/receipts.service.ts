@@ -267,6 +267,7 @@ function buildReceiptProgress(credito: CreditoConPagos, pagoId: string): Progres
       fechaPago: c.fechaPago!,
       estado: c.estado,
       cuotasCubiertas: c.cuotasCubiertas,
+      cuotasCubiertasAcumuladas: c.cuotasCubiertasAcumuladas,
       saldoAFavor: c.saldoAFavor,
       porcentajeProximaCuota: c.porcentajeProximaCuota,
     })),

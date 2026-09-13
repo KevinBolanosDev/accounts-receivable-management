@@ -101,7 +101,9 @@ describe("computeClosureSummary", () => {
       clienteNombre: "Gabriel",
       fechaInicio: dia(-10),
       saldoPendiente: 400_000,
-      pagos: [pago({ id: "pg-cubre-todo", creditoId: "cr-cubierto", fecha: dia(0), monto: 200_000 })],
+      pagos: [
+        pago({ id: "pg-cubre-todo", creditoId: "cr-cubierto", fecha: dia(0), monto: 200_000 }),
+      ],
     });
 
     const resumen = computeClosureSummary({ creditos: [creditoCubierto], date: dia(0) });

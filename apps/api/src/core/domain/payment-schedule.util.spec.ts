@@ -464,6 +464,73 @@ describe("buildPaymentHistory", () => {
     expect(fila2.saldoAFavor).toBe(0);
   });
 
+  it("un pago que completa una cuota Y deja saldo a favor lleva ese saldo hacia la SIGUIENTE cuota, no hacia la que acaba de completar", () => {
+    // Caso real reportado: cuota = $125.000. Un pago exacto ($125.000), luego
+    // un abono ($85.000, no alcanza para otra cuota) y luego otro pago exacto
+    // ($125.000) que termina de completar la cuota que el abono dejó a
+    // medias Y arranca la siguiente con el sobrante. Antes de este fix, el
+    // tercer pago mostraba el mismo `numeroCuota` y el mismo `saldoAFavor`
+    // que el segundo, como si la cuota estuviera duplicada — el dinero
+    // estaba bien contado, pero no había forma de saber que el sobrante del
+    // tercer pago ya apuntaba a la cuota SIGUIENTE.
+    const creditoCuota = {
+      id: "cr-completa-y-sigue",
+      fechaInicio: dia(0),
+      cuotas: 28,
+      frecuencia: "DIARIO" as const,
+      cuotaDiaria: 125_000,
+    };
+    const pagos = [
+      {
+        id: "pg-1",
+        creditoId: "cr-completa-y-sigue",
+        monto: 125_000, // completa la cuota 1
+        fecha: dia(1),
+        cobradorId: "u-1",
+        cobradorNombre: null,
+        reciboUrl: null,
+      },
+      {
+        id: "pg-2",
+        creditoId: "cr-completa-y-sigue",
+        monto: 85_000, // abono: no alcanza para la cuota 2
+        fecha: dia(2),
+        cobradorId: "u-1",
+        cobradorNombre: null,
+        reciboUrl: null,
+      },
+      {
+        id: "pg-3",
+        creditoId: "cr-completa-y-sigue",
+        // Con los $85.000 ya acumulados, completa la cuota 2 (le faltaban
+        // $40.000) y los $85.000 restantes quedan a favor de la cuota 3.
+        monto: 125_000,
+        fecha: dia(3),
+        cobradorId: "u-1",
+        cobradorNombre: null,
+        reciboUrl: null,
+      },
+    ];
+    const historial = buildPaymentHistory(creditoCuota, pagos, dia(3));
+    const fila2 = historial.find((h) => h.id === "pg-2")!;
+    const fila3 = historial.find((h) => h.id === "pg-3")!;
+
+    // pg-2: todavía no completa nada, saldo a favor hacia la cuota 2 (la que
+    // sigue en curso).
+    expect(fila2.numeroCuota).toBe(2);
+    expect(fila2.cuotasCubiertas).toBe(0);
+    expect(fila2.cuotasCubiertasAcumuladas).toBe(1);
+    expect(fila2.saldoAFavor).toBe(85_000);
+
+    // pg-3: completa la cuota 2 (cuotasCubiertas pasa a 1) y el MISMO monto
+    // de saldo a favor ($85.000) ya no es el mismo dato que en pg-2 — ahora
+    // `cuotasCubiertasAcumuladas` avanzó a 2, así que apunta a la cuota 3.
+    expect(fila3.numeroCuota).toBe(2);
+    expect(fila3.cuotasCubiertas).toBe(1);
+    expect(fila3.cuotasCubiertasAcumuladas).toBe(2);
+    expect(fila3.saldoAFavor).toBe(85_000);
+  });
+
   it("un pago que cubre las cuotas vencidas no genera ninguna fila DEFAULTED (no queda en falsa mora)", () => {
     const creditoCuota = {
       id: "cr-mora",
