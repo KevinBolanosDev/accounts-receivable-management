@@ -291,6 +291,10 @@ const PAGOS_DEMO: PaymentHistoryItem[] = [
     diasAtraso: 0,
     reciboCodigo: null,
     anulado: false,
+    cuotasCubiertas: 0,
+    cuotasCubiertasAcumuladas: 14,
+    saldoAFavor: 0,
+    porcentajeProximaCuota: 0,
   },
   {
     id: "pg-d-4",
@@ -308,6 +312,10 @@ const PAGOS_DEMO: PaymentHistoryItem[] = [
     diasAtraso: 3,
     reciboCodigo: null,
     anulado: false,
+    cuotasCubiertas: 0,
+    cuotasCubiertasAcumuladas: 13,
+    saldoAFavor: 0,
+    porcentajeProximaCuota: 0,
   },
   {
     id: "pg-d-3",
@@ -325,6 +333,10 @@ const PAGOS_DEMO: PaymentHistoryItem[] = [
     diasAtraso: 10,
     reciboCodigo: null,
     anulado: false,
+    cuotasCubiertas: 0,
+    cuotasCubiertasAcumuladas: 12,
+    saldoAFavor: 0,
+    porcentajeProximaCuota: 0,
   },
   {
     id: "pg-d-2",
@@ -344,6 +356,10 @@ const PAGOS_DEMO: PaymentHistoryItem[] = [
     diasAtraso: 2,
     reciboCodigo: "R-PGD2",
     anulado: false,
+    cuotasCubiertas: 1,
+    cuotasCubiertasAcumuladas: 12,
+    saldoAFavor: 0,
+    porcentajeProximaCuota: 0,
   },
   {
     id: "pg-d-1",
@@ -361,6 +377,10 @@ const PAGOS_DEMO: PaymentHistoryItem[] = [
     diasAtraso: 0,
     reciboCodigo: "R-PGD1",
     anulado: false,
+    cuotasCubiertas: 1,
+    cuotasCubiertasAcumuladas: 11,
+    saldoAFavor: 0,
+    porcentajeProximaCuota: 0,
   },
   {
     id: "pg-d-0",
@@ -379,6 +399,10 @@ const PAGOS_DEMO: PaymentHistoryItem[] = [
     diasAtraso: 0,
     reciboCodigo: "R-PGD0",
     anulado: true,
+    cuotasCubiertas: 0,
+    cuotasCubiertasAcumuladas: 0,
+    saldoAFavor: 0,
+    porcentajeProximaCuota: 0,
   },
 ];
 

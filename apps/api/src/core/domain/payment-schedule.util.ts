@@ -68,6 +68,10 @@ function diffInCalendarDays(a: Date, b: Date): number {
   return Math.floor((utcA - utcB) / DIA_MS);
 }
 
+function round2(value: number): number {
+  return Math.round(value * 100) / 100;
+}
+
 /**
  * Fecha en la que vence la cuota `numeroCuota` (1-indexada): **la cuota 1 vence
  * un período DESPUÉS de `fechaInicio`**, y de ahí en adelante se avanza un
@@ -131,6 +135,16 @@ export interface PaymentScheduleCredito {
   frecuencia: FrecuenciaPago;
 }
 
+// `buildPaymentHistory` necesita ADEMÁS el valor de una cuota para calcular
+// cuánto dinero cubre cada pago (ver el comentario grande más abajo).
+// `cuotasVencidasAlDia`/`computeProximaFechaCuota` no tocan dinero, así que
+// siguen aceptando el `PaymentScheduleCredito` liviano — no se les fuerza un
+// campo que no usan.
+export interface PaymentHistoryCredito extends PaymentScheduleCredito {
+  /** Valor de UNA cuota (`montoTotal / cuotas`). */
+  cuotaDiaria: number;
+}
+
 /**
  * Cuántas cuotas YA vencieron a la fecha `today` (contando la que vence hoy),
  * con tope en el total del plan.
@@ -165,11 +179,35 @@ export interface PaymentScheduleRow {
 }
 
 // Construye el historial enriquecido de un crédito: cada pago VIGENTE (no
-// anulado) recibe un `numeroCuota` (orden cronológico, 1er pago = cuota 1 —
-// ver decisión #13) y un `estado` (`ON_TIME` si su día de calendario es igual
-// o anterior al esperado, `LATE` si es posterior). Los períodos ya vencidos
-// sin pago correspondiente se agregan como filas sintéticas sin pagar (no
-// persisten en `Pago`, `monto: 0`, `reciboCodigo: null`).
+// anulado) recibe un `numeroCuota` y un `estado` (`ON_TIME` si su día de
+// calendario es igual o anterior al esperado, `LATE` si es posterior). Los
+// períodos ya vencidos sin pago correspondiente se agregan como filas
+// sintéticas sin pagar (no persisten en `Pago`, `monto: 0`, `reciboCodigo: null`).
+//
+// `numeroCuota` NO es "orden del pago" (1er pago = cuota 1, 2do = cuota 2...):
+// es DINERO acumulado ÷ valor de cuota. Antes sí era por orden de pago, y eso
+// era un bug real, no solo cosmético — si un cliente pagaba de una vez el
+// equivalente a 6 cuotas, el sistema lo seguía contando como "1 cuota" y las
+// otras 5 quedaban como filas sintéticas OVERDUE/DEFAULTED aunque ya estaban
+// cubiertas con plata. `daily-closure.util.ts` usa esas filas DEFAULTED para
+// materializar `Credito.estado = MORA`, así que ese cliente podía terminar en
+// mora por haber adelantado dinero de sobra.
+//
+// Por eso cada pago vigente, en orden cronológico, lleva la cuenta de:
+//   - `cuotasCubiertasAcumuladas`: cuántas cuotas COMPLETAS hay cubiertas con
+//     el dinero acumulado hasta este pago inclusive (`floor(acumulado / cuotaDiaria)`,
+//     tope en `credito.cuotas`).
+//   - `cuotasCubiertas`: cuántas de esas cuotas aportó ESTE pago en particular
+//     (la diferencia contra el acumulado de antes de este pago) — 0 si el
+//     pago fue un abono parcial que no alcanzó a completar ninguna.
+//   - `saldoAFavor`/`porcentajeProximaCuota`: lo que sobra sin completar una
+//     cuota nueva, y qué % de la próxima representa. Es lo que un abono
+//     parcial dos días seguidos va acumulando hasta cerrar una cuota.
+// `numeroCuota` sigue siendo la cuota contra la que se compara la fecha
+// esperada (ON_TIME/LATE): la última que este pago completó, o si fue
+// parcial, la que está en curso (`cuotasCubiertasAcumuladas` antes de este
+// pago, + 1) — así un abono que no cierra nada también se compara contra el
+// vencimiento correcto.
 //
 // Los pagos ANULADOS se excluyen de ese cálculo por completo (como si nunca
 // hubieran pasado: el período que "ocupaban" vuelve a contar como pendiente,
@@ -178,7 +216,7 @@ export interface PaymentScheduleRow {
 // desaparecen del historial (mismo principio que anular un crédito: se
 // anula, no se borra), pero tampoco se mezclan con el cronograma real.
 export function buildPaymentHistory(
-  credito: PaymentScheduleCredito,
+  credito: PaymentHistoryCredito,
   pagosOrdenados: PaymentScheduleRow[], // ordenados por `fecha` ascendente
   today: Date,
   // Enlace público firmado del recibo (`/r/:token`), el que se comparte por
@@ -189,9 +227,28 @@ export function buildPaymentHistory(
 ): PaymentHistoryItem[] {
   const pagosVigentes = pagosOrdenados.filter((p) => !p.anulado);
   const pagosAnulados = pagosOrdenados.filter((p) => p.anulado);
+  const cuotaDiaria = credito.cuotaDiaria > 0 ? credito.cuotaDiaria : 0;
 
-  const historial: PaymentHistoryItem[] = pagosVigentes.map((pago, index) => {
-    const numeroCuota = index + 1;
+  let acumulado = 0;
+  let cuotasCubiertasAntes = 0;
+  const historial: PaymentHistoryItem[] = pagosVigentes.map((pago) => {
+    acumulado += pago.monto;
+    const cuotasCubiertasAcumuladas =
+      cuotaDiaria > 0
+        ? Math.min(credito.cuotas, Math.floor(acumulado / cuotaDiaria))
+        : cuotasCubiertasAntes;
+    const cuotasCubiertas = cuotasCubiertasAcumuladas - cuotasCubiertasAntes;
+    const saldoAFavor =
+      cuotaDiaria > 0 ? round2(acumulado - cuotasCubiertasAcumuladas * cuotaDiaria) : 0;
+    const porcentajeProximaCuota = cuotaDiaria > 0 ? round2((saldoAFavor / cuotaDiaria) * 100) : 0;
+    // Cuota contra la que se compara el vencimiento: la última completada por
+    // este pago, o si fue parcial, la que queda en curso.
+    const numeroCuota = Math.min(
+      credito.cuotas,
+      cuotasCubiertas > 0 ? cuotasCubiertasAcumuladas : cuotasCubiertasAntes + 1,
+    );
+    cuotasCubiertasAntes = cuotasCubiertasAcumuladas;
+
     const fechaEsperada = fechaVencimientoCuota(
       credito.fechaInicio,
       numeroCuota,
@@ -217,13 +274,17 @@ export function buildPaymentHistory(
       reciboCodigo: buildReciboCodigo(pago.id),
       reciboPublicUrl: buildPublicUrl?.(pago.id) ?? null,
       anulado: false,
+      cuotasCubiertas,
+      cuotasCubiertasAcumuladas,
+      saldoAFavor,
+      porcentajeProximaCuota,
     };
   });
 
   const cuotasVencidas = cuotasVencidasAlDia(credito, today);
-  const cuotasFaltantes = Math.max(0, cuotasVencidas - pagosVigentes.length);
+  const cuotasFaltantes = Math.max(0, cuotasVencidas - cuotasCubiertasAntes);
   for (let i = 0; i < cuotasFaltantes; i++) {
-    const numeroCuota = pagosVigentes.length + i + 1;
+    const numeroCuota = cuotasCubiertasAntes + i + 1;
     const fechaEsperada = fechaVencimientoCuota(
       credito.fechaInicio,
       numeroCuota,
@@ -255,6 +316,11 @@ export function buildPaymentHistory(
       reciboCodigo: null,
       reciboPublicUrl: null,
       anulado: false,
+      // Fila sintética, sin dinero real detrás: no hay cobertura que reportar.
+      cuotasCubiertas: 0,
+      cuotasCubiertasAcumuladas: cuotasCubiertasAntes,
+      saldoAFavor: 0,
+      porcentajeProximaCuota: 0,
     });
   }
 
@@ -279,6 +345,11 @@ export function buildPaymentHistory(
       reciboCodigo: buildReciboCodigo(pago.id),
       reciboPublicUrl: buildPublicUrl?.(pago.id) ?? null,
       anulado: true,
+      // Fila de auditoría: la plata se devolvió, no cubrió nada.
+      cuotasCubiertas: 0,
+      cuotasCubiertasAcumuladas: 0,
+      saldoAFavor: 0,
+      porcentajeProximaCuota: 0,
     });
   }
 

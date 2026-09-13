@@ -25,6 +25,11 @@ export const receiptInstallmentSchema = z.object({
   monto: z.number(),
   fechaPago: z.string(),
   estado: cuotaEstadoSchema,
+  // Cobertura en cuotas de ESTE pago — ver el mismo campo en
+  // `paymentHistoryItemSchema` (`payment-history.ts`), de donde sale.
+  cuotasCubiertas: z.number().int().default(1),
+  saldoAFavor: z.number().default(0),
+  porcentajeProximaCuota: z.number().default(0),
 });
 export type ReceiptInstallment = z.infer<typeof receiptInstallmentSchema>;
 

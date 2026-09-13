@@ -39,6 +39,9 @@ function credito(overrides: Partial<ClosureCreditRow> = {}): ClosureCreditRow {
     fechaInicio: dia(-1),
     cuotas: 30,
     frecuencia: "DIARIO",
+    // Igual al `monto` por default de `pago()`: así "1 pago = 1 cuota" sigue
+    // dando lo mismo que antes de que `numeroCuota` pasara a ser por dinero.
+    cuotaDiaria: 20_000,
     montoTotal: 600_000,
     saldoPendiente: 580_000,
     pagos: [],
@@ -85,6 +88,27 @@ describe("computeClosureSummary", () => {
     expect(resumen.unpaidClients).toEqual([
       { clienteId: "cl-mora", nombre: "Clara", saldoPendiente: 580_000, telefono: "+573001234567" },
     ]);
+  });
+
+  it("un pago grande que cubre las cuotas vencidas NO deja el crédito en mora (antes era un bug real)", () => {
+    // fechaInicio = dia(-10) ⇒ cuotas 1..10 ya vencieron a dia(0) (10 días de
+    // atraso en la 1ª, más que sobra para DEFAULTED con el conteo viejo "1
+    // pago = 1 cuota"). Un solo pago que cubre esas 10 cuotas de una vez
+    // (10 * 20.000) tiene que dejar el crédito sin ninguna cuota DEFAULTED.
+    const creditoCubierto = credito({
+      id: "cr-cubierto",
+      clienteId: "cl-cubierto",
+      clienteNombre: "Gabriel",
+      fechaInicio: dia(-10),
+      saldoPendiente: 400_000,
+      pagos: [pago({ id: "pg-cubre-todo", creditoId: "cr-cubierto", fecha: dia(0), monto: 200_000 })],
+    });
+
+    const resumen = computeClosureSummary({ creditos: [creditoCubierto], date: dia(0) });
+
+    expect(resumen.creditosEnMora).toHaveLength(0);
+    // Pagó hoy, así que tampoco aparece como "sin pagar".
+    expect(resumen.unpaidClients).toHaveLength(0);
   });
 
   it("una cuota vencida hace menos de 7 días (OVERDUE) todavía NO es mora", () => {

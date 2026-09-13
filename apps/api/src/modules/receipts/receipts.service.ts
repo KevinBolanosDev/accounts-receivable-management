@@ -187,6 +187,7 @@ type CreditoConPagos = {
   fechaInicio: Date;
   cuotas: number;
   frecuencia: "DIARIO" | "SEMANAL" | "MENSUAL";
+  cuotaDiaria: { toString(): string };
   pagos: {
     id: string;
     creditoId: string;
@@ -217,7 +218,7 @@ type CreditoConPagos = {
  */
 function buildReceiptProgress(credito: CreditoConPagos, pagoId: string): ProgresoCredito {
   const historial = buildPaymentHistory(
-    credito,
+    { ...credito, cuotaDiaria: Number(credito.cuotaDiaria.toString()) },
     credito.pagos.map((p) => ({
       id: p.id,
       creditoId: p.creditoId,
@@ -250,7 +251,11 @@ function buildReceiptProgress(credito: CreditoConPagos, pagoId: string): Progres
   }
 
   const hastaEstePago = pagadas.slice(0, indice + 1);
-  const cuotasPagadas = hastaEstePago.length;
+  // Cuotas COMPLETAS cubiertas con la plata acumulada hasta este pago
+  // inclusive — ya no "cantidad de pagos registrados" (ver el comentario
+  // grande de `buildPaymentHistory`): un pago que de una vez cubre 6 cuotas
+  // debe contar como 6, no como 1.
+  const cuotasPagadas = pagadas[indice]!.cuotasCubiertasAcumuladas;
 
   return {
     numeroCuota: pagadas[indice]!.numeroCuota,
@@ -261,6 +266,9 @@ function buildReceiptProgress(credito: CreditoConPagos, pagoId: string): Progres
       monto: c.monto,
       fechaPago: c.fechaPago!,
       estado: c.estado,
+      cuotasCubiertas: c.cuotasCubiertas,
+      saldoAFavor: c.saldoAFavor,
+      porcentajeProximaCuota: c.porcentajeProximaCuota,
     })),
   };
 }

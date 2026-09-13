@@ -4,7 +4,7 @@ import { CLOSURE_TIMEZONE } from "../reports/closure-policy";
 import { dayRange, localDateKey, utcDateKey } from "./day-boundary.util";
 import {
   buildPaymentHistory,
-  type PaymentScheduleCredito,
+  type PaymentHistoryCredito,
   type PaymentScheduleRow,
 } from "./payment-schedule.util";
 
@@ -13,7 +13,7 @@ import {
 // preview y el cierre reutilizan el mismo cálculo, así que "lo que se ve
 // antes de cerrar" y "lo que se congela al cerrar" nunca pueden divergir.
 
-export interface ClosureCreditRow extends PaymentScheduleCredito {
+export interface ClosureCreditRow extends PaymentHistoryCredito {
   clienteId: string;
   clienteNombre: string;
   clienteTelefono: string | null;

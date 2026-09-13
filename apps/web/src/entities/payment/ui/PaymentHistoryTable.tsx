@@ -22,6 +22,7 @@ import {
   esCuotaAnulada,
   esCuotaSinPagar,
 } from "../lib/cuota-estado";
+import { describeCobertura } from "../lib/cobertura";
 
 export type PaymentColumn =
   | "cuota"
@@ -134,14 +135,26 @@ export function PaymentHistoryTable({
                 <TableCell className="text-muted-foreground">{pago.reciboCodigo ?? "—"}</TableCell>
               ) : null}
               {show("monto") ? (
-                <TableCell
-                  className={cn(
-                    "text-right font-medium tabular-nums",
-                    anulada && "line-through text-muted-foreground",
-                  )}
-                >
-                  {/* Anulada SÍ tuvo monto — se tacha, no se oculta (auditoría). */}
-                  {sinPagar ? "—" : formatCurrency(pago.monto)}
+                <TableCell className="text-right">
+                  <div className="flex flex-col items-end gap-0.5">
+                    <span
+                      className={cn(
+                        "font-medium tabular-nums",
+                        anulada && "line-through text-muted-foreground",
+                      )}
+                    >
+                      {/* Anulada SÍ tuvo monto — se tacha, no se oculta (auditoría). */}
+                      {sinPagar ? "—" : formatCurrency(pago.monto)}
+                    </span>
+                    {/* Solo aparece si el pago cubrió más de una cuota de una
+                        vez o dejó saldo a favor — un pago normal (1 cuota
+                        exacta) no muestra nada acá. */}
+                    {!sinPagar && !anulada && describeCobertura(pago) ? (
+                      <span className="max-w-40 text-right text-caption text-muted-foreground">
+                        {describeCobertura(pago)}
+                      </span>
+                    ) : null}
+                  </div>
                 </TableCell>
               ) : null}
               {show("estado") ? (

@@ -11,6 +11,7 @@ import {
   esCuotaAnulada,
   esCuotaSinPagar,
 } from "../lib/cuota-estado";
+import { describeCobertura } from "../lib/cobertura";
 
 export interface PaymentRowProps extends React.ComponentProps<"div"> {
   pago: PaymentHistoryItem;
@@ -37,6 +38,9 @@ export function PaymentRow({
 }: PaymentRowProps) {
   const sinPagar = esCuotaSinPagar(pago.estado);
   const anulada = esCuotaAnulada(pago.estado);
+  // Solo aparece si el pago cubrió más de una cuota de una vez o dejó saldo
+  // a favor — un pago normal (1 cuota exacta) no muestra nada acá.
+  const cobertura = !sinPagar && !anulada ? describeCobertura(pago) : null;
 
   return (
     <div
@@ -79,6 +83,9 @@ export function PaymentRow({
           <span className="truncate text-caption text-muted-foreground">
             Ref. {pago.reciboCodigo}
           </span>
+        ) : null}
+        {cobertura ? (
+          <span className="truncate text-caption text-muted-foreground">{cobertura}</span>
         ) : null}
       </div>
 
