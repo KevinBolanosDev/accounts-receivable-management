@@ -81,7 +81,16 @@ describe("parseFechaInicio", () => {
 });
 
 describe("buildPaymentHistory", () => {
-  const credito = { id: "cr-1", fechaInicio: dia(0), cuotas: 30, frecuencia: "DIARIO" as const };
+  // `cuotaDiaria` igual al `monto` de los pagos de los tests de abajo: así el
+  // cálculo por dinero (nuevo) da exactamente lo mismo que el cálculo por
+  // orden de pago (viejo) para estos casos — 1 pago completo = 1 cuota.
+  const credito = {
+    id: "cr-1",
+    fechaInicio: dia(0),
+    cuotas: 30,
+    frecuencia: "DIARIO" as const,
+    cuotaDiaria: 55_000,
+  };
 
   it("marca ON_TIME un pago registrado el día que vence la cuota", () => {
     const pagos = [
@@ -200,6 +209,7 @@ describe("buildPaymentHistory", () => {
       fechaInicio: dia(0),
       cuotas: 2,
       frecuencia: "DIARIO" as const,
+      cuotaDiaria: 55_000,
     };
     const historial = buildPaymentHistory(creditoCorto, [], dia(10));
     expect(historial).toHaveLength(2);
@@ -212,6 +222,7 @@ describe("buildPaymentHistory", () => {
     fechaInicio: dia(0),
     cuotas: 4,
     frecuencia: "SEMANAL" as const,
+    cuotaDiaria: 300_000,
   };
 
   it("semanal: durante la primera semana no hay ninguna cuota vencida", () => {
@@ -254,6 +265,7 @@ describe("buildPaymentHistory", () => {
       fechaInicio: new Date(Date.UTC(2026, 0, 10)),
       cuotas: 6,
       frecuencia: "MENSUAL" as const,
+      cuotaDiaria: 100_000,
     };
     // 19 de feb: venció la cuota 1 (10 de feb); la 2 vence el 10 de marzo.
     const historial = buildPaymentHistory(creditoMensual, [], new Date(Date.UTC(2026, 1, 19)));
@@ -336,6 +348,217 @@ describe("buildPaymentHistory", () => {
     // no la 2, que sería el caso si el anulado ocupara un lugar en la cuenta.
     expect(correcto.numeroCuota).toBe(1);
     expect(correcto.estado).toBe("ON_TIME");
+  });
+
+  // === Cobertura por dinero (no por cantidad de pagos) =====================
+  //
+  // Antes de este cambio, `numeroCuota` era "orden de pago" (1er pago = cuota
+  // 1, sin mirar el monto). Un pago que de una vez cubría varias cuotas
+  // seguía contando como "1 cuota", y las demás quedaban como filas
+  // sintéticas OVERDUE/DEFAULTED aunque ya estaban pagadas con ese dinero.
+
+  it("un pago que cubre 6 cuotas de una vez las numera todas y no deja saldo a favor", () => {
+    const creditoCuota = {
+      id: "cr-lump",
+      fechaInicio: dia(0),
+      cuotas: 30,
+      frecuencia: "DIARIO" as const,
+      cuotaDiaria: 221_000,
+    };
+    const pagos = [
+      {
+        id: "pg-grande",
+        creditoId: "cr-lump",
+        monto: 1_326_000, // exactamente 6 cuotas (6 * 221.000)
+        fecha: dia(1),
+        cobradorId: "u-1",
+        cobradorNombre: "Cobrador Demo",
+        reciboUrl: null,
+      },
+    ];
+    const historial = buildPaymentHistory(creditoCuota, pagos, dia(1));
+    const fila = historial.find((h) => h.id === "pg-grande")!;
+    expect(fila.numeroCuota).toBe(6);
+    expect(fila.cuotasCubiertas).toBe(6);
+    expect(fila.cuotasCubiertasAcumuladas).toBe(6);
+    expect(fila.saldoAFavor).toBe(0);
+    expect(fila.porcentajeProximaCuota).toBe(0);
+  });
+
+  it("un pago grande con sobrante deja saldo a favor hacia la próxima cuota", () => {
+    const creditoCuota = {
+      id: "cr-lump2",
+      fechaInicio: dia(0),
+      cuotas: 30,
+      frecuencia: "DIARIO" as const,
+      cuotaDiaria: 221_000,
+    };
+    const pagos = [
+      {
+        id: "pg-1",
+        creditoId: "cr-lump2",
+        monto: 221_000, // completa la cuota 1
+        fecha: dia(1),
+        cobradorId: "u-1",
+        cobradorNombre: null,
+        reciboUrl: null,
+      },
+      {
+        id: "pg-2",
+        creditoId: "cr-lump2",
+        monto: 1_500_000, // acumulado 1.721.000 → 7 cuotas completas + 174.000 sobrante
+        fecha: dia(2),
+        cobradorId: "u-1",
+        cobradorNombre: null,
+        reciboUrl: null,
+      },
+    ];
+    const historial = buildPaymentHistory(creditoCuota, pagos, dia(2));
+    const fila2 = historial.find((h) => h.id === "pg-2")!;
+    expect(fila2.numeroCuota).toBe(7);
+    expect(fila2.cuotasCubiertas).toBe(6); // ya había 1 cubierta por pg-1
+    expect(fila2.cuotasCubiertasAcumuladas).toBe(7);
+    expect(fila2.saldoAFavor).toBe(174_000);
+    expect(fila2.porcentajeProximaCuota).toBeCloseTo(78.73, 1);
+  });
+
+  it("abonos parciales se acumulan hasta completar una cuota", () => {
+    const creditoCuota = {
+      id: "cr-abonos",
+      fechaInicio: dia(0),
+      cuotas: 10,
+      frecuencia: "DIARIO" as const,
+      cuotaDiaria: 221_000,
+    };
+    const pagos = [
+      {
+        id: "pg-1",
+        creditoId: "cr-abonos",
+        monto: 100_000,
+        fecha: dia(1),
+        cobradorId: "u-1",
+        cobradorNombre: null,
+        reciboUrl: null,
+      },
+      {
+        id: "pg-2",
+        creditoId: "cr-abonos",
+        monto: 121_000, // acumulado 221.000 → completa justo la cuota 1
+        fecha: dia(3),
+        cobradorId: "u-1",
+        cobradorNombre: null,
+        reciboUrl: null,
+      },
+    ];
+    const historial = buildPaymentHistory(creditoCuota, pagos, dia(3));
+    const fila1 = historial.find((h) => h.id === "pg-1")!;
+    const fila2 = historial.find((h) => h.id === "pg-2")!;
+    // El primer abono no completa nada todavía: queda como saldo a favor
+    // hacia la cuota 1 (todavía en curso), no como "cuota pagada".
+    expect(fila1.cuotasCubiertas).toBe(0);
+    expect(fila1.numeroCuota).toBe(1);
+    expect(fila1.saldoAFavor).toBe(100_000);
+    // El segundo abono cierra la cuota 1.
+    expect(fila2.cuotasCubiertas).toBe(1);
+    expect(fila2.numeroCuota).toBe(1);
+    expect(fila2.saldoAFavor).toBe(0);
+  });
+
+  it("un pago que completa una cuota Y deja saldo a favor lleva ese saldo hacia la SIGUIENTE cuota, no hacia la que acaba de completar", () => {
+    // Caso real reportado: cuota = $125.000. Un pago exacto ($125.000), luego
+    // un abono ($85.000, no alcanza para otra cuota) y luego otro pago exacto
+    // ($125.000) que termina de completar la cuota que el abono dejó a
+    // medias Y arranca la siguiente con el sobrante. Antes de este fix, el
+    // tercer pago mostraba el mismo `numeroCuota` y el mismo `saldoAFavor`
+    // que el segundo, como si la cuota estuviera duplicada — el dinero
+    // estaba bien contado, pero no había forma de saber que el sobrante del
+    // tercer pago ya apuntaba a la cuota SIGUIENTE.
+    const creditoCuota = {
+      id: "cr-completa-y-sigue",
+      fechaInicio: dia(0),
+      cuotas: 28,
+      frecuencia: "DIARIO" as const,
+      cuotaDiaria: 125_000,
+    };
+    const pagos = [
+      {
+        id: "pg-1",
+        creditoId: "cr-completa-y-sigue",
+        monto: 125_000, // completa la cuota 1
+        fecha: dia(1),
+        cobradorId: "u-1",
+        cobradorNombre: null,
+        reciboUrl: null,
+      },
+      {
+        id: "pg-2",
+        creditoId: "cr-completa-y-sigue",
+        monto: 85_000, // abono: no alcanza para la cuota 2
+        fecha: dia(2),
+        cobradorId: "u-1",
+        cobradorNombre: null,
+        reciboUrl: null,
+      },
+      {
+        id: "pg-3",
+        creditoId: "cr-completa-y-sigue",
+        // Con los $85.000 ya acumulados, completa la cuota 2 (le faltaban
+        // $40.000) y los $85.000 restantes quedan a favor de la cuota 3.
+        monto: 125_000,
+        fecha: dia(3),
+        cobradorId: "u-1",
+        cobradorNombre: null,
+        reciboUrl: null,
+      },
+    ];
+    const historial = buildPaymentHistory(creditoCuota, pagos, dia(3));
+    const fila2 = historial.find((h) => h.id === "pg-2")!;
+    const fila3 = historial.find((h) => h.id === "pg-3")!;
+
+    // pg-2: todavía no completa nada, saldo a favor hacia la cuota 2 (la que
+    // sigue en curso).
+    expect(fila2.numeroCuota).toBe(2);
+    expect(fila2.cuotasCubiertas).toBe(0);
+    expect(fila2.cuotasCubiertasAcumuladas).toBe(1);
+    expect(fila2.saldoAFavor).toBe(85_000);
+
+    // pg-3: completa la cuota 2 (cuotasCubiertas pasa a 1) y el MISMO monto
+    // de saldo a favor ($85.000) ya no es el mismo dato que en pg-2 — ahora
+    // `cuotasCubiertasAcumuladas` avanzó a 2, así que apunta a la cuota 3.
+    expect(fila3.numeroCuota).toBe(2);
+    expect(fila3.cuotasCubiertas).toBe(1);
+    expect(fila3.cuotasCubiertasAcumuladas).toBe(2);
+    expect(fila3.saldoAFavor).toBe(85_000);
+  });
+
+  it("un pago que cubre las cuotas vencidas no genera ninguna fila DEFAULTED (no queda en falsa mora)", () => {
+    const creditoCuota = {
+      id: "cr-mora",
+      fechaInicio: dia(0),
+      cuotas: 30,
+      frecuencia: "DIARIO" as const,
+      cuotaDiaria: 221_000,
+    };
+    // Al día 10 vencieron 10 cuotas. Un solo pago que cubre esas 10 cuotas
+    // (2.210.000) tiene que dejar el historial sin ninguna fila DEFAULTED/
+    // OVERDUE — antes de este fix, el sistema seguía contando "1 pago = 1
+    // cuota" y las otras 9 quedaban sin pagar (y en mora a partir del día 7).
+    const pagos = [
+      {
+        id: "pg-grande",
+        creditoId: "cr-mora",
+        monto: 2_210_000,
+        fecha: dia(10),
+        cobradorId: "u-1",
+        cobradorNombre: null,
+        reciboUrl: null,
+      },
+    ];
+    const historial = buildPaymentHistory(creditoCuota, pagos, dia(10));
+    expect(historial.some((h) => h.estado === "DEFAULTED" || h.estado === "OVERDUE")).toBe(false);
+    const fila = historial.find((h) => h.id === "pg-grande")!;
+    expect(fila.numeroCuota).toBe(10);
+    expect(fila.cuotasCubiertasAcumuladas).toBe(10);
   });
 });
 

@@ -96,7 +96,7 @@ function render(doc: PDFKit.PDFDocument, receipt: Receipt): void {
   drawParties(doc, receipt);
   drawCreditTerms(doc, receipt);
   drawProgress(doc, receipt);
-  drawInstallments(doc, receipt.cuotasPagadasDetalle);
+  drawInstallments(doc, receipt.cuotasPagadasDetalle, receipt.credito.cuotas);
   drawFooter(doc, receipt);
 }
 
@@ -323,7 +323,42 @@ function drawProgress(doc: PDFKit.PDFDocument, r: Receipt): void {
   row(doc, "Saldo restante", formatCop(r.saldoRestante), { bold: true, size: 9 });
 }
 
-function drawInstallments(doc: PDFKit.PDFDocument, cuotas: ReceiptInstallment[]): void {
+// Frase corta para la segunda línea de una fila de "Cuotas pagadas": solo
+// cuando el pago no fue un simple "1 pago = 1 cuota exacta" (ver el
+// comentario grande en `buildPaymentHistory`). `null` = fila normal, no se
+// agrega nada. Mismo texto (resumido, sin decimales) que `coberturaLabels`
+// del front (`entities/payment/lib/cobertura.ts`) — las dos se acortaron
+// juntas: la versión larga original ("Saldo a favor: $174.000 (78,7% de la
+// próxima cuota)") no entraba en el ancho fijo del ticket sin recortarse.
+function describeCobertura(cuota: ReceiptInstallment, totalCuotas: number): string | null {
+  const partes: string[] = [];
+  if (cuota.cuotasCubiertas > 1) {
+    partes.push(`Cubrió ${cuota.cuotasCubiertas} cuotas`);
+  }
+  if (cuota.saldoAFavor > 0) {
+    const monto = formatCop(cuota.saldoAFavor);
+    const porcentaje = Math.round(cuota.porcentajeProximaCuota);
+    // Si este MISMO pago ya completó una cuota (`cuotasCubiertas >= 1`), el
+    // saldo que sobra es hacia la SIGUIENTE, no hacia la del encabezado (esa
+    // quedó completa). Sin decir cuál, dos filas con el mismo "N.º" — una que
+    // solo aporta y otra que completa esa cuota y arranca la próxima — se ven
+    // idénticas, como si la cuota estuviera duplicada (mismo espejo que
+    // `coberturaLabels` del front, `entities/payment/lib/cobertura.ts`).
+    if (cuota.cuotasCubiertas >= 1) {
+      const proxima = Math.min(totalCuotas, cuota.cuotasCubiertasAcumuladas + 1);
+      partes.push(`A favor: ${monto} (cuota ${proxima}, ${porcentaje}%)`);
+    } else {
+      partes.push(`A favor: ${monto} (${porcentaje}%)`);
+    }
+  }
+  return partes.length > 0 ? partes.join(" · ") : null;
+}
+
+function drawInstallments(
+  doc: PDFKit.PDFDocument,
+  cuotas: ReceiptInstallment[],
+  totalCuotas: number,
+): void {
   divider(doc);
   sectionTitle(doc, "Cuotas pagadas");
 
@@ -375,7 +410,21 @@ function drawInstallments(doc: PDFKit.PDFDocument, cuotas: ReceiptInstallment[])
         lineBreak: false,
       });
 
+    // Un pago normal (1 cuota exacta, sin sobrante) no agrega nada acá — se ve
+    // igual que siempre. Solo cuando el pago cubrió más de una cuota de una
+    // vez, o dejó un saldo a favor que todavía no completa la próxima, se
+    // agrega una segunda línea chica bajo la fila (nunca se parte en varias
+    // filas — ver `buildPaymentHistory`).
+    const nota = describeCobertura(cuota, totalCuotas);
     doc.y = y + ROW_HEIGHT;
+    if (nota) {
+      doc
+        .font("Helvetica")
+        .fontSize(6)
+        .fillColor(COLORS.mutedFg)
+        .text(nota, col.fecha, doc.y, { width: CONTENT_WIDTH + MARGIN - col.fecha });
+      doc.y += 7;
+    }
   }
 }
 

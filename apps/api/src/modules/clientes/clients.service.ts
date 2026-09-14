@@ -596,6 +596,7 @@ export class ClientsService {
             fechaInicio: credito.fechaInicio,
             cuotas: credito.cuotas,
             frecuencia: credito.frecuencia,
+            cuotaDiaria: Number(credito.cuotaDiaria.toString()),
           },
           credito.pagos.map((pago) => ({
             id: pago.id,

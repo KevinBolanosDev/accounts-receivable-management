@@ -94,7 +94,13 @@ export class ClientPortalService {
     const relation = row.cliente.admins.find((a) => a.adminId === row.adminId);
 
     const pagos = buildPaymentHistory(
-      { id: row.id, fechaInicio: row.fechaInicio, cuotas: row.cuotas, frecuencia: row.frecuencia },
+      {
+        id: row.id,
+        fechaInicio: row.fechaInicio,
+        cuotas: row.cuotas,
+        frecuencia: row.frecuencia,
+        cuotaDiaria: Number(row.cuotaDiaria.toString()),
+      },
       row.pagos.map((p) => ({
         id: p.id,
         creditoId: p.creditoId,

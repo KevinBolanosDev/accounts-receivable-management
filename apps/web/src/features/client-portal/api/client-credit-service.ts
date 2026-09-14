@@ -61,6 +61,10 @@ function buildCr2041Pagos(): PaymentHistoryItem[] {
       diasAtraso: atraso,
       reciboCodigo: mockReciboCodigo(id),
       anulado: false,
+      cuotasCubiertas: 1,
+      cuotasCubiertasAcumuladas: n,
+      saldoAFavor: 0,
+      porcentajeProximaCuota: 0,
     });
   }
 
@@ -90,6 +94,10 @@ function buildCr2041Pagos(): PaymentHistoryItem[] {
       diasAtraso,
       reciboCodigo: null,
       anulado: false,
+      cuotasCubiertas: 0,
+      cuotasCubiertasAcumuladas: numeroCuota - 1,
+      saldoAFavor: 0,
+      porcentajeProximaCuota: 0,
     });
   }
 
@@ -169,6 +177,10 @@ function buildCr2055Pagos(): PaymentHistoryItem[] {
       diasAtraso: 0,
       reciboCodigo: mockReciboCodigo(id),
       anulado: false,
+      cuotasCubiertas: 1,
+      cuotasCubiertasAcumuladas: n,
+      saldoAFavor: 0,
+      porcentajeProximaCuota: 0,
     });
   }
   return pagos.sort((a, b) => b.numeroCuota - a.numeroCuota);

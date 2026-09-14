@@ -25,6 +25,18 @@ export const receiptInstallmentSchema = z.object({
   monto: z.number(),
   fechaPago: z.string(),
   estado: cuotaEstadoSchema,
+  // Cobertura en cuotas de ESTE pago — ver los mismos campos en
+  // `paymentHistoryItemSchema` (`payment-history.ts`), de donde salen.
+  cuotasCubiertas: z.number().int().default(1),
+  // Necesario para saber hacia qué cuota apunta `saldoAFavor` cuando este
+  // mismo pago YA completó otra (ver el comentario en `describeCobertura`,
+  // `receipt-pdf.ts`): sin esto, dos pagos que tocan la misma cuota — uno que
+  // solo aporta y otro que la completa y además empieza la siguiente — se ven
+  // idénticos ("A favor: $X (Y%)" repetido), como si la cuota estuviera
+  // duplicada.
+  cuotasCubiertasAcumuladas: z.number().int().default(0),
+  saldoAFavor: z.number().default(0),
+  porcentajeProximaCuota: z.number().default(0),
 });
 export type ReceiptInstallment = z.infer<typeof receiptInstallmentSchema>;
 
