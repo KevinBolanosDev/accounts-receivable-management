@@ -226,6 +226,7 @@ function toClosureCreditRow(row: ClosureCreditDbRow): ClosureCreditRow {
     fechaInicio: row.fechaInicio,
     cuotas: row.cuotas,
     frecuencia: row.frecuencia,
+    cuotaDiaria: Number(row.cuotaDiaria.toString()),
     montoTotal: Number(row.montoTotal.toString()),
     saldoPendiente: Number(row.saldoPendiente.toString()),
     pagos: row.pagos.map((p) => ({

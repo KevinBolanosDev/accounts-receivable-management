@@ -62,5 +62,18 @@ export const paymentHistoryItemSchema = pagoSchema.extend({
   // Nullable/optional: las filas MISSED no tienen recibo, y así el contrato
   // tolera un backend que todavía no lo puebla.
   reciboPublicUrl: z.string().url().nullable().optional(),
+  // Cobertura de este pago en cuotas (dinero acumulado ÷ valor de cuota, no
+  // "1 pago = 1 cuota" — ver el comentario grande en `buildPaymentHistory`).
+  // `.default(...)` porque son campos nuevos de respuesta (lector tolerante,
+  // ver CLAUDE.md raíz): un front desplegado contra un backend que todavía no
+  // los manda tiene que seguir renderizando el historial.
+  /** Cuántas cuotas COMPLETAS aportó este pago en particular (0 = abono parcial). */
+  cuotasCubiertas: z.number().int().default(1),
+  /** Cuántas cuotas COMPLETAS hay cubiertas con la plata acumulada hasta este pago inclusive. */
+  cuotasCubiertasAcumuladas: z.number().int().default(0),
+  /** Lo que sobra sin alcanzar a completar una cuota nueva. */
+  saldoAFavor: z.number().default(0),
+  /** Qué % de la próxima cuota ya cubre `saldoAFavor`. */
+  porcentajeProximaCuota: z.number().default(0),
 });
 export type PaymentHistoryItem = z.infer<typeof paymentHistoryItemSchema>;

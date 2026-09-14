@@ -36,8 +36,13 @@ export function mapCreditoListItem(c: CreditoRowForMapping): CreditoListItem {
     montoTotal > 0 ? Number(((totalPagado / montoTotal) * 100).toFixed(2)) : 0;
   const cuotaDiaria = Number(c.cuotaDiaria.toString());
   const cuotasTotal = c.cuotas;
+  // `Math.floor`, no `Math.round`: una cuota solo cuenta como pagada si el
+  // dinero la completa entera — con `round` un pago que llegaba a más de la
+  // mitad de una cuota ya la mostraba "pagada", inconsistente con
+  // `buildPaymentHistory` (que expone el resto como `saldoAFavor`, no como
+  // cuota completa). Mismo criterio en los dos lugares.
   const cuotasPagadas =
-    cuotaDiaria > 0 ? Math.min(c.cuotas, Math.round(totalPagado / cuotaDiaria)) : 0;
+    cuotaDiaria > 0 ? Math.min(c.cuotas, Math.floor(totalPagado / cuotaDiaria)) : 0;
 
   return {
     id: c.id,

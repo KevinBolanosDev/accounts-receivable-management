@@ -11,6 +11,7 @@ import {
   esCuotaAnulada,
   esCuotaSinPagar,
 } from "../lib/cuota-estado";
+import { coberturaLabels } from "../lib/cobertura";
 
 export interface PaymentRowProps extends React.ComponentProps<"div"> {
   pago: PaymentHistoryItem;
@@ -37,6 +38,9 @@ export function PaymentRow({
 }: PaymentRowProps) {
   const sinPagar = esCuotaSinPagar(pago.estado);
   const anulada = esCuotaAnulada(pago.estado);
+  // Solo aparece si el pago cubrió más de una cuota de una vez o dejó saldo
+  // a favor — un pago normal (1 cuota exacta) no muestra nada acá.
+  const cobertura = !sinPagar && !anulada ? coberturaLabels(pago, cuotasTotal) : [];
 
   return (
     <div
@@ -49,40 +53,60 @@ export function PaymentRow({
       )}
       {...props}
     >
-      <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+      <div className="flex min-w-0 flex-1 flex-col gap-1">
         <div className="flex items-center gap-2">
           <span className="truncate text-body-sm font-semibold">{producto ?? "Cuota"}</span>
           <Badge status={CUOTA_ESTADO_BADGE_STATUS[pago.estado]}>
             {CUOTA_ESTADO_LABEL_SHORT[pago.estado]}
           </Badge>
         </div>
-        {/* Una fila anulada no tiene "Cuota N/Total" — su `numeroCuota` es un
-            sentinel (0), no un lugar real del cronograma (ver
-            `buildPaymentHistory`). Mostrar "Cuota 0/30" leería como un bug. */}
-        <span className="truncate text-caption text-muted-foreground">
-          {anulada
-            ? "No cuenta como cuota — el saldo se devolvió al crédito"
-            : `Cuota ${pago.numeroCuota}${cuotasTotal ? `/${cuotasTotal}` : ""} · vence ${formatDateShort(pago.fechaVencimiento)}`}
-        </span>
-        {/* Las dos fechas separadas: cuándo vencía (arriba) y cuándo se pagó
-            realmente (acá). Antes se mostraba una sola y no se sabía cuál era. */}
-        <span className="truncate text-caption text-muted-foreground">
-          {anulada
-            ? `Registrado ${formatDateTimeShort(pago.fecha)}`
-            : pago.fechaPago
-              ? `Pagado ${formatDateTimeShort(pago.fechaPago)}`
-              : pago.diasAtraso > 0
-                ? `Sin pagar · hace ${pago.diasAtraso} ${pago.diasAtraso === 1 ? "día" : "días"}`
-                : "Sin pagar"}
-        </span>
-        {pago.reciboCodigo ? (
-          <span className="truncate text-caption text-muted-foreground">
-            Ref. {pago.reciboCodigo}
+        <div className="flex flex-col gap-0.5">
+          {/* Una fila anulada no tiene "Cuota N/Total" — su `numeroCuota` es un
+              sentinel (0), no un lugar real del cronograma (ver
+              `buildPaymentHistory`). Mostrar "Cuota 0/30" leería como un bug.
+              Sin `truncate`: son frases cortas y ahora hay espacio de sobra
+              (el monto y las acciones se apilan a la derecha, ver abajo) —
+              truncarlas cortaba a la mitad justo la fecha de vencimiento. */}
+          <span className="text-caption text-muted-foreground">
+            {anulada
+              ? "No cuenta como cuota — el saldo se devolvió al crédito"
+              : `Cuota ${pago.numeroCuota}${cuotasTotal ? `/${cuotasTotal}` : ""} · vence ${formatDateShort(pago.fechaVencimiento)}`}
           </span>
+          {/* Las dos fechas separadas: cuándo vencía (arriba) y cuándo se pagó
+              realmente (acá). Antes se mostraba una sola y no se sabía cuál era. */}
+          <span className="text-caption text-muted-foreground">
+            {anulada
+              ? `Registrado ${formatDateTimeShort(pago.fecha)}`
+              : pago.fechaPago
+                ? `Pagado ${formatDateTimeShort(pago.fechaPago)}`
+                : pago.diasAtraso > 0
+                  ? `Sin pagar · hace ${pago.diasAtraso} ${pago.diasAtraso === 1 ? "día" : "días"}`
+                  : "Sin pagar"}
+          </span>
+        </div>
+        {/* Chips cortos (no una frase larga): cada uno cabe en una línea sin
+            partirse, y si no entran los dos en el ancho disponible, el
+            segundo baja de línea (`flex-wrap`) en vez de recortarse. */}
+        {cobertura.length > 0 ? (
+          <div className="flex flex-wrap gap-1">
+            {cobertura.map((label) => (
+              <Badge key={label} status="pagado">
+                {label}
+              </Badge>
+            ))}
+          </div>
+        ) : null}
+        {pago.reciboCodigo ? (
+          <span className="text-caption text-muted-foreground">Ref. {pago.reciboCodigo}</span>
         ) : null}
       </div>
 
-      <div className="flex shrink-0 items-center gap-1">
+      {/* Monto arriba, acciones debajo (antes iban lado a lado): así la
+          columna derecha ocupa el ancho de lo más angosto de los dos, no la
+          suma de ambos, y le devuelve ese espacio a la columna de texto —
+          que es lo que la estaba obligando a truncarse en un teléfono
+          angosto. */}
+      <div className="flex shrink-0 flex-col items-end gap-1">
         <span
           className={cn(
             "text-body-sm font-bold tabular-nums",

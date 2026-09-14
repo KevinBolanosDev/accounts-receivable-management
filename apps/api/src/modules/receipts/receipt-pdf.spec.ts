@@ -46,6 +46,10 @@ function cuotas(n: number): Receipt["cuotasPagadasDetalle"] {
     monto: 72_000,
     fechaPago: new Date(Date.UTC(2026, 6, 20 + i, 15)).toISOString(),
     estado: i % 3 === 0 ? ("LATE" as const) : ("ON_TIME" as const),
+    cuotasCubiertas: 1,
+    cuotasCubiertasAcumuladas: i + 1,
+    saldoAFavor: 0,
+    porcentajeProximaCuota: 0,
   }));
 }
 
